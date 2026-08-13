@@ -1,0 +1,186 @@
+using FluentValidation;
+using Orbit.Application.Abstractions;
+using Orbit.Application.Common;
+using Orbit.Application.WorkItems;
+using Orbit.Domain.Access;
+using Orbit.Domain.Choices;
+using Orbit.Domain.WorkItems;
+
+namespace Orbit.Application.Tests;
+
+public sealed class UpdateWorkItemHandlerTests
+{
+    private static WorkItem NewItem(
+        Guid tenantId, Guid projectId, WorkItemType type = WorkItemType.Task, long sequenceNumber = 1) =>
+        WorkItem.Create(
+            tenantId, projectId, sequenceNumber, "ORB", $"Card {sequenceNumber}", null,
+            type, Priority.Medium, DateTimeOffset.UtcNow);
+
+    private static UpdateWorkItemCommand CommandFor(WorkItem item, string summary = "Updated summary") =>
+        new(
+            item.Id, summary, "Updated description", Priority.High,
+            null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, item.Version);
+
+    [Fact]
+    public async Task Handle_UpdatesFieldsAndBumpsVersion()
+    {
+        var tenantId = Guid.NewGuid();
+        var item = NewItem(tenantId, Guid.NewGuid());
+        var handler = new UpdateWorkItemHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(null),
+            new WorkItemRepositoryStub(item),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(CommandFor(item), CancellationToken.None);
+
+        Assert.Equal("Updated summary", result.Summary);
+        Assert.Equal("Updated description", result.Description);
+        Assert.Equal(Priority.High, result.Priority);
+        Assert.Equal(2, result.Version);
+    }
+
+    [Fact]
+    public async Task Handle_RejectsStaleVersion()
+    {
+        var tenantId = Guid.NewGuid();
+        var item = NewItem(tenantId, Guid.NewGuid());
+        var handler = new UpdateWorkItemHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(null),
+            new WorkItemRepositoryStub(item),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(CommandFor(item) with { ExpectedVersion = item.Version + 1 }, CancellationToken.None);
+
+        await Assert.ThrowsAsync<ConcurrencyException>(action);
+    }
+
+    [Fact]
+    public async Task Handle_HidesExistence_WhenWorkItemNotVisible()
+    {
+        var tenantId = Guid.NewGuid();
+        var handler = new UpdateWorkItemHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(null),
+            new WorkItemRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            new UpdateWorkItemCommand(
+                Guid.NewGuid(), "Updated summary", null, Priority.Medium,
+                null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, 1),
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<NotFoundException>(action);
+    }
+
+    [Fact]
+    public async Task Handle_RejectsOwnershipAssignedToAnotherUser()
+    {
+        var tenantId = Guid.NewGuid();
+        var item = NewItem(tenantId, Guid.NewGuid());
+        var handler = new UpdateWorkItemHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(Guid.NewGuid()),
+            new WorkItemRepositoryStub(item),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            CommandFor(item) with { AssigneeUserId = Guid.NewGuid() }, CancellationToken.None);
+
+        await Assert.ThrowsAsync<ValidationException>(action);
+    }
+
+    [Fact]
+    public async Task Handle_RejectsParentOutsideHierarchy()
+    {
+        var tenantId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var item = NewItem(tenantId, projectId, WorkItemType.Epic, 1);
+        var invalidParent = NewItem(tenantId, projectId, WorkItemType.Task, 2);
+        var handler = new UpdateWorkItemHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(null),
+            new WorkItemRepositoryStub(item, invalidParent),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            CommandFor(item) with { ParentId = invalidParent.Id, EpicName = "Epic name" }, CancellationToken.None);
+
+        await Assert.ThrowsAsync<ValidationException>(action);
+    }
+
+    [Fact]
+    public async Task Handle_RejectsLinkedItemFromAnotherProject()
+    {
+        var tenantId = Guid.NewGuid();
+        var item = NewItem(tenantId, Guid.NewGuid());
+        var otherProjectItem = NewItem(tenantId, Guid.NewGuid(), sequenceNumber: 2);
+        var handler = new UpdateWorkItemHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(null),
+            new WorkItemRepositoryStub(item, otherProjectItem),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            CommandFor(item) with { LinkType = WorkItemLinkType.RelatesTo, LinkedWorkItemId = otherProjectItem.Id },
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<ValidationException>(action);
+    }
+
+    private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
+
+    private sealed class CurrentPrincipalStub(Guid? userId) : ICurrentPrincipal
+    {
+        public Guid? UserId => userId;
+        public Guid? SessionId => null;
+        public Guid MembershipId => Guid.NewGuid();
+        public PrincipalType PrincipalType => PrincipalType.User;
+        public TenantRole TenantRole => TenantRole.Owner;
+        public bool IsDevelopmentBypass => true;
+    }
+
+    private sealed class WorkItemRepositoryStub(params WorkItem[] items) : IWorkItemRepository
+    {
+        public Task AddAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<WorkItem?> GetAsync(
+            Guid tenantId,
+            Guid workItemId,
+            ProjectPermission permission,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(items.SingleOrDefault(item => item.Id == workItemId && item.TenantId == tenantId));
+
+        public Task<PagedResult<WorkItem>> ListByProjectAsync(
+            Guid tenantId,
+            Guid projectId,
+            ProjectPermission permission,
+            int skip,
+            int take,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<WorkItem>([], 0));
+
+        public Task<IReadOnlyList<WorkItem>> ListByIdsAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> workItemIds,
+            ProjectPermission permission,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItem>>(
+                items.Where(item => item.TenantId == tenantId && workItemIds.Contains(item.Id)).ToArray());
+    }
+
+    private sealed class UnitOfWorkStub : IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken) => Task.FromResult(1);
+    }
+}

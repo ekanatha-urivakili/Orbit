@@ -1,0 +1,238 @@
+import type {
+  Board,
+  BootstrapInput,
+  BootstrapResult,
+  BootstrapStatus,
+  CreateMembershipInput,
+  CreateWorkItemInput,
+  UpdateWorkItemInput,
+  ExternalIdentitySummary,
+  PagedResult,
+  Project,
+  ProjectRole,
+  ProjectRoleAssignment,
+  ProjectSetting,
+  Profile,
+  NotificationPreference,
+  SessionSummary,
+  Sprint,
+  Team,
+  TeamMembership,
+  TenantMembership,
+  TenantRole,
+  WorkspaceSetting,
+  SystemChoices,
+  WorkItem,
+  WorkItemStatus,
+} from './types'
+import { withAuthHeader } from './auth'
+
+const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5014/api/v1'
+const tenantStorageKey = 'orbit.tenant-id'
+
+function getTenantId(): string {
+  const existing = localStorage.getItem(tenantStorageKey)
+  if (existing) return existing
+
+  const created = crypto.randomUUID()
+  localStorage.setItem(tenantStorageKey, created)
+  return created
+}
+
+interface ProblemDetails {
+  title?: string
+  detail?: string
+}
+
+async function request<T>(path: string, init?: RequestInit, tenantScoped = true): Promise<T> {
+  const headers = new Headers(init?.headers)
+  headers.set('Accept', 'application/json')
+  if (init?.body) headers.set('Content-Type', 'application/json')
+  if (tenantScoped) headers.set('X-Tenant-Id', getTenantId())
+  await withAuthHeader(headers)
+
+  const response = await fetch(`${apiUrl}${path}`, { ...init, headers })
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => ({}))) as ProblemDetails
+    throw new Error(problem.detail ?? problem.title ?? `Request failed (${response.status})`)
+  }
+
+  if (response.status === 204) return undefined as T
+
+  return (await response.json()) as T
+}
+
+export const orbitApi = {
+  getBootstrapStatus: () => request<BootstrapStatus>('/bootstrap/status', undefined, false),
+  bootstrap: async (input: BootstrapInput) => {
+    const result = await request<BootstrapResult>('/bootstrap', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }, false)
+    localStorage.setItem(tenantStorageKey, result.workspaceId)
+    return result
+  },
+  listProjects: (skip = 0, take = 200) =>
+    request<PagedResult<Project>>(`/projects?skip=${skip}&take=${take}`),
+  createProject: (input: { key: string; name: string }) =>
+    request<Project>('/projects', { method: 'POST', body: JSON.stringify(input) }),
+  getChoices: () => request<SystemChoices>('/choices', undefined, false),
+  listWorkItems: (projectId: string, skip = 0, take = 200) =>
+    request<PagedResult<WorkItem>>(
+      `/work-items?projectId=${encodeURIComponent(projectId)}&skip=${skip}&take=${take}`,
+    ),
+  createWorkItem: (input: CreateWorkItemInput) =>
+    request<WorkItem>('/work-items', { method: 'POST', body: JSON.stringify(input) }),
+  updateWorkItem: (workItem: WorkItem, input: UpdateWorkItemInput) =>
+    request<WorkItem>(`/work-items/${workItem.id}`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${workItem.version}"` },
+      body: JSON.stringify(input),
+    }),
+  changeStatus: (workItem: WorkItem, status: WorkItemStatus) =>
+    request<WorkItem>(`/work-items/${workItem.id}/status`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${workItem.version}"` },
+      body: JSON.stringify({ status }),
+    }),
+  reorderWorkItem: (workItem: WorkItem, neighbors: { beforeId: string | null; afterId: string | null }) =>
+    request<WorkItem>(`/work-items/${workItem.id}/rank`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${workItem.version}"` },
+      body: JSON.stringify({ beforeWorkItemId: neighbors.beforeId, afterWorkItemId: neighbors.afterId }),
+    }),
+  getProfile: () => request<Profile>('/me'),
+  updateProfile: (profile: Profile, input: Pick<Profile, 'displayName' | 'avatarUrl'>) =>
+    request<Profile>('/me/profile', {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${profile.version}"` },
+      body: JSON.stringify(input),
+    }),
+  updatePreferences: (
+    profile: Profile,
+    input: Pick<Profile, 'locale' | 'timeZone' | 'theme' | 'density' | 'reduceMotion' | 'highContrast'>,
+  ) =>
+    request<Profile>('/me/preferences', {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${profile.preferenceVersion}"` },
+      body: JSON.stringify(input),
+    }),
+  getNotificationPreferences: () =>
+    request<NotificationPreference>('/me/notification-preferences'),
+  updateNotificationPreferences: (input: NotificationPreference) =>
+    request<NotificationPreference>('/me/notification-preferences', {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${input.version}"` },
+      body: JSON.stringify(input),
+    }),
+  getWorkspaceSettings: () => request<WorkspaceSetting>('/workspaces/current/settings'),
+  updateWorkspaceSettings: (input: WorkspaceSetting) =>
+    request<WorkspaceSetting>('/workspaces/current/settings', {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${input.version}"` },
+      body: JSON.stringify(input),
+    }),
+  getProjectSettings: (projectId: string) =>
+    request<ProjectSetting>(`/projects/${encodeURIComponent(projectId)}/settings`),
+  updateProjectSettings: (input: ProjectSetting) =>
+    request<ProjectSetting>(`/projects/${encodeURIComponent(input.projectId)}/settings`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${input.version}"` },
+      body: JSON.stringify(input),
+    }),
+  listMemberships: () => request<TenantMembership[]>('/memberships'),
+  createMembership: (input: CreateMembershipInput) =>
+    request<TenantMembership>('/memberships', { method: 'POST', body: JSON.stringify(input) }),
+  listProjectRoles: (projectId: string) =>
+    request<ProjectRoleAssignment[]>(`/projects/${encodeURIComponent(projectId)}/roles`),
+  assignProjectRole: (projectId: string, membershipId: string, role: ProjectRole) =>
+    request<ProjectRoleAssignment>(
+      `/projects/${encodeURIComponent(projectId)}/roles/${encodeURIComponent(membershipId)}`,
+      { method: 'PUT', body: JSON.stringify({ role }) },
+    ),
+  changeMembershipRole: (membershipId: string, role: TenantRole) =>
+    request<TenantMembership>(`/memberships/${encodeURIComponent(membershipId)}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    }),
+  deactivateMembership: (membershipId: string) =>
+    request<void>(`/memberships/${encodeURIComponent(membershipId)}`, { method: 'DELETE' }),
+  getBoard: (projectId: string) => request<Board>(`/projects/${encodeURIComponent(projectId)}/board`),
+  updateBoard: (input: Board) =>
+    request<Board>(`/projects/${encodeURIComponent(input.projectId)}/board`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${input.version}"` },
+      body: JSON.stringify({
+        name: input.name,
+        type: input.type,
+        columns: input.columns.map((column) => ({
+          status: column.status,
+          wipLimit: column.wipLimit,
+          wipLimitMode: column.wipLimitMode,
+        })),
+      }),
+    }),
+  listSprints: (projectId: string) =>
+    request<Sprint[]>(`/projects/${encodeURIComponent(projectId)}/sprints`),
+  createSprint: (projectId: string, name: string) =>
+    request<Sprint>(`/projects/${encodeURIComponent(projectId)}/sprints`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  startSprint: (sprint: Sprint, input: { goal: string | null; startDate: string | null; endDate: string | null }) =>
+    request<Sprint>(`/sprints/${encodeURIComponent(sprint.id)}/start`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${sprint.version}"` },
+      body: JSON.stringify(input),
+    }),
+  completeSprint: (sprint: Sprint, rolloverTargetSprintId: string | null = null) =>
+    request<Sprint>(`/sprints/${encodeURIComponent(sprint.id)}/complete`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${sprint.version}"` },
+      body: JSON.stringify({ rolloverTargetSprintId }),
+    }),
+  reopenSprint: (sprint: Sprint) =>
+    request<Sprint>(`/sprints/${encodeURIComponent(sprint.id)}/reopen`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${sprint.version}"` },
+    }),
+  assignWorkItemToSprint: (workItemId: string, sprintId: string) =>
+    request<Sprint>(`/work-items/${encodeURIComponent(workItemId)}/sprint`, {
+      method: 'PUT',
+      body: JSON.stringify({ sprintId }),
+    }),
+  removeWorkItemFromSprint: (workItemId: string) =>
+    request<Sprint>(`/work-items/${encodeURIComponent(workItemId)}/sprint`, { method: 'DELETE' }),
+  listTeams: () => request<Team[]>('/teams'),
+  createTeam: (name: string) =>
+    request<Team>('/teams', { method: 'POST', body: JSON.stringify({ name }) }),
+  renameTeam: (teamId: string, name: string) =>
+    request<Team>(`/teams/${encodeURIComponent(teamId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    }),
+  listTeamMembers: (teamId: string) =>
+    request<TeamMembership[]>(`/teams/${encodeURIComponent(teamId)}/members`),
+  addTeamMember: (teamId: string, membershipId: string) =>
+    request<TeamMembership>(`/teams/${encodeURIComponent(teamId)}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ membershipId }),
+    }),
+  removeTeamMember: (teamId: string, membershipId: string) =>
+    request<void>(
+      `/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(membershipId)}`,
+      { method: 'DELETE' },
+    ),
+  listSessions: () => request<SessionSummary[]>('/me/sessions'),
+  revokeSession: (sessionId: string) =>
+    request<void>(`/me/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }),
+  revokeOtherSessions: () => request<{ revokedCount: number }>('/me/sessions', { method: 'DELETE' }),
+  listLinkedIdentities: () => request<ExternalIdentitySummary[]>('/me/external-identities'),
+  linkExternalIdentity: (identityToken: string) =>
+    request<ExternalIdentitySummary>('/me/external-identities', {
+      method: 'POST',
+      body: JSON.stringify({ identityToken }),
+    }),
+  unlinkExternalIdentity: (identityId: string) =>
+    request<void>(`/me/external-identities/${encodeURIComponent(identityId)}`, { method: 'DELETE' }),
+}

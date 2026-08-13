@@ -1,0 +1,33 @@
+@host = http://localhost:5014
+@tenantId = 0198f31e-1f31-7c63-8f21-c92086c78360
+
+GET {{host}}/health/live
+
+###
+GET {{host}}/api/v1/choices
+
+###
+GET {{host}}/api/v1/projects
+X-Tenant-Id: {{tenantId}}
+
+###
+POST {{host}}/api/v1/projects
+X-Tenant-Id: {{tenantId}}
+Content-Type: application/json
+
+{
+  "key": "ORB",
+  "name": "Orbit"
+}
+
+###
+POST {{host}}/api/v1/memberships
+X-Tenant-Id: {{tenantId}}
+Content-Type: application/json
+
+{
+  "issuer": "https://identity.example.test",
+  "subject": "automation-client",
+  "principalType": "ServiceAccount",
+  "role": "Member"
+}

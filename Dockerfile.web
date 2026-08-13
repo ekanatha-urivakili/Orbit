@@ -1,0 +1,15 @@
+FROM node:24-alpine AS build
+WORKDIR /source
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ .
+ARG VITE_API_URL=/api/v1
+ENV VITE_API_URL=$VITE_API_URL
+RUN npm run build
+
+FROM nginxinc/nginx-unprivileged:1.29-alpine AS runtime
+COPY deploy/web/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /source/dist /usr/share/nginx/html
+ENV PORT=8080
+ENV NGINX_ENVSUBST_FILTER=PORT
+EXPOSE 8080

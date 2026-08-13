@@ -1,0 +1,644 @@
+import { useState, type ReactNode } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Bell, Building2, FolderCog, LockKeyhole, UserRound, Users, UsersRound, X } from 'lucide-react'
+import { orbitApi } from '../../api/client'
+import * as auth from '../../api/auth'
+import { useIsAuthenticated } from '../../hooks/useIsAuthenticated'
+import { LoginForm } from '../auth/LoginView'
+import { getOidcConfig, startOidcLogin } from '../auth/oidcPkce'
+import { Field, Hint, SubmitRow } from '../../components/form/Field'
+import type {
+  CreateMembershipInput,
+  DensityPreference,
+  DigestCadence,
+  NotificationPreference,
+  PrincipalType,
+  Priority,
+  Profile,
+  Project,
+  ProjectRole,
+  ProjectSetting,
+  Team,
+  TenantMembership,
+  TenantRole,
+  ThemePreference,
+  WorkItemType,
+  WorkspaceSetting,
+} from '../../api/types'
+
+export type SettingsSection = 'profile' | 'notifications' | 'workspace' | 'project' | 'members' | 'teams' | 'security'
+
+const sections: Array<{ id: SettingsSection; label: string; icon: typeof UserRound }> = [
+  { id: 'profile', label: 'Profile and preferences', icon: UserRound },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'members', label: 'Members & roles', icon: UsersRound },
+  { id: 'teams', label: 'Teams', icon: Users },
+  { id: 'security', label: 'Account security', icon: LockKeyhole },
+  { id: 'workspace', label: 'Workspace', icon: Building2 },
+  { id: 'project', label: 'Project defaults', icon: FolderCog },
+]
+
+export function SettingsView({ project, initialSection = 'profile', onClose }: { project: Project; initialSection?: SettingsSection; onClose: () => void }) {
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection)
+  const profileQuery = useQuery({ queryKey: ['profile'], queryFn: orbitApi.getProfile })
+  const notificationsQuery = useQuery({
+    queryKey: ['notification-preferences'],
+    queryFn: orbitApi.getNotificationPreferences,
+  })
+  const workspaceQuery = useQuery({ queryKey: ['workspace-settings'], queryFn: orbitApi.getWorkspaceSettings })
+  const projectQuery = useQuery({
+    queryKey: ['project-settings', project.id],
+    queryFn: () => orbitApi.getProjectSettings(project.id),
+  })
+
+  return (
+    <div className="min-h-[calc(100vh-56px)] bg-[#f7f8fa]">
+      <div className="border-b border-gray-200 bg-white px-6 py-5 lg:px-10">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">Orbit administration</p>
+            <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
+          </div>
+          <button onClick={onClose} className="rounded-md p-2 text-gray-500 hover:bg-gray-100" aria-label="Close settings">
+            <X size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 md:grid-cols-[240px_minmax(0,1fr)] lg:px-8">
+        <nav aria-label="Settings sections" className="h-fit rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
+          {sections.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveSection(id)}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium ${activeSection === id ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
+            >
+              <Icon size={18} /> {label}
+            </button>
+          ))}
+        </nav>
+
+        <section className="min-w-0">
+          {activeSection === 'profile' && <QueryState query={profileQuery} render={(profile) => <ProfileForm profile={profile} />} />}
+          {activeSection === 'notifications' && <QueryState query={notificationsQuery} render={(preference) => <NotificationForm preference={preference} />} />}
+          {activeSection === 'workspace' && <QueryState query={workspaceQuery} render={(setting) => <WorkspaceForm setting={setting} />} />}
+          {activeSection === 'project' && <QueryState query={projectQuery} render={(setting) => <ProjectForm project={project} setting={setting} />} />}
+          {activeSection === 'members' && <MembersPanel project={project} />}
+          {activeSection === 'teams' && <TeamsPanel />}
+          {activeSection === 'security' && <SecurityPanel />}
+        </section>
+      </div>
+    </div>
+  )
+}
+
+interface QueryShape<T> {
+  data?: T
+  isPending: boolean
+  isError: boolean
+  error: Error | null
+}
+
+function QueryState<T>({ query, render }: { query: QueryShape<T>; render: (data: T) => ReactNode }) {
+  if (query.isPending) return <Panel title="Loading settings…"><p className="text-sm text-gray-500">Fetching the latest version.</p></Panel>
+  if (query.isError || !query.data) return <Panel title="Unable to load settings"><p className="text-sm text-red-700">{query.error?.message ?? 'Settings are unavailable.'}</p></Panel>
+  return render(query.data)
+}
+
+function ProfileForm({ profile }: { profile: Profile }) {
+  const client = useQueryClient()
+  const [displayName, setDisplayName] = useState(profile.displayName)
+  const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl ?? '')
+  const [locale, setLocale] = useState(profile.locale)
+  const [timeZone, setTimeZone] = useState(profile.timeZone)
+  const [theme, setTheme] = useState<ThemePreference>(profile.theme)
+  const [density, setDensity] = useState<DensityPreference>(profile.density)
+  const [reduceMotion, setReduceMotion] = useState(profile.reduceMotion)
+  const [highContrast, setHighContrast] = useState(profile.highContrast)
+  const profileMutation = useMutation({
+    mutationFn: () => orbitApi.updateProfile(profile, { displayName, avatarUrl: avatarUrl || null }),
+    onSuccess: (updated) => client.setQueryData(['profile'], updated),
+  })
+  const preferenceMutation = useMutation({
+    mutationFn: () => orbitApi.updatePreferences(profile, { locale, timeZone, theme, density, reduceMotion, highContrast }),
+    onSuccess: (updated) => {
+      client.setQueryData(['profile'], updated)
+      document.documentElement.dataset.theme = updated.theme.toLowerCase()
+      document.documentElement.dataset.density = updated.density.toLowerCase()
+    },
+  })
+
+  return (
+    <div className="space-y-5">
+      <Panel title="Profile" description="Your global Orbit identity across every workspace.">
+        <form onSubmit={(event) => { event.preventDefault(); profileMutation.mutate() }} className="space-y-4">
+          <Field variant="panel" label="Display name"><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={2} maxLength={120} /></Field>
+          <Field variant="panel" label="Email"><input value={profile.email} disabled /><Hint variant="panel">Verified email changes require the authentication increment.</Hint></Field>
+          <Field variant="panel" label="Avatar URL"><input value={avatarUrl} onChange={(event) => setAvatarUrl(event.target.value)} type="url" placeholder="https://…" /></Field>
+          <SubmitRow mutation={profileMutation} />
+        </form>
+      </Panel>
+
+      <Panel title="Appearance and region" description="These preferences follow your account between workspaces.">
+        <form onSubmit={(event) => { event.preventDefault(); preferenceMutation.mutate() }} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field variant="panel" label="Locale"><input value={locale} onChange={(event) => setLocale(event.target.value)} /></Field>
+            <Field variant="panel" label="Time zone"><input value={timeZone} onChange={(event) => setTimeZone(event.target.value)} /></Field>
+            <Field variant="panel" label="Theme"><select value={theme} onChange={(event) => setTheme(event.target.value as ThemePreference)}><option>System</option><option>Light</option><option>Dark</option></select></Field>
+            <Field variant="panel" label="Density"><select value={density} onChange={(event) => setDensity(event.target.value as DensityPreference)}><option>Comfortable</option><option>Compact</option></select></Field>
+          </div>
+          <Toggle label="Reduce motion" checked={reduceMotion} onChange={setReduceMotion} />
+          <Toggle label="Increase interface contrast" checked={highContrast} onChange={setHighContrast} />
+          <SubmitRow mutation={preferenceMutation} />
+        </form>
+      </Panel>
+    </div>
+  )
+}
+
+function NotificationForm({ preference }: { preference: NotificationPreference }) {
+  const client = useQueryClient()
+  const [draft, setDraft] = useState(preference)
+  const mutation = useMutation({
+    mutationFn: () => orbitApi.updateNotificationPreferences(draft),
+    onSuccess: (updated) => { setDraft(updated); client.setQueryData(['notification-preferences'], updated) },
+  })
+  const patch = (change: Partial<NotificationPreference>) => setDraft((current) => ({ ...current, ...change }))
+
+  return (
+    <Panel title="Notifications" description="Choose how Orbit delivers activity you are allowed to see.">
+      <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-5">
+        <Toggle label="In-app notifications" checked={draft.inAppEnabled} onChange={(checked) => patch({ inAppEnabled: checked })} />
+        <Toggle label="Email notifications" checked={draft.emailEnabled} onChange={(checked) => patch({ emailEnabled: checked })} />
+        <Toggle label="Notify me about my own changes" checked={draft.selfNotify} onChange={(checked) => patch({ selfNotify: checked })} />
+        <Field variant="panel" label="Digest cadence"><select value={draft.digestCadence} onChange={(event) => patch({ digestCadence: event.target.value as DigestCadence })}><option>None</option><option>Daily</option><option>Weekly</option></select></Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field variant="panel" label="Quiet hours start"><input type="time" value={draft.quietHoursStart?.slice(0, 5) ?? ''} onChange={(event) => patch({ quietHoursStart: event.target.value || null })} /></Field>
+          <Field variant="panel" label="Quiet hours end"><input type="time" value={draft.quietHoursEnd?.slice(0, 5) ?? ''} onChange={(event) => patch({ quietHoursEnd: event.target.value || null })} /></Field>
+        </div>
+        <SubmitRow mutation={mutation} />
+      </form>
+    </Panel>
+  )
+}
+
+function WorkspaceForm({ setting }: { setting: WorkspaceSetting }) {
+  const client = useQueryClient()
+  const [draft, setDraft] = useState(setting)
+  const mutation = useMutation({
+    mutationFn: () => orbitApi.updateWorkspaceSettings(draft),
+    onSuccess: (updated) => { setDraft(updated); client.setQueryData(['workspace-settings'], updated) },
+  })
+  const patch = (change: Partial<WorkspaceSetting>) => setDraft((current) => ({ ...current, ...change }))
+
+  return (
+    <Panel title={setting.workspaceName} description="Workspace-wide defaults and member capabilities.">
+      <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
+        <Field variant="panel" label="Description"><textarea value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value || null })} rows={4} maxLength={1000} disabled={!setting.canAdminister} /></Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field variant="panel" label="Default locale"><input value={draft.defaultLocale} onChange={(event) => patch({ defaultLocale: event.target.value })} disabled={!setting.canAdminister} /></Field>
+          <Field variant="panel" label="Default time zone"><input value={draft.defaultTimeZone} onChange={(event) => patch({ defaultTimeZone: event.target.value })} disabled={!setting.canAdminister} /></Field>
+        </div>
+        <Toggle label="Allow members to create projects" checked={draft.allowMemberProjectCreation} onChange={(checked) => patch({ allowMemberProjectCreation: checked })} disabled={!setting.canAdminister} />
+        {setting.canAdminister ? <SubmitRow mutation={mutation} /> : <Hint variant="panel">You need workspace administrator permission to edit these settings.</Hint>}
+      </form>
+    </Panel>
+  )
+}
+
+function ProjectForm({ project, setting }: { project: Project; setting: ProjectSetting }) {
+  const client = useQueryClient()
+  const [draft, setDraft] = useState(setting)
+  const mutation = useMutation({
+    mutationFn: () => orbitApi.updateProjectSettings(draft),
+    onSuccess: (updated) => { setDraft(updated); client.setQueryData(['project-settings', project.id], updated) },
+  })
+  const patch = (change: Partial<ProjectSetting>) => setDraft((current) => ({ ...current, ...change }))
+  const types: WorkItemType[] = ['Initiative', 'Epic', 'Task', 'Story', 'Spike', 'Test', 'Feature', 'Request', 'Bug']
+  const priorities: Priority[] = ['Lowest', 'Low', 'Medium', 'High', 'Highest']
+
+  return (
+    <Panel title={`${project.name} defaults`} description="Defaults applied when the project creates new work.">
+      <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field variant="panel" label="Default work item type"><select value={draft.defaultWorkItemType} onChange={(event) => patch({ defaultWorkItemType: event.target.value as WorkItemType })}>{types.map((type) => <option key={type}>{type}</option>)}</select></Field>
+          <Field variant="panel" label="Default priority"><select value={draft.defaultPriority} onChange={(event) => patch({ defaultPriority: event.target.value as Priority })}>{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select></Field>
+        </div>
+        <Toggle label="Enable releases" checked={draft.enableReleases} onChange={(checked) => patch({ enableReleases: checked })} />
+        <Toggle label="Enable time tracking" checked={draft.enableTimeTracking} onChange={(checked) => patch({ enableTimeTracking: checked })} />
+        <SubmitRow mutation={mutation} />
+      </form>
+    </Panel>
+  )
+}
+
+const blankMembership: CreateMembershipInput = { issuer: '', subject: '', principalType: 'User', role: 'Member' }
+
+function MembersPanel({ project }: { project: Project }) {
+  const client = useQueryClient()
+  const membershipsQuery = useQuery({ queryKey: ['memberships'], queryFn: orbitApi.listMemberships })
+  const projectRolesQuery = useQuery({
+    queryKey: ['project-roles', project.id],
+    queryFn: () => orbitApi.listProjectRoles(project.id),
+  })
+  const [draft, setDraft] = useState(blankMembership)
+  const createMutation = useMutation({
+    mutationFn: () => orbitApi.createMembership(draft),
+    onSuccess: () => {
+      setDraft(blankMembership)
+      client.invalidateQueries({ queryKey: ['memberships'] })
+    },
+  })
+  const assignMutation = useMutation({
+    mutationFn: ({ membershipId, role }: { membershipId: string; role: ProjectRole }) =>
+      orbitApi.assignProjectRole(project.id, membershipId, role),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['project-roles', project.id] }),
+  })
+  const roleMutation = useMutation({
+    mutationFn: ({ membershipId, role }: { membershipId: string; role: TenantRole }) =>
+      orbitApi.changeMembershipRole(membershipId, role),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['memberships'] }),
+  })
+  const removeMutation = useMutation({
+    mutationFn: (membershipId: string) => orbitApi.deactivateMembership(membershipId),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['memberships'] }),
+  })
+
+  const projectRoleByMembership = new Map(
+    (projectRolesQuery.data ?? []).map((assignment) => [assignment.membershipId, assignment.role]),
+  )
+
+  return (
+    <div className="space-y-5">
+      <Panel title="Members" description="Everyone with access to this workspace.">
+        {membershipsQuery.isPending && <p className="text-sm text-gray-500">Loading members…</p>}
+        {membershipsQuery.isError && <p className="text-sm text-red-700">{membershipsQuery.error.message}</p>}
+        {membershipsQuery.data && (
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-xs font-semibold uppercase text-gray-500">
+                <tr>
+                  <th className="px-4 py-2">Identity</th>
+                  <th className="px-4 py-2">Type</th>
+                  <th className="px-4 py-2">Workspace role</th>
+                  <th className="px-4 py-2">This project</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {membershipsQuery.data.map((membership) => (
+                  <tr key={membership.id}>
+                    <td className="px-4 py-2 text-gray-900">
+                      {membership.userId ? 'Local account' : `${membership.issuer} / ${membership.subject}`}
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">{membership.principalType}</td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={membership.role}
+                        disabled={!membership.isActive || roleMutation.isPending}
+                        onChange={(event) =>
+                          roleMutation.mutate({ membershipId: membership.id, role: event.target.value as TenantRole })
+                        }
+                        className="rounded border border-gray-200 px-2 py-1 text-sm disabled:opacity-50"
+                      >
+                        <option value="Member">Member</option>
+                        <option value="Administrator">Administrator</option>
+                        <option value="Owner">Owner</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={projectRoleByMembership.get(membership.id) ?? ''}
+                        disabled={assignMutation.isPending}
+                        onChange={(event) =>
+                          event.target.value &&
+                          assignMutation.mutate({ membershipId: membership.id, role: event.target.value as ProjectRole })
+                        }
+                        className="rounded border border-gray-200 px-2 py-1 text-sm"
+                      >
+                        <option value="">No role</option>
+                        <option value="Viewer">Viewer</option>
+                        <option value="Member">Member</option>
+                        <option value="Administrator">Administrator</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">{membership.isActive ? 'Active' : 'Inactive'}</td>
+                    <td className="px-4 py-2 text-right">
+                      {membership.isActive && (
+                        <button
+                          onClick={() => removeMutation.mutate(membership.id)}
+                          disabled={removeMutation.isPending}
+                          className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {projectRolesQuery.isError && (
+          <p className="mt-3 text-xs text-gray-500">
+            Per-project roles are only visible to project administrators: {projectRolesQuery.error.message}
+          </p>
+        )}
+      </Panel>
+
+      <Panel title="Add a member" description="Grant workspace access to a federated identity or service account.">
+        <form onSubmit={(event) => { event.preventDefault(); createMutation.mutate() }} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field variant="panel" label="Issuer">
+              <input required value={draft.issuer} onChange={(event) => setDraft({ ...draft, issuer: event.target.value })} placeholder="https://identity.example.com" />
+            </Field>
+            <Field variant="panel" label="Subject">
+              <input required value={draft.subject} onChange={(event) => setDraft({ ...draft, subject: event.target.value })} placeholder="user or client id" />
+            </Field>
+            <Field variant="panel" label="Principal type">
+              <select value={draft.principalType} onChange={(event) => setDraft({ ...draft, principalType: event.target.value as PrincipalType })}>
+                <option value="User">User</option>
+                <option value="ServiceAccount">Service account</option>
+              </select>
+            </Field>
+            <Field variant="panel" label="Workspace role">
+              <select value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value as TenantRole })}>
+                <option value="Member">Member</option>
+                <option value="Administrator">Administrator</option>
+                <option value="Owner">Owner</option>
+              </select>
+            </Field>
+          </div>
+          <SubmitRow mutation={createMutation} />
+        </form>
+      </Panel>
+    </div>
+  )
+}
+
+function TeamsPanel() {
+  const client = useQueryClient()
+  const teamsQuery = useQuery({ queryKey: ['teams'], queryFn: orbitApi.listTeams })
+  const membershipsQuery = useQuery({ queryKey: ['memberships'], queryFn: orbitApi.listMemberships })
+  const [name, setName] = useState('')
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null)
+  const createMutation = useMutation({
+    mutationFn: () => orbitApi.createTeam(name),
+    onSuccess: () => {
+      setName('')
+      client.invalidateQueries({ queryKey: ['teams'] })
+    },
+  })
+
+  return (
+    <div className="space-y-5">
+      <Panel title="Teams" description="Workspace-scoped groups of active members used for ownership and permissions.">
+        {teamsQuery.isPending && <p className="text-sm text-gray-500">Loading teams…</p>}
+        {teamsQuery.isError && <p className="text-sm text-red-700">{teamsQuery.error.message}</p>}
+        {teamsQuery.data?.length === 0 && <p className="text-sm text-gray-500">No teams yet.</p>}
+        {!!teamsQuery.data?.length && (
+          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+            {teamsQuery.data.map((team) => (
+              <li key={team.id}>
+                <button
+                  onClick={() => setExpandedTeamId((current) => (current === team.id ? null : team.id))}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-900 hover:bg-gray-50"
+                >
+                  {team.name}
+                  <span className="text-xs font-normal text-gray-400">
+                    {expandedTeamId === team.id ? 'Hide members' : 'Show members'}
+                  </span>
+                </button>
+                {expandedTeamId === team.id && (
+                  <TeamMembersEditor team={team} memberships={membershipsQuery.data ?? []} />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+
+      <Panel title="Create a team" description="Name a new workspace team.">
+        <form onSubmit={(event) => { event.preventDefault(); createMutation.mutate() }} className="space-y-4">
+          <Field variant="panel" label="Team name">
+            <input
+              required
+              minLength={2}
+              maxLength={120}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Platform Team"
+            />
+          </Field>
+          <SubmitRow mutation={createMutation} />
+        </form>
+      </Panel>
+    </div>
+  )
+}
+
+function TeamMembersEditor({ team, memberships }: { team: Team; memberships: TenantMembership[] }) {
+  const client = useQueryClient()
+  const teamMembersQuery = useQuery({
+    queryKey: ['team-members', team.id],
+    queryFn: () => orbitApi.listTeamMembers(team.id),
+  })
+  const [selected, setSelected] = useState('')
+  const addMutation = useMutation({
+    mutationFn: (membershipId: string) => orbitApi.addTeamMember(team.id, membershipId),
+    onSuccess: () => {
+      setSelected('')
+      client.invalidateQueries({ queryKey: ['team-members', team.id] })
+    },
+  })
+  const removeMutation = useMutation({
+    mutationFn: (membershipId: string) => orbitApi.removeTeamMember(team.id, membershipId),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['team-members', team.id] }),
+  })
+
+  const memberIds = new Set((teamMembersQuery.data ?? []).map((member) => member.membershipId))
+  const membershipById = new Map(memberships.map((membership) => [membership.id, membership]))
+  const candidates = memberships.filter((membership) => membership.isActive && !memberIds.has(membership.id))
+  const describe = (membershipId: string) => {
+    const membership = membershipById.get(membershipId)
+    if (!membership) return membershipId
+    return membership.userId ? 'Local account' : `${membership.issuer} / ${membership.subject}`
+  }
+
+  return (
+    <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
+      {teamMembersQuery.isPending && <p className="text-xs text-gray-500">Loading members…</p>}
+      {teamMembersQuery.data?.length === 0 && <p className="text-xs text-gray-500">No members yet.</p>}
+      {!!teamMembersQuery.data?.length && (
+        <ul className="mb-3 space-y-1">
+          {teamMembersQuery.data.map((member) => (
+            <li key={member.id} className="flex items-center justify-between text-sm text-gray-700">
+              <span>{describe(member.membershipId)}</span>
+              <button
+                onClick={() => removeMutation.mutate(member.membershipId)}
+                disabled={removeMutation.isPending}
+                className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {candidates.length > 0 && (
+        <div className="flex items-center gap-2">
+          <select
+            value={selected}
+            onChange={(event) => setSelected(event.target.value)}
+            className="rounded border border-gray-200 px-2 py-1 text-sm"
+          >
+            <option value="">Add a member…</option>
+            {candidates.map((membership) => (
+              <option key={membership.id} value={membership.id}>
+                {describe(membership.id)}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => selected && addMutation.mutate(selected)}
+            disabled={!selected || addMutation.isPending}
+            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+          >
+            Add
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SecurityPanel() {
+  const authenticated = useIsAuthenticated()
+  const client = useQueryClient()
+  const sessionsQuery = useQuery({ queryKey: ['sessions'], queryFn: orbitApi.listSessions, enabled: authenticated })
+  const identitiesQuery = useQuery({
+    queryKey: ['linked-identities'],
+    queryFn: orbitApi.listLinkedIdentities,
+    enabled: authenticated,
+  })
+  const revokeMutation = useMutation({
+    mutationFn: (sessionId: string) => orbitApi.revokeSession(sessionId),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+  const unlinkMutation = useMutation({
+    mutationFn: (identityId: string) => orbitApi.unlinkExternalIdentity(identityId),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['linked-identities'] }),
+  })
+  const oidcConfigured = getOidcConfig() !== null
+
+  if (!authenticated) {
+    return (
+      <Panel
+        title="Account security"
+        description="Sign in with your local credentials to manage active sessions and linked identities."
+      >
+        <LoginForm />
+      </Panel>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <Panel title="Active sessions" description="Devices and browsers currently signed in to your account.">
+        {sessionsQuery.isPending && <p className="text-sm text-gray-500">Loading sessions…</p>}
+        {sessionsQuery.isError && <p className="text-sm text-red-700">{sessionsQuery.error.message}</p>}
+        {sessionsQuery.data?.length === 0 && <p className="text-sm text-gray-500">No active sessions.</p>}
+        {!!sessionsQuery.data?.length && (
+          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+            {sessionsQuery.data.map((session) => (
+              <li key={session.sessionId} className="flex items-center justify-between gap-4 p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    {session.userAgent ?? 'Unknown device'}
+                    {session.isCurrent && (
+                      <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        This device
+                      </span>
+                    )}
+                  </h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {session.workspaceName} · last used {new Date(session.lastUsedAt).toLocaleString()}
+                  </p>
+                </div>
+                {!session.isCurrent && (
+                  <button
+                    onClick={() => revokeMutation.mutate(session.sessionId)}
+                    disabled={revokeMutation.isPending}
+                    className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                  >
+                    Revoke
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          onClick={() => auth.logout()}
+          className="mt-4 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Sign out
+        </button>
+      </Panel>
+      <Panel title="Linked identities" description="External sign-in methods linked to your account.">
+        {identitiesQuery.isPending && <p className="text-sm text-gray-500">Loading linked identities…</p>}
+        {identitiesQuery.data?.length === 0 && <p className="text-sm text-gray-500">No linked identities.</p>}
+        {!!identitiesQuery.data?.length && (
+          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+            {identitiesQuery.data.map((identity) => (
+              <li key={identity.id} className="flex items-center justify-between gap-4 p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">{identity.issuer}</h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Linked {new Date(identity.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => unlinkMutation.mutate(identity.id)}
+                  disabled={unlinkMutation.isPending}
+                  className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                >
+                  Unlink
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {oidcConfigured && (
+          <button
+            onClick={() => startOidcLogin('link')}
+            className="mt-4 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Link SSO identity
+          </button>
+        )}
+      </Panel>
+      <div className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+        {[
+          ['Change email', 'Requires verified email-change tokens and global uniqueness transaction.'],
+          ['Change password', 'Requires current-password verification and session-family revocation.'],
+        ].map(([title, detail]) => (
+          <div key={title} className="flex items-center justify-between gap-4 p-4">
+            <div><h3 className="text-sm font-semibold text-gray-900">{title}</h3><p className="mt-1 text-xs text-gray-500">{detail}</p></div>
+            <button disabled className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-400">Unavailable</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Panel({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7"><h2 className="text-xl font-semibold text-gray-900">{title}</h2>{description && <p className="mt-1 mb-6 text-sm text-gray-500">{description}</p>}<div className={description ? '' : 'mt-5'}>{children}</div></div>
+}
+
+function Toggle({ label, checked, onChange, disabled = false }: { label: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) {
+  return <label className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3 text-sm font-medium text-gray-800"><span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} disabled={disabled} className="h-4 w-4 accent-blue-600" /></label>
+}

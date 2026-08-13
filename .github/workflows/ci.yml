@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: orbit_ci
+          POSTGRES_USER: orbit
+          POSTGRES_PASSWORD: orbit_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U orbit -d orbit_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+      valkey:
+        image: valkey/valkey:9.1-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          global-json-file: global.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Restore .NET dependencies
+        run: dotnet restore Orbit.slnx --locked-mode
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Build backend
+        run: dotnet build Orbit.slnx --configuration Release --no-restore
+
+      - name: Apply schema to PostgreSQL
+        run: dotnet ef database update --project src/Orbit.Infrastructure --startup-project src/Orbit.Infrastructure --no-build --configuration Release
+        env:
+          ConnectionStrings__Postgres: Host=localhost;Port=5432;Database=orbit_ci;Username=orbit;Password=orbit_ci
+
+      - name: Test backend
+        run: dotnet test Orbit.slnx --configuration Release --no-build --no-restore --collect:"XPlat Code Coverage"
+
+      - name: Audit NuGet dependencies
+        run: dotnet list Orbit.slnx package --vulnerable --include-transitive
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Audit npm dependencies
+        working-directory: web
+        run: npm audit --audit-level=high
+
+      - name: Lint frontend
+        working-directory: web
+        run: npm run lint
+
+      - name: Test frontend
+        working-directory: web
+        run: npm test
+
+      - name: Build PWA
+        working-directory: web
+        run: npm run build
+
+      - name: Lint documentation
+        working-directory: web
+        run: npm run lint:docs
+
+      - name: Upload PWA artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: orbit-pwa
+          path: web/dist
+          if-no-files-found: error
+          retention-days: 7

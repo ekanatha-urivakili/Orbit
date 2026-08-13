@@ -1,0 +1,17 @@
+**/bin*/
+**/obj/
+**/TestResults/
+web/node_modules/
+web/dist/
+web/coverage/
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+.vs/
+*.user
+*.suo
+*.log
+npm-debug.log*

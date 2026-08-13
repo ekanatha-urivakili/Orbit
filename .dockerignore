@@ -1,0 +1,10 @@
+**/bin
+**/bin*
+**/obj
+**/node_modules
+**/dist
+**/TestResults
+.git
+.github
+.env
+.DS_Store

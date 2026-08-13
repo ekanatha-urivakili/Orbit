@@ -1,0 +1,119 @@
+using MediatR;
+using Orbit.Application.Settings;
+using Orbit.Domain.Choices;
+
+namespace Orbit.Api.Endpoints;
+
+public static class SettingsEndpoints
+{
+    public static RouteGroupBuilder MapSettingsEndpoints(this RouteGroupBuilder group)
+    {
+        group.MapGet("/workspaces/current/settings", async (
+            HttpResponse response,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var setting = await sender.Send(new GetWorkspaceSettingQuery(), cancellationToken);
+            response.Headers.ETag = $"\"{setting.Version}\"";
+            return Results.Ok(setting);
+        })
+        .WithName("GetWorkspaceSettings")
+        .WithTags("Settings");
+
+        group.MapPatch("/workspaces/current/settings", async (
+            UpdateWorkspaceSettingRequest request,
+            HttpRequest httpRequest,
+            HttpResponse response,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryParseVersion(httpRequest.Headers.IfMatch, allowZero: true, out var version))
+            {
+                return PreconditionRequired();
+            }
+
+            var setting = await sender.Send(
+                new UpdateWorkspaceSettingCommand(
+                    request.Description,
+                    request.DefaultLocale,
+                    request.DefaultTimeZone,
+                    request.AllowMemberProjectCreation,
+                    version),
+                cancellationToken);
+            response.Headers.ETag = $"\"{setting.Version}\"";
+            return Results.Ok(setting);
+        })
+        .WithName("UpdateWorkspaceSettings")
+        .WithTags("Settings");
+
+        group.MapGet("/projects/{projectId:guid}/settings", async (
+            Guid projectId,
+            HttpResponse response,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var setting = await sender.Send(new GetProjectSettingQuery(projectId), cancellationToken);
+            response.Headers.ETag = $"\"{setting.Version}\"";
+            return Results.Ok(setting);
+        })
+        .WithName("GetProjectSettings")
+        .WithTags("Settings");
+
+        group.MapPatch("/projects/{projectId:guid}/settings", async (
+            Guid projectId,
+            UpdateProjectSettingRequest request,
+            HttpRequest httpRequest,
+            HttpResponse response,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryParseVersion(httpRequest.Headers.IfMatch, allowZero: true, out var version))
+            {
+                return PreconditionRequired();
+            }
+
+            var setting = await sender.Send(
+                new UpdateProjectSettingCommand(
+                    projectId,
+                    request.DefaultWorkItemType,
+                    request.DefaultPriority,
+                    request.EnableReleases,
+                    request.EnableTimeTracking,
+                    request.RepositoryUrl,
+                    version),
+                cancellationToken);
+            response.Headers.ETag = $"\"{setting.Version}\"";
+            return Results.Ok(setting);
+        })
+        .WithName("UpdateProjectSettings")
+        .WithTags("Settings");
+
+        return group;
+    }
+
+    internal static bool TryParseVersion(string? header, bool allowZero, out long version)
+    {
+        version = -1;
+        return !string.IsNullOrWhiteSpace(header)
+            && long.TryParse(header.Trim().Trim('"'), out version)
+            && (allowZero ? version >= 0 : version > 0);
+    }
+
+    internal static IResult PreconditionRequired() => Results.Problem(
+        statusCode: StatusCodes.Status428PreconditionRequired,
+        type: "/problems/if-match-required",
+        title: "A numeric If-Match header is required.");
+
+    public sealed record UpdateWorkspaceSettingRequest(
+        string? Description,
+        string DefaultLocale,
+        string DefaultTimeZone,
+        bool AllowMemberProjectCreation);
+
+    public sealed record UpdateProjectSettingRequest(
+        WorkItemType DefaultWorkItemType,
+        Priority DefaultPriority,
+        bool EnableReleases,
+        bool EnableTimeTracking,
+        string? RepositoryUrl);
+}
