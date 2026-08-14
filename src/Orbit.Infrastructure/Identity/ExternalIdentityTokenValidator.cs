@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -16,7 +17,7 @@ internal sealed class ExternalIdentityTokenValidator : IExternalIdentityTokenVal
     private readonly ConfigurationManager<OpenIdConnectConfiguration>? _configurationManager;
     private readonly JsonWebTokenHandler _handler = new();
 
-    public ExternalIdentityTokenValidator(IConfiguration configuration)
+    public ExternalIdentityTokenValidator(IConfiguration configuration, IHostEnvironment environment)
     {
         _authority = configuration["Authentication:Authority"]?.TrimEnd('/');
         _audience = configuration["Authentication:ExternalIdentityAudience"];
@@ -24,7 +25,8 @@ internal sealed class ExternalIdentityTokenValidator : IExternalIdentityTokenVal
         {
             _configurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
                 $"{_authority}/.well-known/openid-configuration",
-                new OpenIdConnectConfigurationRetriever());
+                new OpenIdConnectConfigurationRetriever(),
+                new HttpDocumentRetriever { RequireHttps = !environment.IsDevelopment() });
         }
     }
 

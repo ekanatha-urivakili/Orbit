@@ -65,6 +65,7 @@ public sealed class IdentityModelTests
         Assert.Equal(initial.FamilyId, rotated.FamilyId);
         Assert.Equal(RefreshSessionStatus.Rotated, initial.Status);
         Assert.Equal(rotated.Id, initial.ReplacedBySessionId);
+        Assert.Equal(2, initial.Version);
         Assert.False(initial.IsUsable(now.AddMinutes(5)));
         Assert.True(rotated.IsUsable(now.AddMinutes(5)));
     }
@@ -104,6 +105,7 @@ public sealed class IdentityModelTests
 
         Assert.Equal(RefreshSessionStatus.Revoked, session.Status);
         Assert.Equal(now.AddMinutes(1), session.RevokedAt);
+        Assert.Equal(2, session.Version);
     }
 
     [Fact]

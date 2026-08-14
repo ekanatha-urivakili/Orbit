@@ -57,6 +57,23 @@ public sealed class ExternalIdentityHandlerTests
     }
 
     [Fact]
+    public async Task Link_DoesNotPersistAnUnverifiedIdentity()
+    {
+        var repository = new AuthRepositoryStub();
+        var handler = new LinkExternalIdentityHandler(
+            new CurrentPrincipalStub(Guid.NewGuid()),
+            new RejectingTokenValidatorStub(),
+            repository,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(new LinkExternalIdentityCommand("invalid-proof"), CancellationToken.None);
+
+        await Assert.ThrowsAsync<AuthenticationException>(action);
+        Assert.Empty(repository.ExternalIdentities);
+    }
+
+    [Fact]
     public async Task List_ReturnsOnlyTheCurrentUsersIdentities()
     {
         var userId = Guid.NewGuid();
@@ -117,6 +134,12 @@ public sealed class ExternalIdentityHandlerTests
     {
         public Task<VerifiedExternalIdentity> ValidateAsync(string token, CancellationToken cancellationToken) =>
             Task.FromResult(new VerifiedExternalIdentity("https://idp.example.test", "subject-1"));
+    }
+
+    private sealed class RejectingTokenValidatorStub : IExternalIdentityTokenValidator
+    {
+        public Task<VerifiedExternalIdentity> ValidateAsync(string token, CancellationToken cancellationToken) =>
+            throw new AuthenticationException("Invalid proof.");
     }
 
     private sealed class AuthRepositoryStub : IAuthenticationRepository
