@@ -27,16 +27,18 @@ internal sealed class AuthenticationRepository(OrbitDbContext dbContext) : IAuth
         Guid userId,
         CancellationToken cancellationToken)
     {
-        // Login/refresh run before a tenant is selected (no TenantTransactionMiddleware transaction
-        // is open), so this both bypasses the per-request EF query filter and - because
-        // tenant_memberships carries FORCE ROW LEVEL SECURITY - explicitly opens a short transaction
+        // Login/refresh run before a tenant is selected, while /me/workspaces calls this inside the
+        // request's existing tenant transaction. This bypasses the per-request EF query filter and - because
+        // tenant_memberships carries FORCE ROW LEVEL SECURITY - identifies the user transaction-locally
         // that identifies the caller to the database via app.principal_user_id. The
         // tenant_memberships_self_lookup RLS policy permits a SELECT of a user's own membership rows
         // under that GUC even though no app.tenant_id is set; every other table/column stays governed
         // by the tenant-scoped policy. Without this, the query would run under either a bypassing
         // (e.g. superuser) role - masking the gap in development - or, once a real non-superuser
-        // runtime role is enforced, silently return zero rows and fail every login.
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // runtime role is enforced, silently return zero rows and fail discovery.
+        await using var transaction = dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT set_config('app.principal_user_id', {userId.ToString()}, true)",
             cancellationToken);
@@ -48,12 +50,23 @@ internal sealed class AuthenticationRepository(OrbitDbContext dbContext) : IAuth
             .OrderBy(membership => membership.CreatedAt)
             .ToArrayAsync(cancellationToken);
 
-        await transaction.CommitAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
         return memberships;
     }
 
     public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
         dbContext.Workspaces.AsNoTracking().SingleOrDefaultAsync(workspace => workspace.Id == tenantId, cancellationToken);
+
+    public async Task<IReadOnlyList<Workspace>> GetWorkspacesAsync(
+        IReadOnlyCollection<Guid> tenantIds,
+        CancellationToken cancellationToken) =>
+        await dbContext.Workspaces
+            .AsNoTracking()
+            .Where(workspace => tenantIds.Contains(workspace.Id))
+            .ToListAsync(cancellationToken);
 
     public async Task AddRefreshSessionAsync(RefreshSession session, CancellationToken cancellationToken) =>
         await dbContext.RefreshSessions.AddAsync(session, cancellationToken);
@@ -145,5 +158,56 @@ internal sealed class AuthenticationRepository(OrbitDbContext dbContext) : IAuth
     {
         dbContext.LocalCredentials.Update(credential);
         return Task.CompletedTask;
+    }
+
+    public async Task AddServiceAccountCredentialAsync(
+        ServiceAccountCredential credential,
+        CancellationToken cancellationToken) =>
+        await dbContext.ServiceAccountCredentials.AddAsync(credential, cancellationToken);
+
+    public Task<ServiceAccountCredential?> GetActiveServiceAccountCredentialByClientIdAsync(
+        Guid clientId,
+        CancellationToken cancellationToken) =>
+        dbContext.ServiceAccountCredentials.SingleOrDefaultAsync(
+            credential => credential.ClientId == clientId && credential.RevokedAt == null, cancellationToken);
+
+    public async Task<IReadOnlyList<ServiceAccountCredential>> ListActiveServiceAccountCredentialsByMembershipAsync(
+        Guid membershipId,
+        CancellationToken cancellationToken) =>
+        await dbContext.ServiceAccountCredentials
+            .Where(credential => credential.MembershipId == membershipId && credential.RevokedAt == null)
+            .ToArrayAsync(cancellationToken);
+
+    public async Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
+        Guid tenantId,
+        Guid membershipId,
+        CancellationToken cancellationToken)
+    {
+        // Pre-auth token issuance: there is no ambient tenant transaction/context yet, and
+        // TenantMemberships carries FORCE ROW LEVEL SECURITY, so app.tenant_id must be set from the
+        // already-verified credential's own tenant id before this query can see anything - same
+        // technique as ListActiveMembershipsByUserAsync's app.principal_user_id self-lookup above.
+        await using var transaction = dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.tenant_id', {tenantId.ToString()}, true)",
+            cancellationToken);
+
+        var membership = await dbContext.TenantMemberships
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                value => value.TenantId == tenantId
+                    && value.Id == membershipId
+                    && value.IsActive
+                    && value.PrincipalType == PrincipalType.ServiceAccount,
+                cancellationToken);
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+        return membership;
     }
 }

@@ -40,9 +40,13 @@ public static class DependencyInjection
         services.AddScoped<ITenantOwnerLock, TenantOwnerLock>();
         services.AddScoped<IAuthorizationContextCache, AuthorizationContextCache>();
         services.AddScoped<IBootstrapRepository, BootstrapRepository>();
+        services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<IAuthenticationRepository, AuthenticationRepository>();
         services.AddScoped<IOutboxRepository, OutboxRepository>();
+        services.AddScoped<IWorkspaceInvitationRepository, WorkspaceInvitationRepository>();
+        services.AddScoped<IWorkItemTypeRepository, WorkItemTypeRepository>();
+        services.AddScoped<ICustomFieldRepository, CustomFieldRepository>();
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
         services.AddScoped<OutboxEmailProcessor>();

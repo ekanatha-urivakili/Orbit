@@ -166,6 +166,7 @@ app.MapGet("/health/ready", HealthEndpoints.ReadyAsync)
 
 app.MapGroup("/api/v1").MapBootstrapEndpoints();
 app.MapGroup("/api/v1").MapAuthEndpoints();
+app.MapGroup("/api/v1").MapInvitationAcceptanceEndpoints();
 
 var api = app.MapGroup("/api/v1");
 if (!app.Configuration.GetValue<bool>("Tenancy:AllowHeaderTenant"))
@@ -173,9 +174,13 @@ if (!app.Configuration.GetValue<bool>("Tenancy:AllowHeaderTenant"))
     api.RequireAuthorization();
 }
 api.MapChoiceEndpoints();
+api.MapWorkItemTypeEndpoints();
+api.MapCustomFieldEndpoints();
 api.MapIdentityEndpoints();
+api.MapWorkspaceEndpoints();
 api.MapSettingsEndpoints();
 api.MapAccessEndpoints();
+api.MapInvitationAdminEndpoints();
 api.MapTeamEndpoints();
 api.MapGroupEndpoints();
 api.MapProjectEndpoints();

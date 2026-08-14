@@ -169,6 +169,100 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Orbit.Domain.Access.WorkspaceInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<Guid?>("AcceptedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("accepted_by_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("InvitedByMembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invited_by_membership_id");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("tenant_role");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("team_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("TenantId", "Id");
+
+                    b.HasIndex("AcceptedByUserId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "InvitedByMembershipId");
+
+                    b.HasIndex("TenantId", "NormalizedEmail")
+                        .IsUnique()
+                        .HasFilter("status = 'Active'");
+
+                    b.HasIndex("TenantId", "TeamId");
+
+                    b.ToTable("workspace_invitations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_workspace_invitations_role", "tenant_role IN ('Administrator', 'Member')");
+
+                            t.HasCheckConstraint("ck_workspace_invitations_status", "status IN ('Active', 'Accepted', 'Revoked')");
+
+                            t.HasCheckConstraint("ck_workspace_invitations_version", "version > 0");
+                        });
+                });
+
             modelBuilder.Entity("Orbit.Domain.Boards.Board", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -388,6 +482,132 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "SprintId", "OccurredAt", "Id");
 
                     b.ToTable("sprint_scope_facts", (string)null);
+                });
+
+            modelBuilder.Entity("Orbit.Domain.Configuration.CustomFieldDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("FieldType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("field_type");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("label");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer")
+                        .HasColumnName("order");
+
+                    b.Property<bool>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Key")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "Order");
+
+                    b.ToTable("custom_field_definitions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_custom_field_definitions_order", "\"order\" BETWEEN 0 AND 10000");
+
+                            t.HasCheckConstraint("ck_custom_field_definitions_version", "version > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Orbit.Domain.Configuration.WorkItemTypeDefinition", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ColorToken")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("color_token");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("label");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer")
+                        .HasColumnName("order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("TenantId", "Id");
+
+                    b.HasIndex("TenantId", "Order");
+
+                    b.ToTable("work_item_type_definitions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_work_item_type_definitions_order", "\"order\" BETWEEN 0 AND 10000");
+
+                            t.HasCheckConstraint("ck_work_item_type_definitions_version", "version > 0");
+                        });
                 });
 
             modelBuilder.Entity("Orbit.Domain.Directory.DirectoryGroup", b =>
@@ -733,6 +953,47 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Orbit.Domain.Identity.ServiceAccountCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("membership_id");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("SecretHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("secret_hash");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "RevokedAt");
+
+                    b.HasIndex("MembershipId", "RevokedAt");
+
+                    b.ToTable("service_account_credentials", (string)null);
+                });
+
             modelBuilder.Entity("Orbit.Domain.Identity.SiteRoleAssignment", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -827,6 +1088,11 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("FrontendBaseUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("frontend_base_url");
+
                     b.Property<string>("HtmlBody")
                         .IsRequired()
                         .HasColumnType("text")
@@ -847,11 +1113,19 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("subject");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<string>("ToEmail")
                         .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)")
                         .HasColumnName("to_email");
+
+                    b.Property<Guid?>("WorkspaceInvitationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workspace_invitation_id");
 
                     b.HasKey("Id");
 
@@ -1003,6 +1277,8 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnName("version");
 
                     b.HasKey("TenantId", "ProjectId");
+
+                    b.HasIndex("TenantId", "DefaultWorkItemType");
 
                     b.ToTable("project_settings", (string)null);
                 });
@@ -1250,6 +1526,8 @@ namespace Orbit.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "ParentId");
 
+                    b.HasIndex("TenantId", "Type");
+
                     b.HasIndex("TenantId", "ProjectId", "Status", "Rank");
 
                     b.ToTable("work_items", null, t =>
@@ -1352,6 +1630,27 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.HasOne("Orbit.Domain.Identity.UserAccount", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Orbit.Domain.Access.WorkspaceInvitation", b =>
+                {
+                    b.HasOne("Orbit.Domain.Identity.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AcceptedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Orbit.Domain.Access.TenantMembership", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InvitedByMembershipId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Orbit.Domain.Directory.Team", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "TeamId")
+                        .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
@@ -1561,6 +1860,12 @@ namespace Orbit.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Orbit.Domain.Settings.ProjectSetting", b =>
                 {
+                    b.HasOne("Orbit.Domain.Configuration.WorkItemTypeDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "DefaultWorkItemType")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Orbit.Domain.Projects.Project", null)
                         .WithOne()
                         .HasForeignKey("Orbit.Domain.Settings.ProjectSetting", "TenantId", "ProjectId")
@@ -1605,6 +1910,12 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ProjectId")
                         .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Orbit.Domain.Configuration.WorkItemTypeDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "Type")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

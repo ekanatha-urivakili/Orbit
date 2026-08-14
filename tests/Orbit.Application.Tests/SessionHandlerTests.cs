@@ -164,6 +164,45 @@ public sealed class SessionHandlerTests
     }
 
     [Fact]
+    public async Task Refresh_SwitchesToRequestedActiveWorkspace()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (repository, account, currentWorkspace) = await SeedLoggedInAccountAsync(now);
+        var targetWorkspace = Workspace.Create("Target Workspace", now.AddMinutes(1));
+        repository.Workspaces[targetWorkspace.Id] = targetWorkspace;
+        repository.Memberships.Add(
+            TenantMembership.CreateForUser(targetWorkspace.Id, account.Id, TenantRole.Administrator, now));
+        var login = await Login(repository, account, currentWorkspace, now);
+        var handler = new RefreshSessionHandler(
+            repository, new AccessTokenIssuerStub(), new UnitOfWorkStub(), new FixedTimeProvider(now.AddMinutes(5)));
+
+        var result = await handler.Handle(
+            new RefreshSessionCommand(login.RefreshToken, targetWorkspace.Id, null, null),
+            CancellationToken.None);
+
+        Assert.Equal(targetWorkspace.Id, result.WorkspaceId);
+        Assert.Equal(TenantRole.Administrator, result.Role);
+        Assert.Equal(targetWorkspace.Id, repository.Sessions.Single(session => session.Id == result.SessionId).TenantId);
+    }
+
+    [Fact]
+    public async Task Refresh_RejectsWorkspaceWithoutActiveMembershipBeforeRotatingToken()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (repository, account, currentWorkspace) = await SeedLoggedInAccountAsync(now);
+        var login = await Login(repository, account, currentWorkspace, now);
+        var handler = new RefreshSessionHandler(
+            repository, new AccessTokenIssuerStub(), new UnitOfWorkStub(), new FixedTimeProvider(now.AddMinutes(5)));
+
+        var action = () => handler.Handle(
+            new RefreshSessionCommand(login.RefreshToken, Guid.NewGuid(), null, null),
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(action);
+        Assert.Equal(RefreshSessionStatus.Active, repository.Sessions.Single().Status);
+    }
+
+    [Fact]
     public async Task Refresh_ReuseOfRotatedToken_RevokesEntireFamily()
     {
         var now = DateTimeOffset.UtcNow;
@@ -237,6 +276,32 @@ public sealed class SessionHandlerTests
         Assert.Equal(2, result.Count);
         Assert.True(result.Single(session => session.SessionId == current.Id).IsCurrent);
         Assert.False(result.Single(session => session.SessionId == other.Id).IsCurrent);
+    }
+
+    [Fact]
+    public async Task ListAccountWorkspaces_ReturnsOnlyCurrentUsersActiveMemberships()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var userId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        var first = Workspace.Create("First Workspace", now.AddDays(-2));
+        var second = Workspace.Create("Second Workspace", now.AddDays(-1));
+        var repository = new AuthRepositoryStub();
+        repository.Workspaces[first.Id] = first;
+        repository.Workspaces[second.Id] = second;
+        repository.Memberships.Add(
+            TenantMembership.CreateForUser(first.Id, userId, TenantRole.Owner, now.AddDays(-2)));
+        repository.Memberships.Add(
+            TenantMembership.CreateForUser(second.Id, userId, TenantRole.Member, now.AddDays(-1)));
+        repository.Memberships.Add(
+            TenantMembership.CreateForUser(second.Id, otherUserId, TenantRole.Administrator, now));
+        var handler = new ListAccountWorkspacesHandler(new CurrentPrincipalStub(userId, null), repository);
+
+        var result = await handler.Handle(new ListAccountWorkspacesQuery(), CancellationToken.None);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal([first.Id, second.Id], result.Select(workspace => workspace.Id));
+        Assert.Equal(TenantRole.Owner, result[0].Role);
     }
 
     [Fact]
@@ -325,8 +390,13 @@ public sealed class SessionHandlerTests
     {
         public TimeSpan RefreshTokenLifetime => TimeSpan.FromDays(30);
 
+        public string LocalIssuer => "urn:orbit:local";
+
         public AccessToken IssueUserToken(Guid userId, Guid tenantId, Guid sessionId, DateTimeOffset now) =>
             new($"access-{sessionId}", now.AddMinutes(15));
+
+        public AccessToken IssueServiceAccountToken(Guid tenantId, string clientId, DateTimeOffset now) =>
+            new($"access-{clientId}", now.AddMinutes(15));
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork
@@ -377,6 +447,16 @@ public sealed class SessionHandlerTests
 
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult(Workspaces.GetValueOrDefault(tenantId));
+
+        public Task<IReadOnlyList<Workspace>> GetWorkspacesAsync(
+            IReadOnlyCollection<Guid> tenantIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Workspace>>(
+                tenantIds
+                    .Select(tenantId => Workspaces.GetValueOrDefault(tenantId))
+                    .Where(workspace => workspace is not null)
+                    .Select(workspace => workspace!)
+                    .ToArray());
 
         public Task AddRefreshSessionAsync(RefreshSession session, CancellationToken cancellationToken)
         {
@@ -458,5 +538,19 @@ public sealed class SessionHandlerTests
 
         public Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken) =>
             Task.CompletedTask;
+
+        public Task AddServiceAccountCredentialAsync(ServiceAccountCredential credential, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<ServiceAccountCredential?> GetActiveServiceAccountCredentialByClientIdAsync(Guid clientId, CancellationToken cancellationToken) =>
+            Task.FromResult<ServiceAccountCredential?>(null);
+
+        public Task<IReadOnlyList<ServiceAccountCredential>> ListActiveServiceAccountCredentialsByMembershipAsync(
+            Guid membershipId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ServiceAccountCredential>>([]);
+
+        public Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
+            Guid tenantId, Guid membershipId, CancellationToken cancellationToken) =>
+            Task.FromResult<TenantMembership?>(null);
     }
 }

@@ -14,12 +14,23 @@ public sealed class OutboxEmailMessage
     {
     }
 
-    private OutboxEmailMessage(Guid id, string toEmail, string subject, string htmlBody, DateTimeOffset now)
+    private OutboxEmailMessage(
+        Guid id,
+        string toEmail,
+        string subject,
+        string htmlBody,
+        Guid? tenantId,
+        Guid? workspaceInvitationId,
+        string? frontendBaseUrl,
+        DateTimeOffset now)
     {
         Id = id;
         ToEmail = toEmail;
         Subject = subject;
         HtmlBody = htmlBody;
+        TenantId = tenantId;
+        WorkspaceInvitationId = workspaceInvitationId;
+        FrontendBaseUrl = frontendBaseUrl;
         CreatedAt = now;
     }
 
@@ -27,6 +38,9 @@ public sealed class OutboxEmailMessage
     public string ToEmail { get; private set; } = string.Empty;
     public string Subject { get; private set; } = string.Empty;
     public string HtmlBody { get; private set; } = string.Empty;
+    public Guid? TenantId { get; private set; }
+    public Guid? WorkspaceInvitationId { get; private set; }
+    public string? FrontendBaseUrl { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? PublishedAt { get; private set; }
     public int Attempts { get; private set; }
@@ -49,7 +63,34 @@ public sealed class OutboxEmailMessage
             throw new DomainException("An email body is required.");
         }
 
-        return new OutboxEmailMessage(Guid.CreateVersion7(), toEmail.Trim(), subject.Trim(), htmlBody, now);
+        return new OutboxEmailMessage(
+            Guid.CreateVersion7(), toEmail.Trim(), subject.Trim(), htmlBody, null, null, null, now);
+    }
+
+    public static OutboxEmailMessage CreateWorkspaceInvitation(
+        string toEmail,
+        string subject,
+        Guid tenantId,
+        Guid invitationId,
+        string frontendBaseUrl,
+        DateTimeOffset now)
+    {
+        if (tenantId == Guid.Empty || invitationId == Guid.Empty)
+        {
+            throw new DomainException("Tenant and invitation ids are required.");
+        }
+
+        if (!Uri.TryCreate(frontendBaseUrl, UriKind.Absolute, out var uri)
+            || uri.Scheme is not ("http" or "https"))
+        {
+            throw new DomainException("Frontend base URL must be absolute HTTP or HTTPS.");
+        }
+
+        var message = Create(toEmail, subject, "<p>Invitation delivery is generated at send time.</p>", now);
+        message.TenantId = tenantId;
+        message.WorkspaceInvitationId = invitationId;
+        message.FrontendBaseUrl = frontendBaseUrl;
+        return message;
     }
 
     public void MarkPublished(DateTimeOffset now)

@@ -10,6 +10,7 @@ import type {
   WorkItem,
   WorkItemLinkType,
   WorkItemType,
+  WorkItemTypeDefinition,
 } from '../../api/types'
 
 const countries = ['Global', 'Argentina', 'Brasil', 'Nigeria', 'South Africa', 'US', 'Saudi Arabia', 'Turkey']
@@ -43,13 +44,13 @@ export function CreateWorkItemDialog({
   project: Project
   workItems: WorkItem[]
   profile?: Profile
-  types: WorkItemType[]
+  types: WorkItemTypeDefinition[]
   priorities: Priority[]
   onClose: () => void
 }) {
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
-  const [type, setType] = useState<WorkItemType>('Task')
+  const [type, setType] = useState<WorkItemType>(types.find((itemType) => itemType.id === 'Task')?.id ?? types[0]?.id ?? 'Task')
   const [priority, setPriority] = useState<Priority>('Medium')
   const [details, setDetails] = useState(blankDetails)
   const [labelsText, setLabelsText] = useState('')
@@ -57,6 +58,7 @@ export function CreateWorkItemDialog({
 
   const patch = (change: Partial<typeof blankDetails>) => setDetails((current) => ({ ...current, ...change }))
   const mutation = useCreateWorkItem(project.id)
+  const typeLabel = types.find((itemType) => itemType.id === type)?.label ?? type
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -96,14 +98,14 @@ export function CreateWorkItemDialog({
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="dialog create-work-dialog" role="dialog" aria-modal="true" aria-labelledby="create-title">
         <header>
-          <div><h2 id="create-title">Create {type}</h2><p className="mt-1 text-xs text-gray-500">Required fields are marked with an asterisk.</p></div>
+          <div><h2 id="create-title">Create {typeLabel}</h2><p className="mt-1 text-xs text-gray-500">Required fields are marked with an asterisk.</p></div>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}><X size={20} /></button>
         </header>
 
         <form onSubmit={submit}>
           <div className="form-row">
             <Field label="Space *"><select value={project.id} disabled><option value={project.id}>{project.name} ({project.key})</option></select></Field>
-            <Field label="Work type *"><select value={type} onChange={(event) => { setType(event.target.value as WorkItemType); patch({ parentId: null }) }}>{types.map((value) => <option key={value}>{value}</option>)}</select></Field>
+            <Field label="Work type *"><select value={type} onChange={(event) => { setType(event.target.value as WorkItemType); patch({ parentId: null }) }}>{types.map((itemType) => <option key={itemType.id} value={itemType.id}>{itemType.label}</option>)}</select></Field>
           </div>
 
           <Field label="Status"><select value="Backlog" disabled><option>Backlog</option></select><Hint>This is the initial status upon creation.</Hint></Field>

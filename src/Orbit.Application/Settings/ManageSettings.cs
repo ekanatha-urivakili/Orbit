@@ -394,6 +394,7 @@ public sealed class UpdateProjectSettingHandler(
     ITenantContext tenant,
     IProjectRepository projects,
     ISettingsRepository settings,
+    IWorkItemTypeRepository workItemTypes,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UpdateProjectSettingCommand, ProjectSettingDto>
 {
@@ -403,6 +404,15 @@ public sealed class UpdateProjectSettingHandler(
     {
         _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
+        var itemType = await workItemTypes.GetAsync(
+            tenant.TenantId,
+            request.DefaultWorkItemType,
+            cancellationToken);
+        if (itemType is null || !itemType.Enabled)
+        {
+            throw new ValidationException("The default work item type must be enabled in this workspace.");
+        }
+
         var setting = await settings.GetProjectSettingAsync(tenant.TenantId, request.ProjectId, cancellationToken);
         SettingsConcurrency.EnsureVersion(
             setting is not null,

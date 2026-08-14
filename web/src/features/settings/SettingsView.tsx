@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell, Building2, FolderCog, LockKeyhole, UserRound, Users, UsersRound, X } from 'lucide-react'
+import { Bell, Building2, FolderCog, LockKeyhole, Tags, UserRound, Users, UsersRound, X } from 'lucide-react'
 import { orbitApi } from '../../api/client'
 import * as auth from '../../api/auth'
 import { useIsAuthenticated } from '../../hooks/useIsAuthenticated'
@@ -9,6 +9,8 @@ import { getOidcConfig, startOidcLogin } from '../auth/oidcPkce'
 import { Field, Hint, SubmitRow } from '../../components/form/Field'
 import type {
   CreateMembershipInput,
+  CustomFieldDefinition,
+  CustomFieldType,
   DensityPreference,
   DigestCadence,
   NotificationPreference,
@@ -23,10 +25,12 @@ import type {
   TenantRole,
   ThemePreference,
   WorkItemType,
+  WorkItemTypeDefinition,
+  WorkspaceInvitationStatus,
   WorkspaceSetting,
 } from '../../api/types'
 
-export type SettingsSection = 'profile' | 'notifications' | 'workspace' | 'project' | 'members' | 'teams' | 'security'
+export type SettingsSection = 'profile' | 'notifications' | 'workspace' | 'project' | 'item-types' | 'custom-fields' | 'members' | 'teams' | 'security'
 
 const sections: Array<{ id: SettingsSection; label: string; icon: typeof UserRound }> = [
   { id: 'profile', label: 'Profile and preferences', icon: UserRound },
@@ -36,6 +40,8 @@ const sections: Array<{ id: SettingsSection; label: string; icon: typeof UserRou
   { id: 'security', label: 'Account security', icon: LockKeyhole },
   { id: 'workspace', label: 'Workspace', icon: Building2 },
   { id: 'project', label: 'Project defaults', icon: FolderCog },
+  { id: 'item-types', label: 'Work item types', icon: Tags },
+  { id: 'custom-fields', label: 'Custom fields', icon: Tags },
 ]
 
 export function SettingsView({ project, initialSection = 'profile', onClose }: { project: Project; initialSection?: SettingsSection; onClose: () => void }) {
@@ -50,6 +56,8 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
     queryKey: ['project-settings', project.id],
     queryFn: () => orbitApi.getProjectSettings(project.id),
   })
+  const itemTypesQuery = useQuery({ queryKey: ['work-item-types'], queryFn: orbitApi.listWorkItemTypes })
+  const customFieldsQuery = useQuery({ queryKey: ['custom-fields'], queryFn: orbitApi.listCustomFields })
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-[#f7f8fa]">
@@ -82,7 +90,9 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
           {activeSection === 'profile' && <QueryState query={profileQuery} render={(profile) => <ProfileForm profile={profile} />} />}
           {activeSection === 'notifications' && <QueryState query={notificationsQuery} render={(preference) => <NotificationForm preference={preference} />} />}
           {activeSection === 'workspace' && <QueryState query={workspaceQuery} render={(setting) => <WorkspaceForm setting={setting} />} />}
-          {activeSection === 'project' && <QueryState query={projectQuery} render={(setting) => <ProjectForm project={project} setting={setting} />} />}
+          {activeSection === 'project' && <QueryState query={projectQuery} render={(setting) => <ProjectForm project={project} setting={setting} itemTypes={itemTypesQuery.data ?? []} />} />}
+          {activeSection === 'item-types' && <QueryState query={itemTypesQuery} render={(definitions) => <ItemTypesPanel definitions={definitions} />} />}
+          {activeSection === 'custom-fields' && <QueryState query={customFieldsQuery} render={(fields) => <CustomFieldsPanel fields={fields} />} />}
           {activeSection === 'members' && <MembersPanel project={project} />}
           {activeSection === 'teams' && <TeamsPanel />}
           {activeSection === 'security' && <SecurityPanel />}
@@ -206,7 +216,7 @@ function WorkspaceForm({ setting }: { setting: WorkspaceSetting }) {
   )
 }
 
-function ProjectForm({ project, setting }: { project: Project; setting: ProjectSetting }) {
+function ProjectForm({ project, setting, itemTypes }: { project: Project; setting: ProjectSetting; itemTypes: WorkItemTypeDefinition[] }) {
   const client = useQueryClient()
   const [draft, setDraft] = useState(setting)
   const mutation = useMutation({
@@ -214,14 +224,14 @@ function ProjectForm({ project, setting }: { project: Project; setting: ProjectS
     onSuccess: (updated) => { setDraft(updated); client.setQueryData(['project-settings', project.id], updated) },
   })
   const patch = (change: Partial<ProjectSetting>) => setDraft((current) => ({ ...current, ...change }))
-  const types: WorkItemType[] = ['Initiative', 'Epic', 'Task', 'Story', 'Spike', 'Test', 'Feature', 'Request', 'Bug']
+  const types = itemTypes.filter((itemType) => itemType.enabled && itemType.id !== 'Subtask')
   const priorities: Priority[] = ['Lowest', 'Low', 'Medium', 'High', 'Highest']
 
   return (
     <Panel title={`${project.name} defaults`} description="Defaults applied when the project creates new work.">
       <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field variant="panel" label="Default work item type"><select value={draft.defaultWorkItemType} onChange={(event) => patch({ defaultWorkItemType: event.target.value as WorkItemType })}>{types.map((type) => <option key={type}>{type}</option>)}</select></Field>
+          <Field variant="panel" label="Default work item type"><select value={draft.defaultWorkItemType} onChange={(event) => patch({ defaultWorkItemType: event.target.value as WorkItemType })}>{types.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}</select></Field>
           <Field variant="panel" label="Default priority"><select value={draft.defaultPriority} onChange={(event) => patch({ defaultPriority: event.target.value as Priority })}>{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select></Field>
         </div>
         <Toggle label="Enable releases" checked={draft.enableReleases} onChange={(checked) => patch({ enableReleases: checked })} />
@@ -232,16 +242,174 @@ function ProjectForm({ project, setting }: { project: Project; setting: ProjectS
   )
 }
 
+function ItemTypesPanel({ definitions }: { definitions: WorkItemTypeDefinition[] }) {
+  return (
+    <Panel title="Work item types" description="Workspace labels and availability. Stable IDs preserve existing work when labels change.">
+      <div className="space-y-3">
+        {definitions.map((definition) => <ItemTypeRow key={definition.id} definition={definition} />)}
+      </div>
+    </Panel>
+  )
+}
+
+function ItemTypeRow({ definition }: { definition: WorkItemTypeDefinition }) {
+  const client = useQueryClient()
+  const [draft, setDraft] = useState(definition)
+  const mutation = useMutation({
+    mutationFn: () => orbitApi.updateWorkItemType(draft),
+    onSuccess: (updated) => {
+      setDraft(updated)
+      client.setQueryData<WorkItemTypeDefinition[]>(['work-item-types'], (current) =>
+        current?.map((itemType) => itemType.id === updated.id ? updated : itemType),
+      )
+    },
+  })
+
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="rounded-lg border border-gray-200 p-4">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_100px_auto] sm:items-end">
+        <Field variant="panel" label={`${definition.id} label`}><input value={draft.label} maxLength={80} disabled={!definition.canAdminister} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} /></Field>
+        <Field variant="panel" label="Order"><input type="number" min={0} max={10000} value={draft.order} disabled={!definition.canAdminister} onChange={(event) => setDraft((current) => ({ ...current, order: Number(event.target.value) }))} /></Field>
+        <Toggle label="Enabled" checked={draft.enabled} disabled={!definition.canAdminister} onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))} />
+      </div>
+      <Field variant="panel" label="Description"><input value={draft.description} maxLength={500} disabled={!definition.canAdminister} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} /></Field>
+      {definition.canAdminister && <SubmitRow mutation={mutation} />}
+    </form>
+  )
+}
+
+const customFieldTypes: CustomFieldType[] = ['Text', 'Number', 'Date', 'Checkbox']
+const blankCustomField = { key: '', label: '', fieldType: 'Text' as CustomFieldType, required: false, order: 0 }
+
+function CustomFieldsPanel({ fields }: { fields: CustomFieldDefinition[] }) {
+  const client = useQueryClient()
+  const [draft, setDraft] = useState(blankCustomField)
+  const createMutation = useMutation({
+    mutationFn: () => orbitApi.createCustomField(draft),
+    onSuccess: (created) => {
+      setDraft(blankCustomField)
+      client.setQueryData<CustomFieldDefinition[]>(['custom-fields'], (current) => [...(current ?? []), created])
+    },
+  })
+
+  return (
+    <div className="space-y-5">
+      <Panel title="Add a custom field" description="Definitions only for now - not yet available on work items.">
+        <form onSubmit={(event) => { event.preventDefault(); createMutation.mutate() }} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field variant="panel" label="Key">
+              <input
+                required
+                maxLength={64}
+                pattern="[a-zA-Z0-9-]+"
+                value={draft.key}
+                onChange={(event) => setDraft((current) => ({ ...current, key: event.target.value }))}
+              />
+            </Field>
+            <Field variant="panel" label="Label">
+              <input
+                required
+                maxLength={80}
+                value={draft.label}
+                onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
+              />
+            </Field>
+            <Field variant="panel" label="Type">
+              <select
+                value={draft.fieldType}
+                onChange={(event) => setDraft((current) => ({ ...current, fieldType: event.target.value as CustomFieldType }))}
+              >
+                {customFieldTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+              </select>
+            </Field>
+            <Toggle
+              label="Required"
+              checked={draft.required}
+              onChange={(required) => setDraft((current) => ({ ...current, required }))}
+            />
+          </div>
+          <SubmitRow mutation={createMutation} />
+        </form>
+      </Panel>
+      <Panel title="Custom fields" description="Workspace-defined fields, ordered for display.">
+        <div className="space-y-3">
+          {fields.map((field) => <CustomFieldRow key={field.id} field={field} />)}
+          {fields.length === 0 && <p className="text-sm text-gray-500">No custom fields yet.</p>}
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
+function CustomFieldRow({ field }: { field: CustomFieldDefinition }) {
+  const client = useQueryClient()
+  const [draft, setDraft] = useState(field)
+  const mutation = useMutation({
+    mutationFn: () => orbitApi.updateCustomField(draft),
+    onSuccess: (updated) => {
+      setDraft(updated)
+      client.setQueryData<CustomFieldDefinition[]>(['custom-fields'], (current) =>
+        current?.map((existing) => existing.id === updated.id ? updated : existing),
+      )
+    },
+  })
+
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="rounded-lg border border-gray-200 p-4">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_100px_auto_auto] sm:items-end">
+        <Field variant="panel" label={`${field.key} (${field.fieldType})`}>
+          <input value={draft.label} maxLength={80} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} />
+        </Field>
+        <Field variant="panel" label="Order">
+          <input type="number" min={0} max={10000} value={draft.order} onChange={(event) => setDraft((current) => ({ ...current, order: Number(event.target.value) }))} />
+        </Field>
+        <Toggle label="Required" checked={draft.required} onChange={(required) => setDraft((current) => ({ ...current, required }))} />
+        <Toggle label="Enabled" checked={draft.enabled} onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))} />
+      </div>
+      <SubmitRow mutation={mutation} />
+    </form>
+  )
+}
+
 const blankMembership: CreateMembershipInput = { issuer: '', subject: '', principalType: 'User', role: 'Member' }
 
 function MembersPanel({ project }: { project: Project }) {
   const client = useQueryClient()
   const membershipsQuery = useQuery({ queryKey: ['memberships'], queryFn: orbitApi.listMemberships })
+  const [invitationSearch, setInvitationSearch] = useState('')
+  const [invitationStatusFilter, setInvitationStatusFilter] = useState<WorkspaceInvitationStatus | ''>('')
+  const invitationsQuery = useQuery({
+    queryKey: ['invitations', invitationSearch, invitationStatusFilter],
+    queryFn: () => orbitApi.listInvitations({
+      email: invitationSearch || undefined,
+      status: invitationStatusFilter || undefined,
+    }),
+  })
+  const teamsQuery = useQuery({ queryKey: ['teams'], queryFn: orbitApi.listTeams })
   const projectRolesQuery = useQuery({
     queryKey: ['project-roles', project.id],
     queryFn: () => orbitApi.listProjectRoles(project.id),
   })
   const [draft, setDraft] = useState(blankMembership)
+  const [invitationEmail, setInvitationEmail] = useState('')
+  const [invitationRole, setInvitationRole] = useState<TenantRole>('Member')
+  const [invitationTeamId, setInvitationTeamId] = useState('')
+  const inviteMutation = useMutation({
+    mutationFn: () => orbitApi.createInvitation({
+      email: invitationEmail,
+      role: invitationRole,
+      teamId: invitationTeamId || null,
+    }),
+    onSuccess: () => {
+      setInvitationEmail('')
+      setInvitationTeamId('')
+      client.invalidateQueries({ queryKey: ['invitations'] })
+    },
+  })
+  const revokeInvitationMutation = useMutation({
+    mutationFn: orbitApi.revokeInvitation,
+    onSuccess: () => client.invalidateQueries({ queryKey: ['invitations'] }),
+  })
   const createMutation = useMutation({
     mutationFn: () => orbitApi.createMembership(draft),
     onSuccess: () => {
@@ -270,6 +438,67 @@ function MembersPanel({ project }: { project: Project }) {
 
   return (
     <div className="space-y-5">
+      <Panel title="Invite a member" description="Send a single-use invitation that expires after seven days.">
+        <form onSubmit={(event) => { event.preventDefault(); inviteMutation.mutate() }} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field variant="panel" label="Email">
+              <input required type="email" maxLength={320} value={invitationEmail} onChange={(event) => setInvitationEmail(event.target.value)} />
+            </Field>
+            <Field variant="panel" label="Workspace role">
+              <select value={invitationRole} onChange={(event) => setInvitationRole(event.target.value as TenantRole)}>
+                <option value="Member">Member</option>
+                <option value="Administrator">Administrator</option>
+              </select>
+            </Field>
+            <Field variant="panel" label="Team (optional)">
+              <select value={invitationTeamId} onChange={(event) => setInvitationTeamId(event.target.value)}>
+                <option value="">No team</option>
+                {(teamsQuery.data ?? []).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </select>
+            </Field>
+          </div>
+          <SubmitRow mutation={inviteMutation} />
+        </form>
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <Field variant="panel" label="Search by email">
+            <input
+              type="search"
+              placeholder="Search invitations…"
+              value={invitationSearch}
+              onChange={(event) => setInvitationSearch(event.target.value)}
+            />
+          </Field>
+          <Field variant="panel" label="Status">
+            <select
+              value={invitationStatusFilter}
+              onChange={(event) => setInvitationStatusFilter(event.target.value as WorkspaceInvitationStatus | '')}
+            >
+              <option value="">All statuses</option>
+              <option value="Active">Active</option>
+              <option value="Accepted">Accepted</option>
+              <option value="Revoked">Revoked</option>
+            </select>
+          </Field>
+        </div>
+        {!!invitationsQuery.data?.length && (
+          <ul className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
+            {invitationsQuery.data.map((invitation) => (
+              <li key={invitation.id} className="flex items-center justify-between gap-4 p-3 text-sm">
+                <span>
+                  {invitation.email} · {invitation.role} · {invitation.status}
+                  {invitation.acceptedAt && ` · accepted ${new Date(invitation.acceptedAt).toLocaleDateString()}`}
+                </span>
+                {invitation.status === 'Active' && (
+                  <button onClick={() => revokeInvitationMutation.mutate(invitation.id)} className="text-xs font-medium text-red-600 hover:underline">Revoke</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {invitationsQuery.isSuccess && invitationsQuery.data.length === 0 && (
+          <p className="mt-3 text-sm text-gray-500">No invitations match this search.</p>
+        )}
+      </Panel>
       <Panel title="Members" description="Everyone with access to this workspace.">
         {membershipsQuery.isPending && <p className="text-sm text-gray-500">Loading members…</p>}
         {membershipsQuery.isError && <p className="text-sm text-red-700">{membershipsQuery.error.message}</p>}

@@ -93,6 +93,21 @@ public static class AuthEndpoints
         .AllowAnonymous()
         .RequireRateLimiting("auth");
 
+        group.MapPost("/auth/service-token", async (
+            ServiceTokenRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var token = await sender.Send(
+                new IssueServiceAccountTokenCommand(request.ClientId, request.ClientSecret),
+                cancellationToken);
+            return Results.Ok(token);
+        })
+        .WithName("IssueServiceAccountToken")
+        .WithTags("Auth")
+        .AllowAnonymous()
+        .RequireRateLimiting("auth");
+
         return group;
     }
 
@@ -105,6 +120,8 @@ public static class AuthEndpoints
     public sealed record PasswordResetRequestRequest(string Email);
 
     public sealed record PasswordResetConfirmRequest(string Token, string NewPassword);
+
+    public sealed record ServiceTokenRequest(string ClientId, string ClientSecret);
 }
 
 internal static class ClientContext

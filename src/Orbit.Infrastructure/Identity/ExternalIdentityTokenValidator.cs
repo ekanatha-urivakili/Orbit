@@ -69,7 +69,13 @@ internal sealed class ExternalIdentityTokenValidator : IExternalIdentityTokenVal
                 throw new AuthenticationException("The external identity proof has no issuer or subject.");
             }
 
-            return new VerifiedExternalIdentity(issuer, subject);
+            var email = result.ClaimsIdentity.FindFirst(ClaimTypes.Email)?.Value
+                ?? result.ClaimsIdentity.FindFirst("email")?.Value;
+            var emailVerified = bool.TryParse(
+                result.ClaimsIdentity.FindFirst("email_verified")?.Value,
+                out var parsedEmailVerified) && parsedEmailVerified;
+
+            return new VerifiedExternalIdentity(issuer, subject, email, emailVerified);
         }
         catch (AuthenticationException)
         {

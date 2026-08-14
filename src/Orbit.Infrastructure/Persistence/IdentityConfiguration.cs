@@ -143,6 +143,24 @@ internal sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration
     }
 }
 
+internal sealed class ServiceAccountCredentialConfiguration : IEntityTypeConfiguration<ServiceAccountCredential>
+{
+    public void Configure(EntityTypeBuilder<ServiceAccountCredential> builder)
+    {
+        builder.ToTable("service_account_credentials");
+        builder.HasKey(credential => credential.Id);
+        builder.Property(credential => credential.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(credential => credential.TenantId).HasColumnName("tenant_id");
+        builder.Property(credential => credential.MembershipId).HasColumnName("membership_id");
+        builder.Property(credential => credential.ClientId).HasColumnName("client_id");
+        builder.Property(credential => credential.SecretHash).HasColumnName("secret_hash").HasMaxLength(64).IsRequired();
+        builder.Property(credential => credential.CreatedAt).HasColumnName("created_at");
+        builder.Property(credential => credential.RevokedAt).HasColumnName("revoked_at");
+        builder.HasIndex(credential => new { credential.MembershipId, credential.RevokedAt });
+        builder.HasIndex(credential => new { credential.ClientId, credential.RevokedAt });
+    }
+}
+
 internal sealed class SiteRoleAssignmentConfiguration : IEntityTypeConfiguration<SiteRoleAssignment>
 {
     public void Configure(EntityTypeBuilder<SiteRoleAssignment> builder)

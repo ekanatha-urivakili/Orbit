@@ -57,7 +57,16 @@
       "Bash(dotnet new *)",
       "Bash(rm -rf ~/.dotnet/toolResolverCache)",
       "Bash(bash scripts/migrate.sh)",
-      "Bash(ConnectionStrings__Postgres=\"Host=localhost;Port=5432;Database=orbit;Username=orbit;Password=orbit_local\" dotnet test Orbit.slnx --configuration Release --no-build)"
+      "Bash(ConnectionStrings__Postgres=\"Host=localhost;Port=5432;Database=orbit;Username=orbit;Password=orbit_local\" dotnet test Orbit.slnx --configuration Release --no-build)",
+      "Bash(git status *)",
+      "Bash(awk '$1==\"??\"{print $2}')",
+      "Bash(xargs -I{} sh -c 'echo ==={}===; cat {}')",
+      "Bash(grep -rln \"IAuthenticationRepository$\\\\|: IAuthenticationRepository\" tests/ src/)",
+      "Bash(./scripts/migrate.sh)",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d orbit -c \"\\\\dt\")",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d postgres -c \"\\\\l\")",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d postgres -c \"CREATE DATABASE orbit_test;\")",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d orbit_test -c \"DROP TABLE IF EXISTS service_account_credentials; DELETE FROM \\\\\"__EFMigrationsHistory\\\\\" WHERE \\\\\"MigrationId\\\\\" LIKE '%AddServiceAccountCredentials%';\")"
     ]
   }
 }

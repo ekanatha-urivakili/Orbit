@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Orbit.Domain.Projects;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.WorkItems;
 
 namespace Orbit.Infrastructure.Persistence;
@@ -75,6 +76,11 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
             .WithMany()
             .HasForeignKey(workItem => new { workItem.TenantId, workItem.ProjectId })
             .HasPrincipalKey(project => new { project.TenantId, project.Id })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<WorkItemTypeDefinition>()
+            .WithMany()
+            .HasForeignKey(workItem => new { workItem.TenantId, Id = workItem.Type })
+            .HasPrincipalKey(definition => new { definition.TenantId, definition.Id })
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

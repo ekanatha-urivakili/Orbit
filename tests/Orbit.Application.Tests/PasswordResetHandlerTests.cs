@@ -195,6 +195,11 @@ public sealed class PasswordResetHandlerTests
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<Workspace?>(null);
 
+        public Task<IReadOnlyList<Workspace>> GetWorkspacesAsync(
+            IReadOnlyCollection<Guid> tenantIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Workspace>>([]);
+
         public Task AddRefreshSessionAsync(RefreshSession session, CancellationToken cancellationToken)
         {
             _sessions.Add(session);
@@ -260,5 +265,19 @@ public sealed class PasswordResetHandlerTests
 
         public Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken) =>
             Task.CompletedTask;
+
+        public Task AddServiceAccountCredentialAsync(ServiceAccountCredential credential, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<ServiceAccountCredential?> GetActiveServiceAccountCredentialByClientIdAsync(Guid clientId, CancellationToken cancellationToken) =>
+            Task.FromResult<ServiceAccountCredential?>(null);
+
+        public Task<IReadOnlyList<ServiceAccountCredential>> ListActiveServiceAccountCredentialsByMembershipAsync(
+            Guid membershipId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ServiceAccountCredential>>([]);
+
+        public Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
+            Guid tenantId, Guid membershipId, CancellationToken cancellationToken) =>
+            Task.FromResult<TenantMembership?>(null);
     }
 }

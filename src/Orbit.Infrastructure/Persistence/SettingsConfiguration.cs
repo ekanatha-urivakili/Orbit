@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
 using Orbit.Domain.Workspaces;
@@ -83,5 +84,10 @@ internal sealed class ProjectSettingConfiguration : IEntityTypeConfiguration<Pro
         builder.HasOne<Project>().WithOne().HasForeignKey<ProjectSetting>(setting => new { setting.TenantId, setting.ProjectId })
             .HasPrincipalKey<Project>(project => new { project.TenantId, project.Id })
             .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<WorkItemTypeDefinition>()
+            .WithMany()
+            .HasForeignKey(setting => new { setting.TenantId, Id = setting.DefaultWorkItemType })
+            .HasPrincipalKey(definition => new { definition.TenantId, definition.Id })
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

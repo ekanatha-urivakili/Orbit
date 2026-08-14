@@ -70,6 +70,30 @@ export interface SystemChoices {
   priorities: Choice[]
 }
 
+export interface WorkItemTypeDefinition {
+  id: WorkItemType
+  label: string
+  description: string
+  order: number
+  colorToken: string
+  enabled: boolean
+  canAdminister: boolean
+  version: number
+}
+
+export type CustomFieldType = 'Text' | 'Number' | 'Date' | 'Checkbox'
+
+export interface CustomFieldDefinition {
+  id: string
+  key: string
+  label: string
+  fieldType: CustomFieldType
+  required: boolean
+  order: number
+  enabled: boolean
+  version: number
+}
+
 export interface CreateWorkItemInput {
   projectId: string
   summary: string
@@ -229,6 +253,19 @@ export interface TeamMembership {
   createdAt: string
 }
 
+export type WorkspaceInvitationStatus = 'Active' | 'Accepted' | 'Revoked'
+
+export interface WorkspaceInvitation {
+  id: string
+  email: string
+  role: TenantRole
+  teamId: string | null
+  status: WorkspaceInvitationStatus
+  expiresAt: string
+  createdAt: string
+  acceptedAt: string | null
+}
+
 export type BoardType = 'Kanban' | 'Scrum'
 export type WipLimitMode = 'Warn' | 'Block'
 
@@ -273,6 +310,25 @@ export interface AuthSession {
   workspaceId: string
   workspaceSlug: string
   workspaceName: string
+  role: TenantRole
+}
+
+export interface AccountWorkspace {
+  id: string
+  slug: string
+  name: string
+  role: TenantRole
+}
+
+export interface SiteCapabilities {
+  canCreateWorkspace: boolean
+}
+
+export interface CreatedWorkspace {
+  id: string
+  slug: string
+  name: string
+  membershipId: string
   role: TenantRole
 }
 

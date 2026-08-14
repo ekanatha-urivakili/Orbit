@@ -1,8 +1,15 @@
 const verifierStorageKey = 'orbit.oidc.verifier'
 const stateStorageKey = 'orbit.oidc.state'
 const modeStorageKey = 'orbit.oidc.mode'
+const invitationStorageKey = 'orbit.oidc.invitation'
 
-export type OidcMode = 'login' | 'link'
+export type OidcMode = 'login' | 'link' | 'accept-invitation'
+
+export interface PendingInvitation {
+  token: string
+  tenantId: string
+  displayName: string
+}
 
 export interface OidcConfig {
   authority: string
@@ -42,8 +49,13 @@ async function codeChallengeFor(verifier: string): Promise<string> {
   return base64UrlEncode(new Uint8Array(digest))
 }
 
-/** Redirects the browser to the IdP's authorize endpoint, starting an authorization-code + PKCE flow. */
-export async function startOidcLogin(mode: OidcMode): Promise<void> {
+/**
+ * Redirects the browser to the IdP's authorize endpoint, starting an authorization-code + PKCE
+ * flow. `pendingInvitation` is required for and only used by the `'accept-invitation'` mode: the
+ * redirect round-trip lands back on the app root with no URL state of its own, so the invitation
+ * being accepted has to survive the trip the same way the PKCE verifier/state already do.
+ */
+export async function startOidcLogin(mode: OidcMode, pendingInvitation?: PendingInvitation): Promise<void> {
   const config = getOidcConfig()
   if (!config) throw new Error('SSO is not configured for this deployment.')
 
@@ -52,6 +64,9 @@ export async function startOidcLogin(mode: OidcMode): Promise<void> {
   sessionStorage.setItem(verifierStorageKey, verifier)
   sessionStorage.setItem(stateStorageKey, state)
   sessionStorage.setItem(modeStorageKey, mode)
+  if (mode === 'accept-invitation' && pendingInvitation) {
+    sessionStorage.setItem(invitationStorageKey, JSON.stringify(pendingInvitation))
+  }
 
   const challenge = await codeChallengeFor(verifier)
   const authorizeUrl = new URL('/authorize', config.authority)
@@ -70,6 +85,7 @@ export interface OidcCallbackResult {
   mode: OidcMode
   accessToken: string
   idToken: string | null
+  pendingInvitation: PendingInvitation | null
 }
 
 /**
@@ -88,9 +104,11 @@ export async function completeOidcCallback(): Promise<OidcCallbackResult | null>
   const expectedState = sessionStorage.getItem(stateStorageKey)
   const verifier = sessionStorage.getItem(verifierStorageKey)
   const mode = (sessionStorage.getItem(modeStorageKey) as OidcMode | null) ?? 'login'
+  const storedInvitation = sessionStorage.getItem(invitationStorageKey)
   sessionStorage.removeItem(stateStorageKey)
   sessionStorage.removeItem(verifierStorageKey)
   sessionStorage.removeItem(modeStorageKey)
+  sessionStorage.removeItem(invitationStorageKey)
   window.history.replaceState({}, '', window.location.pathname)
 
   const config = getOidcConfig()
@@ -115,5 +133,8 @@ export async function completeOidcCallback(): Promise<OidcCallbackResult | null>
   }
 
   const tokens = (await response.json()) as { access_token: string; id_token?: string }
-  return { mode, accessToken: tokens.access_token, idToken: tokens.id_token ?? null }
+  const pendingInvitation: PendingInvitation | null = storedInvitation
+    ? (JSON.parse(storedInvitation) as PendingInvitation)
+    : null
+  return { mode, accessToken: tokens.access_token, idToken: tokens.id_token ?? null, pendingInvitation }
 }

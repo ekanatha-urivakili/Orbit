@@ -139,6 +139,12 @@ public sealed class TenantMembership
     {
         IsActive = false;
     }
+
+    public void Reactivate(TenantRole role)
+    {
+        Role = role;
+        IsActive = true;
+    }
 }
 
 public sealed class ProjectRoleAssignment

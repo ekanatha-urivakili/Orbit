@@ -36,4 +36,20 @@ public sealed class OutboxModelsTests
 
         Assert.Throws<DomainException>(action);
     }
+
+    [Fact]
+    public void WorkspaceInvitationMessage_DoesNotPersistBearerToken()
+    {
+        var message = OutboxEmailMessage.CreateWorkspaceInvitation(
+            "user@example.test",
+            "Join Orbit",
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "https://orbit.example.test",
+            DateTimeOffset.UtcNow);
+
+        Assert.DoesNotContain("invitationToken", message.HtmlBody, StringComparison.Ordinal);
+        Assert.NotNull(message.WorkspaceInvitationId);
+        Assert.NotNull(message.TenantId);
+    }
 }

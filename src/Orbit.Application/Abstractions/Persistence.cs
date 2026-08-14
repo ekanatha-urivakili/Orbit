@@ -1,6 +1,8 @@
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
+using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Messaging;
@@ -60,6 +62,25 @@ public interface ISettingsRepository
     Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken);
 }
 
+public interface IWorkItemTypeRepository
+{
+    Task<WorkItemTypeDefinition?> GetAsync(
+        Guid tenantId,
+        WorkItemType id,
+        CancellationToken cancellationToken);
+    Task<IReadOnlyList<WorkItemTypeDefinition>> ListAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken);
+}
+
+public interface ICustomFieldRepository
+{
+    Task AddAsync(CustomFieldDefinition definition, CancellationToken cancellationToken);
+    Task<CustomFieldDefinition?> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<CustomFieldDefinition?> GetByKeyAsync(Guid tenantId, string key, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CustomFieldDefinition>> ListAsync(Guid tenantId, CancellationToken cancellationToken);
+}
+
 public sealed record PasswordHash(
     string Value,
     string Algorithm,
@@ -79,7 +100,7 @@ public interface IPasswordHasher
 
 public sealed record AccessToken(string Value, DateTimeOffset ExpiresAt);
 
-public sealed record VerifiedExternalIdentity(string Issuer, string Subject);
+public sealed record VerifiedExternalIdentity(string Issuer, string Subject, string? Email, bool EmailVerified);
 
 public interface IExternalIdentityTokenValidator
 {
@@ -90,7 +111,16 @@ public interface IAccessTokenIssuer
 {
     TimeSpan RefreshTokenLifetime { get; }
 
+    /// <summary>
+    /// The issuer this instance signs tokens as - the value a service-account membership's
+    /// <c>Issuer</c> must match for <c>TenantTransactionMiddleware</c> to accept a token this
+    /// issuer minted.
+    /// </summary>
+    string LocalIssuer { get; }
+
     AccessToken IssueUserToken(Guid userId, Guid tenantId, Guid sessionId, DateTimeOffset now);
+
+    AccessToken IssueServiceAccountToken(Guid tenantId, string clientId, DateTimeOffset now);
 }
 
 public interface IAuthenticationRepository
@@ -102,6 +132,7 @@ public interface IAuthenticationRepository
         Guid userId,
         CancellationToken cancellationToken);
     Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Workspace>> GetWorkspacesAsync(IReadOnlyCollection<Guid> tenantIds, CancellationToken cancellationToken);
     Task AddRefreshSessionAsync(RefreshSession session, CancellationToken cancellationToken);
     Task<RefreshSession?> GetRefreshSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken);
     Task<RefreshSession?> GetActiveSessionAsync(Guid sessionId, Guid userId, CancellationToken cancellationToken);
@@ -120,11 +151,68 @@ public interface IAuthenticationRepository
     Task<PasswordResetToken?> GetPasswordResetTokenByHashAsync(string tokenHash, CancellationToken cancellationToken);
     Task RevokeActivePasswordResetTokensForUserAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken);
     Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken);
+    Task AddServiceAccountCredentialAsync(ServiceAccountCredential credential, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Looks up the currently-active credential for a client id (there may also be older, revoked
+    /// rows sharing the same <see cref="ServiceAccountCredential.ClientId"/> from prior rotations).
+    /// </summary>
+    Task<ServiceAccountCredential?> GetActiveServiceAccountCredentialByClientIdAsync(
+        Guid clientId,
+        CancellationToken cancellationToken);
+    Task<IReadOnlyList<ServiceAccountCredential>> ListActiveServiceAccountCredentialsByMembershipAsync(
+        Guid membershipId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Looks up a service-account membership before any ambient tenant context exists (the
+    /// token-issuance path) by establishing <c>app.tenant_id</c> itself from the already-verified
+    /// credential's own <c>TenantId</c>, mirroring <see cref="ListActiveMembershipsByUserAsync"/>'s
+    /// pre-auth technique.
+    /// </summary>
+    Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
+        Guid tenantId,
+        Guid membershipId,
+        CancellationToken cancellationToken);
 }
 
 public interface IOutboxRepository
 {
     Task AddAsync(OutboxEmailMessage message, CancellationToken cancellationToken);
+}
+
+public interface IWorkspaceInvitationRepository
+{
+    Task AddAsync(WorkspaceInvitation invitation, CancellationToken cancellationToken);
+    Task<WorkspaceInvitation?> GetActiveByEmailAsync(
+        Guid tenantId,
+        string normalizedEmail,
+        CancellationToken cancellationToken);
+    Task<WorkspaceInvitation?> GetByTokenHashAsync(
+        Guid tenantId,
+        string tokenHash,
+        CancellationToken cancellationToken);
+    Task<WorkspaceInvitation?> GetAsync(Guid tenantId, Guid invitationId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<WorkspaceInvitation>> ListAsync(
+        Guid tenantId,
+        string? emailSearch,
+        WorkspaceInvitationStatus? status,
+        CancellationToken cancellationToken);
+    Task<UserAccount?> GetUserAccountByEmailAsync(string normalizedEmail, CancellationToken cancellationToken);
+    Task<LocalCredential?> GetUserAccountCredentialAsync(Guid userId, CancellationToken cancellationToken);
+    Task<TenantMembership?> GetMembershipByUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken cancellationToken);
+    Task<TeamMembership?> GetTeamMembershipAsync(
+        Guid tenantId,
+        Guid teamId,
+        Guid membershipId,
+        CancellationToken cancellationToken);
+    Task AddUserAccountAsync(UserAccount account, CancellationToken cancellationToken);
+    Task AddLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken);
+    Task AddTenantMembershipAsync(TenantMembership membership, CancellationToken cancellationToken);
+    Task AddTeamMembershipAsync(TeamMembership membership, CancellationToken cancellationToken);
 }
 
 public interface IBootstrapRepository
@@ -136,6 +224,17 @@ public interface IBootstrapRepository
         SiteRoleAssignment siteRole,
         Workspace workspace,
         TenantMembership ownerMembership,
+        CancellationToken cancellationToken);
+}
+
+public interface IWorkspaceProvisioningRepository
+{
+    Task<bool> IsSiteSuperAdministratorAsync(Guid userId, CancellationToken cancellationToken);
+    Task<bool> SlugExistsAsync(string slug, CancellationToken cancellationToken);
+    Task AddAsync(
+        Workspace workspace,
+        TenantMembership ownerMembership,
+        Guid currentTenantId,
         CancellationToken cancellationToken);
 }
 

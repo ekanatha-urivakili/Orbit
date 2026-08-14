@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Orbit.Application.Abstractions;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Messaging;
@@ -35,7 +36,10 @@ public sealed class PersistenceSecurityTests
             typeof(Sprint),
             typeof(SprintMembership),
             typeof(SprintCompletionOperation),
-            typeof(SprintScopeFact)
+            typeof(SprintScopeFact),
+            typeof(WorkspaceInvitation),
+            typeof(WorkItemTypeDefinition),
+            typeof(CustomFieldDefinition)
         ];
 
         foreach (var entity in tenantEntities)
@@ -55,7 +59,8 @@ public sealed class PersistenceSecurityTests
             typeof(LocalCredential),
             typeof(RefreshSession),
             typeof(PasswordResetToken),
-            typeof(OutboxEmailMessage)
+            typeof(OutboxEmailMessage),
+            typeof(ServiceAccountCredential)
         ];
 
         foreach (var entity in globalEntities)
@@ -70,6 +75,18 @@ public sealed class PersistenceSecurityTests
         using var dbContext = CreateContext();
 
         var version = dbContext.Model.FindEntityType(typeof(RefreshSession))?.FindProperty(nameof(RefreshSession.Version));
+
+        Assert.NotNull(version);
+        Assert.True(version.IsConcurrencyToken);
+    }
+
+    [Fact]
+    public void WorkspaceInvitationVersionIsAConcurrencyToken()
+    {
+        using var dbContext = CreateContext();
+
+        var version = dbContext.Model.FindEntityType(typeof(WorkspaceInvitation))
+            ?.FindProperty(nameof(WorkspaceInvitation.Version));
 
         Assert.NotNull(version);
         Assert.True(version.IsConcurrencyToken);

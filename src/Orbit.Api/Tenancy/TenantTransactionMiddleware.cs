@@ -29,10 +29,13 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
             return;
         }
 
+        var publicInvitation = IsPublicInvitation(context.Request.Path);
         var allowHeader = configuration.GetValue<bool>("Tenancy:AllowHeaderTenant");
-        var tenantValue = allowHeader
-            ? context.Request.Headers[TenantHeader].ToString()
-            : context.User.FindFirstValue("tenant_id");
+        var tenantValue = publicInvitation
+            ? context.Request.RouteValues["tenantId"]?.ToString()
+            : allowHeader
+                ? context.Request.Headers[TenantHeader].ToString()
+                : context.User.FindFirstValue("tenant_id");
 
         if (!Guid.TryParse(tenantValue, out var tenantId) || tenantId == Guid.Empty)
         {
@@ -51,6 +54,13 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT set_config('app.tenant_id', {tenantId.ToString()}, true)",
             context.RequestAborted);
+
+        if (publicInvitation)
+        {
+            await next(context);
+            await transaction.CommitAsync(context.RequestAborted);
+            return;
+        }
 
         if (allowHeader)
         {
@@ -209,4 +219,9 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         && !path.StartsWithSegments("/api/v1/choices")
         && !path.StartsWithSegments("/api/v1/bootstrap")
         && !path.StartsWithSegments("/api/v1/auth");
+
+    private static bool IsPublicInvitation(PathString path) =>
+        path.StartsWithSegments("/api/v1/workspaces")
+        && (path.Value?.EndsWith("/invitations/accept", StringComparison.OrdinalIgnoreCase) == true
+            || path.Value?.EndsWith("/invitations/accept-external", StringComparison.OrdinalIgnoreCase) == true);
 }

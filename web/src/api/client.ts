@@ -1,8 +1,10 @@
 import type {
   Board,
+  AccountWorkspace,
   BootstrapInput,
   BootstrapResult,
   BootstrapStatus,
+  CreatedWorkspace,
   CreateMembershipInput,
   CreateWorkItemInput,
   UpdateWorkItemInput,
@@ -15,20 +17,25 @@ import type {
   Profile,
   NotificationPreference,
   SessionSummary,
+  SiteCapabilities,
   Sprint,
   Team,
   TeamMembership,
   TenantMembership,
   TenantRole,
   WorkspaceSetting,
+  WorkspaceInvitation,
+  WorkspaceInvitationStatus,
   SystemChoices,
   WorkItem,
+  WorkItemTypeDefinition,
   WorkItemStatus,
+  CustomFieldDefinition,
+  CustomFieldType,
 } from './types'
-import { withAuthHeader } from './auth'
+import { tenantStorageKey, withAuthHeader } from './auth'
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5014/api/v1'
-const tenantStorageKey = 'orbit.tenant-id'
 
 function getTenantId(): string {
   const existing = localStorage.getItem(tenantStorageKey)
@@ -77,6 +84,22 @@ export const orbitApi = {
   createProject: (input: { key: string; name: string }) =>
     request<Project>('/projects', { method: 'POST', body: JSON.stringify(input) }),
   getChoices: () => request<SystemChoices>('/choices', undefined, false),
+  listWorkItemTypes: () => request<WorkItemTypeDefinition[]>('/work-item-types'),
+  updateWorkItemType: (input: WorkItemTypeDefinition) =>
+    request<WorkItemTypeDefinition>(`/work-item-types/${encodeURIComponent(input.id)}`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${input.version}"` },
+      body: JSON.stringify(input),
+    }),
+  listCustomFields: () => request<CustomFieldDefinition[]>('/custom-fields'),
+  createCustomField: (input: { key: string; label: string; fieldType: CustomFieldType; required: boolean; order: number }) =>
+    request<CustomFieldDefinition>('/custom-fields', { method: 'POST', body: JSON.stringify(input) }),
+  updateCustomField: (input: CustomFieldDefinition) =>
+    request<CustomFieldDefinition>(`/custom-fields/${encodeURIComponent(input.id)}`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${input.version}"` },
+      body: JSON.stringify(input),
+    }),
   listWorkItems: (projectId: string, skip = 0, take = 200) =>
     request<PagedResult<WorkItem>>(
       `/work-items?projectId=${encodeURIComponent(projectId)}&skip=${skip}&take=${take}`,
@@ -102,6 +125,13 @@ export const orbitApi = {
       body: JSON.stringify({ beforeWorkItemId: neighbors.beforeId, afterWorkItemId: neighbors.afterId }),
     }),
   getProfile: () => request<Profile>('/me'),
+  listAccountWorkspaces: () => request<AccountWorkspace[]>('/me/workspaces'),
+  getSiteCapabilities: () => request<SiteCapabilities>('/me/site-capabilities'),
+  createWorkspace: (name: string) =>
+    request<CreatedWorkspace>('/workspaces', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
   updateProfile: (profile: Profile, input: Pick<Profile, 'displayName' | 'avatarUrl'>) =>
     request<Profile>('/me/profile', {
       method: 'PATCH',
@@ -222,6 +252,35 @@ export const orbitApi = {
     request<void>(
       `/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(membershipId)}`,
       { method: 'DELETE' },
+    ),
+  listInvitations: (filter?: { email?: string; status?: WorkspaceInvitationStatus }) => {
+    const params = new URLSearchParams()
+    if (filter?.email) params.set('email', filter.email)
+    if (filter?.status) params.set('status', filter.status)
+    const query = params.toString()
+    return request<WorkspaceInvitation[]>(`/invitations${query ? `?${query}` : ''}`)
+  },
+  createInvitation: (input: { email: string; role: TenantRole; teamId: string | null }) =>
+    request<WorkspaceInvitation>('/invitations', { method: 'POST', body: JSON.stringify(input) }),
+  revokeInvitation: (invitationId: string) =>
+    request<void>(`/invitations/${encodeURIComponent(invitationId)}`, { method: 'DELETE' }),
+  acceptInvitation: (
+    tenantId: string,
+    input: { token: string; displayName: string; password: string },
+  ) =>
+    request<TenantMembership>(
+      `/workspaces/${encodeURIComponent(tenantId)}/invitations/accept`,
+      { method: 'POST', body: JSON.stringify(input) },
+      false,
+    ),
+  acceptInvitationWithExternalIdentity: (
+    tenantId: string,
+    input: { token: string; externalIdToken: string; displayName: string },
+  ) =>
+    request<TenantMembership>(
+      `/workspaces/${encodeURIComponent(tenantId)}/invitations/accept-external`,
+      { method: 'POST', body: JSON.stringify(input) },
+      false,
     ),
   listSessions: () => request<SessionSummary[]>('/me/sessions'),
   revokeSession: (sessionId: string) =>

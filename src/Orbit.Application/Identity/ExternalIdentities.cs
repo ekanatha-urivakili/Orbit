@@ -39,6 +39,24 @@ public sealed class LinkExternalIdentityHandler(
         var userId = PrincipalGuards.RequireUser(principal);
         var verified = await tokenValidator.ValidateAsync(request.IdentityToken, cancellationToken);
 
+        // When the IdP asserts a verified email, it must match this account's email - otherwise an
+        // identity proof that's valid (correctly signed, right issuer/audience) but for a different
+        // person's email could still be attached to this account. Providers that omit the claim
+        // entirely fall back to the session-authenticated trust boundary that already existed.
+        if (verified.EmailVerified && verified.Email is { } claimedEmail)
+        {
+            var account = await repository.GetUserAccountAsync(userId, cancellationToken)
+                ?? throw new NotFoundException("Account was not found.");
+            if (!string.Equals(
+                    UserAccount.NormalizeEmail(claimedEmail),
+                    account.NormalizedEmail,
+                    StringComparison.Ordinal))
+            {
+                throw new ConflictException(
+                    "The external identity's verified email does not match this account's email.");
+            }
+        }
+
         var existing = await repository.GetExternalIdentityAsync(
             verified.Issuer, verified.Subject, cancellationToken);
         if (existing is not null)
