@@ -4,6 +4,7 @@ using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Messaging;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
 using Orbit.Domain.WorkItems;
@@ -40,6 +41,26 @@ public sealed class PersistenceSecurityTests
         foreach (var entity in tenantEntities)
         {
             Assert.NotEmpty(dbContext.Model.FindEntityType(entity)!.GetDeclaredQueryFilters());
+        }
+    }
+
+    [Fact]
+    public void GlobalIdentityAndOutboxEntitiesHaveNoQueryFilter()
+    {
+        using var dbContext = CreateContext();
+        Type[] globalEntities =
+        [
+            typeof(UserAccount),
+            typeof(ExternalIdentity),
+            typeof(LocalCredential),
+            typeof(RefreshSession),
+            typeof(PasswordResetToken),
+            typeof(OutboxEmailMessage)
+        ];
+
+        foreach (var entity in globalEntities)
+        {
+            Assert.Empty(dbContext.Model.FindEntityType(entity)!.GetDeclaredQueryFilters());
         }
     }
 

@@ -2,11 +2,80 @@ import { useState, type FormEvent } from 'react'
 import * as auth from '../../api/auth'
 import { getOidcConfig, startOidcLogin } from './oidcPkce'
 
+function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    setSubmitting(true)
+    try {
+      await auth.requestPasswordReset(email)
+      setSent(true)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to request a password reset.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-700">
+          If that email is registered, we sent a link to reset your password.
+        </p>
+        <button
+          onClick={onBack}
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Back to sign in
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Email</label>
+        <input
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={submitting}
+        className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+      >
+        {submitting ? 'Sending…' : 'Send reset link'}
+      </button>
+      <button
+        type="button"
+        onClick={onBack}
+        className="w-full text-center text-sm text-gray-600 hover:underline"
+      >
+        Back to sign in
+      </button>
+    </form>
+  )
+}
+
 export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [forgotPassword, setForgotPassword] = useState(false)
   const oidcConfigured = getOidcConfig() !== null
 
   const handleSubmit = async (event: FormEvent) => {
@@ -21,6 +90,10 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (forgotPassword) {
+    return <ForgotPasswordForm onBack={() => setForgotPassword(false)} />
   }
 
   return (
@@ -55,6 +128,13 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
           className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {submitting ? 'Signing in…' : 'Sign in'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setForgotPassword(true)}
+          className="w-full text-center text-sm text-gray-600 hover:underline"
+        >
+          Forgot password?
         </button>
       </form>
       {oidcConfigured && (

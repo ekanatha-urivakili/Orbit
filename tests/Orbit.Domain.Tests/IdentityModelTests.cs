@@ -109,6 +109,69 @@ public sealed class IdentityModelTests
     }
 
     [Fact]
+    public void PasswordResetToken_ConsumeMarksUsedAndBumpsVersion()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var token = PasswordResetToken.Create(Guid.NewGuid(), "hash-1", now, TimeSpan.FromHours(1));
+
+        token.Consume(now.AddMinutes(5));
+
+        Assert.Equal(PasswordResetTokenStatus.Used, token.Status);
+        Assert.Equal(now.AddMinutes(5), token.ConsumedAt);
+        Assert.Equal(2, token.Version);
+        Assert.False(token.IsUsable(now.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void PasswordResetToken_ExpiredTokenIsNotUsable()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var token = PasswordResetToken.Create(Guid.NewGuid(), "hash-1", now, TimeSpan.FromMinutes(1));
+
+        Assert.True(token.IsUsable(now));
+        Assert.False(token.IsUsable(now.AddMinutes(2)));
+    }
+
+    [Fact]
+    public void PasswordResetToken_ConsumeThrowsWhenNotActive()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var token = PasswordResetToken.Create(Guid.NewGuid(), "hash-1", now, TimeSpan.FromHours(1));
+        token.Revoke(now);
+
+        var action = () => token.Consume(now);
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Fact]
+    public void PasswordResetToken_RevokeIsIdempotent()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var token = PasswordResetToken.Create(Guid.NewGuid(), "hash-1", now, TimeSpan.FromHours(1));
+
+        token.Revoke(now.AddMinutes(1));
+        token.Revoke(now.AddMinutes(2));
+
+        Assert.Equal(PasswordResetTokenStatus.Revoked, token.Status);
+        Assert.Equal(now.AddMinutes(1), token.ConsumedAt);
+        Assert.Equal(2, token.Version);
+    }
+
+    [Fact]
+    public void LocalCredential_UpdatePasswordChangesHashAndTimestamp()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var credential = LocalCredential.Create(Guid.NewGuid(), "hash-1", "argon2id", 1, now);
+
+        credential.UpdatePassword("hash-2", "argon2id", 2, now.AddMinutes(5));
+
+        Assert.Equal("hash-2", credential.PasswordHash);
+        Assert.Equal(2, credential.HashParametersVersion);
+        Assert.Equal(now.AddMinutes(5), credential.ChangedAt);
+    }
+
+    [Fact]
     public void ExternalIdentity_Create_RejectsEmptyUserId()
     {
         var action = () => ExternalIdentity.Create(

@@ -58,6 +58,7 @@ echo "Starting PostgreSQL and Valkey if required..."
 ./scripts/start-local-services.sh
 wait_for_container orbit-postgres-1
 wait_for_container orbit-valkey-1
+wait_for_container orbit-mailpit-1
 
 echo "Applying database migrations..."
 ./scripts/migrate.sh

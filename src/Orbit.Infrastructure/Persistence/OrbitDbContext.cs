@@ -4,6 +4,7 @@ using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Messaging;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
 using Orbit.Domain.WorkItems;
@@ -39,6 +40,8 @@ public sealed class OrbitDbContext(
     public DbSet<SprintMembership> SprintMemberships => Set<SprintMembership>();
     public DbSet<SprintCompletionOperation> SprintCompletionOperations => Set<SprintCompletionOperation>();
     public DbSet<SprintScopeFact> SprintScopeFacts => Set<SprintScopeFact>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<OutboxEmailMessage> OutboxEmailMessages => Set<OutboxEmailMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

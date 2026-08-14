@@ -213,6 +213,24 @@ public sealed class LocalCredential
 
         return new LocalCredential(userId, passwordHash, hashAlgorithm, hashParametersVersion, now);
     }
+
+    public void UpdatePassword(string passwordHash, string hashAlgorithm, int hashParametersVersion, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(passwordHash))
+        {
+            throw new DomainException("Password hash is required.");
+        }
+
+        if (hashAlgorithm.Length is < 1 or > 32 || hashParametersVersion < 1)
+        {
+            throw new DomainException("Password hash metadata is invalid.");
+        }
+
+        PasswordHash = passwordHash;
+        HashAlgorithm = hashAlgorithm;
+        HashParametersVersion = hashParametersVersion;
+        ChangedAt = now;
+    }
 }
 
 public enum RefreshSessionStatus
@@ -368,6 +386,86 @@ public sealed class RefreshSession
 
         var trimmed = value.Trim();
         return trimmed.Length > maxLength ? trimmed[..maxLength] : trimmed;
+    }
+}
+
+public enum PasswordResetTokenStatus
+{
+    Active,
+    Used,
+    Revoked
+}
+
+/// <summary>
+/// A single-use, expiring password-reset token, modeled on <see cref="RefreshSession"/>: only its
+/// hash is stored, and it is consumed exactly once. Any prior active token for the same user is
+/// revoked when a new one is requested (see <c>RevokeActivePasswordResetTokensForUserAsync</c>).
+/// </summary>
+public sealed class PasswordResetToken
+{
+    private PasswordResetToken()
+    {
+    }
+
+    private PasswordResetToken(Guid id, Guid userId, string tokenHash, DateTimeOffset now, DateTimeOffset expiresAt)
+    {
+        Id = id;
+        UserId = userId;
+        TokenHash = tokenHash;
+        Status = PasswordResetTokenStatus.Active;
+        CreatedAt = now;
+        ExpiresAt = expiresAt;
+    }
+
+    public Guid Id { get; private set; }
+    public Guid UserId { get; private set; }
+    public string TokenHash { get; private set; } = string.Empty;
+    public PasswordResetTokenStatus Status { get; private set; }
+    public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset ExpiresAt { get; private set; }
+    public DateTimeOffset? ConsumedAt { get; private set; }
+    public long Version { get; private set; } = 1;
+
+    public static PasswordResetToken Create(Guid userId, string tokenHash, DateTimeOffset now, TimeSpan lifetime)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new DomainException("User id is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(tokenHash))
+        {
+            throw new DomainException("A token hash is required.");
+        }
+
+        return new PasswordResetToken(Guid.CreateVersion7(), userId, tokenHash, now, now + lifetime);
+    }
+
+    public bool IsUsable(DateTimeOffset now) =>
+        Status == PasswordResetTokenStatus.Active && ExpiresAt > now;
+
+    public void Consume(DateTimeOffset now)
+    {
+        if (Status != PasswordResetTokenStatus.Active)
+        {
+            throw new DomainException("Only an active reset token can be consumed.");
+        }
+
+        Status = PasswordResetTokenStatus.Used;
+        ConsumedAt = now;
+        Version++;
+    }
+
+    public void Revoke(DateTimeOffset now)
+    {
+        if (Status != PasswordResetTokenStatus.Active)
+        {
+            return;
+        }
+
+        Status = PasswordResetTokenStatus.Revoked;
+        ConsumedAt = now;
+        Version++;
     }
 }
 

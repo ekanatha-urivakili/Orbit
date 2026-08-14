@@ -3,6 +3,7 @@ using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Messaging;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
 using Orbit.Domain.WorkItems;
@@ -115,6 +116,15 @@ public interface IAuthenticationRepository
         CancellationToken cancellationToken);
     Task<ExternalIdentity?> GetExternalIdentityAsync(Guid id, Guid userId, CancellationToken cancellationToken);
     Task RemoveExternalIdentityAsync(ExternalIdentity identity, CancellationToken cancellationToken);
+    Task AddPasswordResetTokenAsync(PasswordResetToken token, CancellationToken cancellationToken);
+    Task<PasswordResetToken?> GetPasswordResetTokenByHashAsync(string tokenHash, CancellationToken cancellationToken);
+    Task RevokeActivePasswordResetTokensForUserAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken);
+    Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken);
+}
+
+public interface IOutboxRepository
+{
+    Task AddAsync(OutboxEmailMessage message, CancellationToken cancellationToken);
 }
 
 public interface IBootstrapRepository

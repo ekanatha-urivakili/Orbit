@@ -116,6 +116,33 @@ internal sealed class RefreshSessionConfiguration : IEntityTypeConfiguration<Ref
     }
 }
 
+internal sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration<PasswordResetToken>
+{
+    public void Configure(EntityTypeBuilder<PasswordResetToken> builder)
+    {
+        builder.ToTable("password_reset_tokens", table =>
+        {
+            table.HasCheckConstraint(
+                "ck_password_reset_tokens_status",
+                "status IN ('Active', 'Used', 'Revoked')");
+            table.HasCheckConstraint("ck_password_reset_tokens_version", "version > 0");
+        });
+        builder.HasKey(token => token.Id);
+        builder.Property(token => token.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(token => token.UserId).HasColumnName("user_id");
+        builder.Property(token => token.TokenHash).HasColumnName("token_hash").HasMaxLength(64).IsRequired();
+        builder.Property(token => token.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(16);
+        builder.Property(token => token.CreatedAt).HasColumnName("created_at");
+        builder.Property(token => token.ExpiresAt).HasColumnName("expires_at");
+        builder.Property(token => token.ConsumedAt).HasColumnName("consumed_at");
+        builder.Property(token => token.Version).HasColumnName("version").IsConcurrencyToken();
+        builder.HasIndex(token => token.TokenHash).IsUnique();
+        builder.HasIndex(token => new { token.UserId, token.Status });
+        builder.HasOne<UserAccount>().WithMany().HasForeignKey(token => token.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal sealed class SiteRoleAssignmentConfiguration : IEntityTypeConfiguration<SiteRoleAssignment>
 {
     public void Configure(EntityTypeBuilder<SiteRoleAssignment> builder)

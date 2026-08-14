@@ -102,6 +102,29 @@ export async function logout(): Promise<void> {
   }).catch(() => undefined)
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+  const response = await fetch(`${apiUrl}/auth/password-reset/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  if (!response.ok) {
+    throw new Error('Unable to request a password reset. Please try again.')
+  }
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+  const response = await fetch(`${apiUrl}/auth/password-reset/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, newPassword }),
+  })
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => ({}))) as ProblemDetails
+    throw new Error(problem.detail ?? problem.title ?? `Request failed (${response.status})`)
+  }
+}
+
 function jwtExpiryMillis(token: string): number {
   try {
     const payload = token.split('.')[1]

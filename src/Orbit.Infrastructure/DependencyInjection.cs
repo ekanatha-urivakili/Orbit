@@ -3,7 +3,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Orbit.Application.Abstractions;
 using Orbit.Infrastructure.Authorization;
+using Orbit.Infrastructure.Email;
 using Orbit.Infrastructure.Identity;
+using Orbit.Infrastructure.Messaging;
 using Orbit.Infrastructure.Persistence;
 
 namespace Orbit.Infrastructure;
@@ -40,6 +42,10 @@ public static class DependencyInjection
         services.AddScoped<IBootstrapRepository, BootstrapRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<IAuthenticationRepository, AuthenticationRepository>();
+        services.AddScoped<IOutboxRepository, OutboxRepository>();
+        services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        services.AddScoped<OutboxEmailProcessor>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.Configure<LocalTokenOptions>(configuration.GetSection(LocalTokenOptions.SectionName));
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();

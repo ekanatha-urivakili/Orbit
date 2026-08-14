@@ -118,4 +118,32 @@ internal sealed class AuthenticationRepository(OrbitDbContext dbContext) : IAuth
         dbContext.ExternalIdentities.Remove(identity);
         return Task.CompletedTask;
     }
+
+    public async Task AddPasswordResetTokenAsync(PasswordResetToken token, CancellationToken cancellationToken) =>
+        await dbContext.PasswordResetTokens.AddAsync(token, cancellationToken);
+
+    public Task<PasswordResetToken?> GetPasswordResetTokenByHashAsync(
+        string tokenHash,
+        CancellationToken cancellationToken) =>
+        dbContext.PasswordResetTokens.SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken);
+
+    public async Task RevokeActivePasswordResetTokensForUserAsync(
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var tokens = await dbContext.PasswordResetTokens
+            .Where(token => token.UserId == userId && token.Status == PasswordResetTokenStatus.Active)
+            .ToArrayAsync(cancellationToken);
+        foreach (var token in tokens)
+        {
+            token.Revoke(now);
+        }
+    }
+
+    public Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken)
+    {
+        dbContext.LocalCredentials.Update(credential);
+        return Task.CompletedTask;
+    }
 }

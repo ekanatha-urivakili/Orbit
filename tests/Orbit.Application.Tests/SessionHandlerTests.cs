@@ -444,5 +444,19 @@ public sealed class SessionHandlerTests
             ExternalIdentities.Remove(identity);
             return Task.CompletedTask;
         }
+
+        public Task AddPasswordResetTokenAsync(PasswordResetToken token, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<PasswordResetToken?> GetPasswordResetTokenByHashAsync(
+            string tokenHash, CancellationToken cancellationToken) =>
+            Task.FromResult<PasswordResetToken?>(null);
+
+        public Task RevokeActivePasswordResetTokensForUserAsync(
+            Guid userId, DateTimeOffset now, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 }

@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.Extensions.Configuration;
 using Orbit.Application.Identity;
 
 namespace Orbit.Api.Endpoints;
@@ -61,6 +62,37 @@ public static class AuthEndpoints
         .AllowAnonymous()
         .RequireRateLimiting("auth");
 
+        group.MapPost("/auth/password-reset/request", async (
+            PasswordResetRequestRequest request,
+            IConfiguration configuration,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var frontendBaseUrl = configuration["Frontend:BaseUrl"]
+                ?? throw new InvalidOperationException("Frontend:BaseUrl is required.");
+            await sender.Send(new RequestPasswordResetCommand(request.Email, frontendBaseUrl), cancellationToken);
+            return Results.Accepted();
+        })
+        .WithName("RequestPasswordReset")
+        .WithTags("Auth")
+        .AllowAnonymous()
+        .RequireRateLimiting("auth");
+
+        group.MapPost("/auth/password-reset/confirm", async (
+            PasswordResetConfirmRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(
+                new ConfirmPasswordResetCommand(request.Token, request.NewPassword),
+                cancellationToken);
+            return Results.NoContent();
+        })
+        .WithName("ConfirmPasswordReset")
+        .WithTags("Auth")
+        .AllowAnonymous()
+        .RequireRateLimiting("auth");
+
         return group;
     }
 
@@ -69,6 +101,10 @@ public static class AuthEndpoints
     public sealed record RefreshRequest(string RefreshToken, Guid? WorkspaceId);
 
     public sealed record LogoutRequest(string RefreshToken);
+
+    public sealed record PasswordResetRequestRequest(string Email);
+
+    public sealed record PasswordResetConfirmRequest(string Token, string NewPassword);
 }
 
 internal static class ClientContext

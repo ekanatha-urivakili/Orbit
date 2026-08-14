@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { orbitApi } from './api/client'
 import * as auth from './api/auth'
 import { completeOidcCallback } from './features/auth/oidcPkce'
+import { ResetPasswordView } from './features/auth/ResetPasswordView'
 import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus, WorkItemType } from './api/types'
 
 import './App.css'
@@ -39,6 +40,16 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('project')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [oidcError, setOidcError] = useState<string | null>(null)
+  const [resetToken] = useState(() => {
+    const url = new URL(window.location.href)
+    const token = new URLSearchParams(url.hash.slice(1)).get('resetToken') ?? url.searchParams.get('resetToken')
+    if (token) {
+      url.hash = ''
+      url.searchParams.delete('resetToken')
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
+    }
+    return token
+  })
 
   useEffect(() => {
     const updateOnlineState = () => setOnline(navigator.onLine)
@@ -218,6 +229,8 @@ function App() {
       document.documentElement.dataset.theme = profile.theme.toLowerCase()
     },
   })
+
+  if (resetToken) return <ResetPasswordView token={resetToken} />
 
   if (bootstrapQuery.isPending || choicesQuery.isPending) return <LoadingScreen />
   if (bootstrapQuery.isError || choicesQuery.isError) {
