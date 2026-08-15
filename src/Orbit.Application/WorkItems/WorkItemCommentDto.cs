@@ -6,6 +6,8 @@ public sealed record WorkItemCommentDto(
     Guid Id,
     Guid WorkItemId,
     Guid AuthorMembershipId,
+    string? AuthorDisplayName,
+    string? AuthorAvatarUrl,
     string Body,
     Guid[] MentionedUserIds,
     bool IsDeleted,
@@ -15,11 +17,16 @@ public sealed record WorkItemCommentDto(
     DateTimeOffset UpdatedAt,
     DateTimeOffset? LastEditedAt)
 {
-    public static WorkItemCommentDto From(WorkItemComment comment) =>
+    public static WorkItemCommentDto From(
+        WorkItemComment comment,
+        string? authorDisplayName = null,
+        string? authorAvatarUrl = null) =>
         new(
             comment.Id,
             comment.WorkItemId,
             comment.AuthorMembershipId,
+            authorDisplayName ?? "Unknown member",
+            authorAvatarUrl,
             // Mask body on soft-deleted comments — consistent with GitHub / Jira behaviour.
             comment.IsDeleted ? "[deleted]" : comment.Body,
             comment.IsDeleted ? [] : comment.MentionedUserIds,

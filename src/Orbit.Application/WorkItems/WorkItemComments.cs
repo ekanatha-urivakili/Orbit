@@ -64,6 +64,7 @@ public sealed class AddWorkItemCommentHandler(
     ICurrentPrincipal principal,
     IWorkItemRepository workItems,
     IWorkItemCommentRepository comments,
+    ISettingsRepository settings,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<AddWorkItemCommentCommand, WorkItemCommentDto>
 {
@@ -90,7 +91,12 @@ public sealed class AddWorkItemCommentHandler(
 
         await comments.AddAsync(comment, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        return WorkItemCommentDto.From(comment);
+
+        var account = principal.UserId.HasValue
+            ? await settings.GetUserAccountAsync(principal.UserId.Value, cancellationToken)
+            : null;
+
+        return WorkItemCommentDto.From(comment, account?.DisplayName, account?.AvatarUrl);
     }
 }
 
@@ -119,6 +125,7 @@ public sealed class EditWorkItemCommentHandler(
     ITenantContext tenantContext,
     ICurrentPrincipal principal,
     IWorkItemCommentRepository comments,
+    ISettingsRepository settings,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<EditWorkItemCommentCommand, WorkItemCommentDto>
 {
@@ -146,7 +153,12 @@ public sealed class EditWorkItemCommentHandler(
 
         comment.Edit(request.Body, timeProvider.GetUtcNow());
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        return WorkItemCommentDto.From(comment);
+
+        var account = principal.UserId.HasValue
+            ? await settings.GetUserAccountAsync(principal.UserId.Value, cancellationToken)
+            : null;
+
+        return WorkItemCommentDto.From(comment, account?.DisplayName, account?.AvatarUrl);
     }
 }
 
@@ -217,7 +229,9 @@ public sealed class ListWorkItemCommentsValidator : AbstractValidator<ListWorkIt
 public sealed class ListWorkItemCommentsHandler(
     ITenantContext tenantContext,
     IWorkItemRepository workItems,
-    IWorkItemCommentRepository comments) : IRequestHandler<ListWorkItemCommentsQuery, IReadOnlyList<WorkItemCommentDto>>
+    IWorkItemCommentRepository comments,
+    ITenantMembershipRepository memberships,
+    ISettingsRepository settings) : IRequestHandler<ListWorkItemCommentsQuery, IReadOnlyList<WorkItemCommentDto>>
 {
     public async Task<IReadOnlyList<WorkItemCommentDto>> Handle(
         ListWorkItemCommentsQuery request,
@@ -235,6 +249,36 @@ public sealed class ListWorkItemCommentsHandler(
             request.WorkItemId,
             cancellationToken);
 
-        return workItemComments.Select(WorkItemCommentDto.From).ToArray();
+        var tenantMembers = (await memberships.ListAsync(tenantContext.TenantId, cancellationToken))
+            .ToDictionary(m => m.Id);
+
+        var userIds = tenantMembers.Values
+            .Where(m => m.UserId.HasValue)
+            .Select(m => m.UserId!.Value)
+            .Distinct()
+            .ToArray();
+
+        var accounts = (await settings.GetUserAccountsAsync(userIds, cancellationToken))
+            .ToDictionary(a => a.Id);
+
+        return workItemComments.Select(c =>
+        {
+            string? displayName = null;
+            string? avatarUrl = null;
+            if (tenantMembers.TryGetValue(c.AuthorMembershipId, out var member))
+            {
+                if (member.UserId.HasValue && accounts.TryGetValue(member.UserId.Value, out var account))
+                {
+                    displayName = account.DisplayName;
+                    avatarUrl = account.AvatarUrl;
+                }
+                else
+                {
+                    displayName = member.Subject;
+                }
+            }
+
+            return WorkItemCommentDto.From(c, displayName, avatarUrl);
+        }).ToArray();
     }
 }

@@ -2,19 +2,23 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MessageSquare, Trash2, Edit2, CornerDownRight } from 'lucide-react'
 import { orbitApi } from '../../api/client'
-import type { Profile } from '../../api/types'
+import type { Profile, TenantMembership } from '../../api/types'
 
 export function WorkItemComments({
   workItemId,
   profile,
+  members = [],
 }: {
   workItemId: string
   profile?: Profile
+  members?: TenantMembership[]
 }) {
   const queryClient = useQueryClient()
   const [newCommentBody, setNewCommentBody] = useState('')
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editBody, setEditBody] = useState('')
+
+  const currentMember = members.find((m) => m.userId === profile?.userId)
 
   const commentsQuery = useQuery({
     queryKey: ['work-item-comments', workItemId],
@@ -48,6 +52,13 @@ export function WorkItemComments({
     },
   })
 
+  const isAuthor = (comment: { authorMembershipId: string; authorDisplayName?: string }) => {
+    if (currentMember) {
+      return comment.authorMembershipId === currentMember.id
+    }
+    return Boolean(profile && comment.authorDisplayName === profile.displayName)
+  }
+
   return (
     <div className="mt-8 border-t border-gray-200 pt-6">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 mb-4">
@@ -64,10 +75,10 @@ export function WorkItemComments({
             <div key={comment.id} className={`flex gap-3 text-sm ${comment.isDeleted ? 'opacity-50' : ''}`}>
               <div className="flex-shrink-0 pt-1">
                 {comment.authorAvatarUrl ? (
-                  <img src={comment.authorAvatarUrl} alt={comment.authorDisplayName} className="w-8 h-8 rounded-full bg-gray-100 object-cover" />
+                  <img src={comment.authorAvatarUrl} alt={comment.authorDisplayName ?? 'Author'} className="w-8 h-8 rounded-full bg-gray-100 object-cover" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs uppercase">
-                    {comment.authorDisplayName.charAt(0)}
+                    {comment.authorDisplayName ? comment.authorDisplayName.charAt(0) : '?'}
                   </div>
                 )}
               </div>
@@ -75,7 +86,7 @@ export function WorkItemComments({
               <div className="flex-1 min-w-0 bg-gray-50 rounded-lg p-3">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <div className="font-medium text-gray-900 truncate">
-                    {comment.authorDisplayName}
+                    {comment.authorDisplayName ?? 'Member'}
                   </div>
                   <div className="text-xs text-gray-500 flex-shrink-0 flex items-center gap-2">
                     <span>{new Date(comment.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
@@ -111,7 +122,7 @@ export function WorkItemComments({
                     <div className="text-gray-700 whitespace-pre-wrap break-words">{comment.body}</div>
                     
                     {/* Actions - only visible to author */}
-                    {profile && comment.authorDisplayName === profile.displayName && (
+                    {isAuthor(comment) && (
                       <div className="mt-2 flex items-center gap-3">
                         <button 
                           type="button" 

@@ -134,7 +134,7 @@ export function EditWorkItemDialog({
 
           <WorkItemAttachments workItemId={item.id} members={members} />
 
-          <WorkItemComments workItemId={item.id} profile={profile} />
+          <WorkItemComments workItemId={item.id} profile={profile} members={members} />
 
           {mutation.isError && <p className="form-error">{mutation.error.message}</p>}
           <footer className="sticky bottom-0 -mx-6 -mb-6 border-t border-gray-200 bg-white px-6 py-4">

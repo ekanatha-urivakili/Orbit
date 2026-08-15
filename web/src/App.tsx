@@ -354,7 +354,22 @@ function App() {
       )}
 
       <div className="flex">
-        <Sidebar mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+        <Sidebar
+          mobileMenuOpen={mobileMenuOpen}
+          setMobileMenuOpen={setMobileMenuOpen}
+          projects={projects}
+          selectedProjectId={selectedProjectId ?? undefined}
+          onSelectProject={(projectId) => {
+            setSelectedProjectId(projectId)
+            setActiveView('project')
+          }}
+          activeView={activeView}
+          onHomeClick={() => setActiveView('home')}
+          onOpenSettings={(section) => {
+            setSettingsSection(section)
+            setActiveView('settings')
+          }}
+        />
         
         <main className="flex-1 lg:ml-[240px] min-h-[calc(100vh-56px)] bg-white relative">
           {projects.length === 0 ? <ProjectOnboarding /> : <>
@@ -374,7 +389,7 @@ function App() {
                 Showing {workItems.length} of {workItemsQuery.data?.totalCount} work items — narrow with a filter to see the rest.
               </div>
             )}
-            {activeTab === 'Summary' && <SummaryView workItems={workItems} profile={profileQuery.data} />}
+            {activeTab === 'Summary' && <SummaryView workItems={workItems} profile={profileQuery.data} members={members} />}
 
             {activeTab === 'Backlog' && (
               <BacklogView
@@ -440,6 +455,7 @@ function App() {
           project={selectedProject}
           workItems={workItems}
           profile={profileQuery.data}
+          members={members}
           types={(itemTypesQuery.data ?? []).filter((itemType) => itemType.enabled)}
           priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
           onClose={() => setCreateOpen(false)}

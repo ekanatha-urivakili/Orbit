@@ -334,15 +334,9 @@ public sealed class ListSessionsHandler(
         var userId = PrincipalGuards.RequireUser(principal);
         var sessions = await repository.ListActiveSessionsByUserAsync(userId, cancellationToken);
 
-        var workspaces = new Dictionary<Guid, Workspace>();
-        foreach (var tenantId in sessions.Select(session => session.TenantId).Distinct())
-        {
-            var workspace = await repository.GetWorkspaceAsync(tenantId, cancellationToken);
-            if (workspace is not null)
-            {
-                workspaces[tenantId] = workspace;
-            }
-        }
+        var tenantIds = sessions.Select(session => session.TenantId).Distinct().ToArray();
+        var workspaces = (await repository.GetWorkspacesAsync(tenantIds, cancellationToken))
+            .ToDictionary(workspace => workspace.Id);
 
         return sessions
             .OrderByDescending(session => session.LastUsedAt)

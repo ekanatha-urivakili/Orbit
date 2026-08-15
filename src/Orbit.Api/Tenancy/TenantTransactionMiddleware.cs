@@ -255,7 +255,7 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         if (path.StartsWithSegments("/api/v1/choices")) return false;
         if (path.StartsWithSegments("/api/v1/bootstrap")) return false;
         if (path.StartsWithSegments("/api/v1/auth")) return false;
-        if (path.StartsWithSegments("/api/v1/me/site-capabilities")) return false;
+        if (path.StartsWithSegments("/api/v1/me")) return false;
         if (path.StartsWithSegments("/api/v1/workspaces") && HttpMethods.IsPost(context.Request.Method)) return false;
         return true;
     }

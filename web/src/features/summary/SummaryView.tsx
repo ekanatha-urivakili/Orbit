@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
-import { CheckCircle2, Edit3, PlusSquare, Maximize2 } from 'lucide-react'
+import { CheckCircle2, Edit3, PlusSquare } from 'lucide-react'
 import { groupWorkItemsByStatus } from '../../board'
 import { allStatuses, statusMeta } from '../board/constants'
 import { getInitials } from '../../lib/initials'
-import type { Profile, WorkItem } from '../../api/types'
+import type { Profile, TenantMembership, WorkItem } from '../../api/types'
 
 const toneColors: Record<string, string> = {
   slate: '#94a3b8',
@@ -28,7 +28,15 @@ function formatRelativeTime(iso: string): string {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-export function SummaryView({ workItems, profile }: { workItems: WorkItem[]; profile?: Profile }) {
+export function SummaryView({
+  workItems,
+  profile,
+  members = [],
+}: {
+  workItems: WorkItem[]
+  profile?: Profile
+  members?: TenantMembership[]
+}) {
   const sevenDaysAgo = Date.now() - sevenDaysMs
   const createdRecently = workItems.filter((item) => new Date(item.createdAt).getTime() >= sevenDaysAgo).length
   const updatedRecently = workItems.filter((item) => new Date(item.updatedAt).getTime() >= sevenDaysAgo).length
@@ -113,7 +121,6 @@ export function SummaryView({ workItems, profile }: { workItems: WorkItem[]; pro
               <h3 className="font-bold text-gray-900 mb-1">Recent activity</h3>
               <p className="text-sm text-gray-500">Work items updated most recently in this project.</p>
             </div>
-            <button className="p-1.5 hover:bg-gray-100 rounded text-gray-500"><Maximize2 size={16} /></button>
           </div>
 
           <div className="flex-1 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
@@ -121,21 +128,25 @@ export function SummaryView({ workItems, profile }: { workItems: WorkItem[]; pro
               <p className="text-sm text-gray-500">No activity yet.</p>
             ) : (
               <div className="space-y-6">
-                {recentActivity.map((item) => (
-                  <div key={item.id} className="flex gap-4">
-                    <div className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
-                      {getInitials(profile?.displayName)}
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-800 mb-1">
-                        <span className="font-medium text-blue-600">{profile?.displayName ?? 'Someone'}</span> updated{' '}
-                        <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-gray-100 rounded font-medium text-gray-700">{item.key}: {item.summary}</span>
+                {recentActivity.map((item) => {
+                  const assignee = item.assigneeUserId ? members.find((m) => m.userId === item.assigneeUserId) : undefined
+                  const actorName = assignee?.displayName ?? profile?.displayName ?? 'Team member'
+                  return (
+                    <div key={item.id} className="flex gap-4">
+                      <div className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                        {getInitials(actorName)}
                       </div>
-                      <div className="inline-block px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded mb-1">{item.status === 'Backlog' ? 'To Do' : item.status}</div>
-                      <div className="text-xs text-gray-400">{formatRelativeTime(item.updatedAt)}</div>
+                      <div>
+                        <div className="text-sm text-gray-800 mb-1">
+                          <span className="font-medium text-blue-600">{actorName}</span> updated{' '}
+                          <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-gray-100 rounded font-medium text-gray-700">{item.key}: {item.summary}</span>
+                        </div>
+                        <div className="inline-block px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded mb-1">{item.status === 'Backlog' ? 'To Do' : item.status}</div>
+                        <div className="text-xs text-gray-400">{formatRelativeTime(item.updatedAt)}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

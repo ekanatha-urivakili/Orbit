@@ -7,6 +7,7 @@ import type {
   Priority,
   Profile,
   Project,
+  TenantMembership,
   WorkItem,
   WorkItemLinkType,
   WorkItemType,
@@ -37,6 +38,7 @@ export function CreateWorkItemDialog({
   project,
   workItems,
   profile,
+  members = [],
   types,
   priorities,
   onClose,
@@ -44,6 +46,7 @@ export function CreateWorkItemDialog({
   project: Project
   workItems: WorkItem[]
   profile?: Profile
+  members?: TenantMembership[]
   types: WorkItemTypeDefinition[]
   priorities: Priority[]
   onClose: () => void
@@ -117,7 +120,16 @@ export function CreateWorkItemDialog({
           {type === 'Bug' && <Field label="Steps to conduct action"><textarea value={details.stepsToConduct ?? ''} onChange={(event) => patch({ stepsToConduct: event.target.value || null })} maxLength={32000} rows={4} placeholder="Numbered reproduction steps and expected versus actual result." /></Field>}
 
           <div className="form-row">
-            {(type === 'Bug' || type === 'Spike') && <Field label="Assignee"><select value={details.assigneeUserId ?? ''} onChange={(event) => patch({ assigneeUserId: event.target.value || null })}><option value="">Automatic</option>{profile && <option value={profile.userId}>Assign to me — {profile.displayName}</option>}</select></Field>}
+            <Field label="Assignee">
+              <select value={details.assigneeUserId ?? ''} onChange={(event) => patch({ assigneeUserId: event.target.value || null })}>
+                <option value="">Unassigned</option>
+                {members.filter((member) => member.userId).map((member) => (
+                  <option key={member.id} value={member.userId ?? ''}>
+                    {member.displayName ?? 'Unnamed member'}{profile && member.userId === profile.userId ? ' (me)' : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{priorities.map((value) => <option key={value}>{value}</option>)}</select></Field>
           </div>
 

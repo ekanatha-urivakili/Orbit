@@ -60,6 +60,10 @@ internal sealed class S3ObjectStorageService : IObjectStorageService, IDisposabl
             Verb = HttpVerb.GET,
             Protocol = _protocol,
             Expires = DateTime.UtcNow.Add(expiresIn),
+            ResponseHeaderOverrides = new ResponseHeaderOverrides
+            {
+                ContentDisposition = "attachment",
+            },
         });
 
     public async Task DeleteAsync(string objectKey, CancellationToken cancellationToken) =>
