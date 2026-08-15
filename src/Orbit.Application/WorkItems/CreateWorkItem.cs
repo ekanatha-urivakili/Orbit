@@ -58,6 +58,7 @@ public sealed class CreateWorkItemHandler(
     ITenantContext tenantContext,
     ICurrentPrincipal principal,
     IProjectRepository projects,
+    IWorkItemTypeRepository workItemTypes,
     IWorkItemRepository workItems,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
@@ -72,6 +73,13 @@ public sealed class CreateWorkItemHandler(
             cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
         var now = timeProvider.GetUtcNow();
+        var itemType = await workItemTypes.GetAsync(tenantContext.TenantId, request.Type, cancellationToken)
+            ?? throw new ValidationException("The selected work item type is not configured for this workspace.");
+        if (!itemType.Enabled)
+        {
+            throw new ValidationException("The selected work item type is disabled.");
+        }
+
         WorkItemRelations.ValidateOwners(
             request.AssigneeUserId, request.DeveloperUserId, request.ProductOwnerUserId, principal.UserId);
         var parent = await WorkItemRelations.GetRelatedItemAsync(

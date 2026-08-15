@@ -1,19 +1,25 @@
 import { useState } from 'react'
-import { Bell, ChevronRight, CircleUserRound, CreditCard, Grip, HelpCircle, LogOut, Search, Settings, Shield, SlidersHorizontal, UsersRound } from 'lucide-react'
-import type { Profile, ThemePreference } from '../../api/types'
+import { Bell, ChevronRight, CircleUserRound, CreditCard, Grip, HelpCircle, LogOut, Plus, Search, Settings, Shield, SlidersHorizontal, UsersRound } from 'lucide-react'
+import type { AccountWorkspace, Profile, ThemePreference } from '../../api/types'
 import type { SettingsSection } from '../../features/settings/SettingsView'
 import { getInitials } from '../../lib/initials'
+import * as auth from '../../api/auth'
 
 interface HeaderProps {
   online: boolean
   profile?: Profile
-  onCreateClick: () => void
+  onCreateClick?: () => void
   onHomeClick: () => void
   onOpenSettings: (section: SettingsSection) => void
   onThemeChange: (theme: ThemePreference) => void
+  workspaces?: AccountWorkspace[]
+  currentWorkspaceId?: string
+  switchingWorkspace?: boolean
+  onWorkspaceChange: (workspaceId: string) => void
+  onCreateWorkspace?: () => void
 }
 
-export function Header({ online, profile, onCreateClick, onHomeClick, onOpenSettings, onThemeChange }: HeaderProps) {
+export function Header({ online, profile, onCreateClick, onHomeClick, onOpenSettings, onThemeChange, workspaces, currentWorkspaceId, switchingWorkspace, onWorkspaceChange, onCreateWorkspace }: HeaderProps) {
   const [openMenu, setOpenMenu] = useState<'settings' | 'profile' | null>(null)
   const [themeOpen, setThemeOpen] = useState(false)
   const initials = getInitials(profile?.displayName)
@@ -26,22 +32,42 @@ export function Header({ online, profile, onCreateClick, onHomeClick, onOpenSett
         <button onClick={onHomeClick} className="flex items-center gap-2 rounded px-1 py-1 font-bold text-xl tracking-tight hover:bg-white/10" aria-label="Orbit home">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-sm text-[#0052cc]">O</span>Orbit
         </button>
+        {!!workspaces?.length && (
+          <select
+            aria-label="Current workspace"
+            value={currentWorkspaceId ?? ''}
+            disabled={switchingWorkspace}
+            onChange={(event) => onWorkspaceChange(event.target.value)}
+            className="max-w-52 rounded border border-white/30 bg-white/15 px-2 py-1 text-sm text-white disabled:opacity-60"
+          >
+            {workspaces.map((workspace) => (
+              <option key={workspace.id} value={workspace.id} className="text-gray-900">{workspace.name}</option>
+            ))}
+          </select>
+        )}
+        {onCreateWorkspace && (
+          <button onClick={onCreateWorkspace} className="rounded p-1.5 hover:bg-white/20" aria-label="Create workspace">
+            <Plus size={18} />
+          </button>
+        )}
       </div>
 
       <div className="flex-1 flex items-center justify-center max-w-2xl px-4 gap-4">
         <label className="relative flex items-center w-full max-w-md bg-white/20 hover:bg-white/30 rounded-md h-8"><Search size={16} className="absolute left-2 text-white/80" /><input className="w-full h-full pl-8 pr-3 bg-transparent text-sm text-white placeholder-white/80 focus:outline-none" placeholder="Search" /></label>
-        <button onClick={onCreateClick} className="bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded font-medium text-sm shadow-sm">+ Create</button>
+        {onCreateClick && <button onClick={onCreateClick} className="bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded font-medium text-sm shadow-sm">+ Create</button>}
       </div>
 
       <div className="relative flex items-center gap-2">
         {!online && <span className="text-xs bg-red-500/30 px-2 py-1 rounded">Offline</span>}
-        <button className="p-1.5 hover:bg-white/20 rounded" aria-label="Notifications"><Bell size={20} /></button>
-        <button className="p-1.5 hover:bg-white/20 rounded" aria-label="Help"><HelpCircle size={20} /></button>
+        <button onClick={() => openSettings('notifications')} className="p-1.5 hover:bg-white/20 rounded" aria-label="Notifications" title="Notification settings"><Bell size={20} /></button>
+        <button onClick={() => openSettings('profile')} className="p-1.5 hover:bg-white/20 rounded" aria-label="Help" title="Preferences & Help"><HelpCircle size={20} /></button>
         <button onClick={() => { setOpenMenu((current) => current === 'settings' ? null : 'settings'); setThemeOpen(false) }} className="p-1.5 hover:bg-white/20 rounded" aria-label="Settings"><Settings size={20} /></button>
-        <button onClick={() => { setOpenMenu((current) => current === 'profile' ? null : 'profile'); setThemeOpen(false) }} className="w-8 h-8 rounded-full bg-orange-400 text-slate-900 flex items-center justify-center text-xs font-bold" aria-label="Profile menu">{initials}</button>
+        <button onClick={() => { setOpenMenu((current) => current === 'profile' ? null : 'profile'); setThemeOpen(false) }} className="w-8 h-8 rounded-full bg-orange-400 text-slate-900 flex items-center justify-center text-xs font-bold overflow-hidden" aria-label="Profile menu">
+          {profile?.avatarUrl ? <img src={profile.avatarUrl} alt={profile.displayName} className="w-full h-full object-cover" /> : initials}
+        </button>
 
         {openMenu === 'settings' && <SettingsMenu onSelect={openSettings} />}
-        {openMenu === 'profile' && <ProfileMenu profile={profile} themeOpen={themeOpen} setThemeOpen={setThemeOpen} onSelect={openSettings} onThemeChange={(theme) => { onThemeChange(theme); setThemeOpen(false); setOpenMenu(null) }} />}
+        {openMenu === 'profile' && <ProfileMenu profile={profile} themeOpen={themeOpen} setThemeOpen={setThemeOpen} onSelect={openSettings} onHomeClick={() => { setOpenMenu(null); onHomeClick() }} onThemeChange={(theme) => { onThemeChange(theme); setThemeOpen(false); setOpenMenu(null) }} />}
       </div>
     </header>
   )
@@ -61,17 +87,21 @@ function SettingsMenu({ onSelect }: { onSelect: (section: SettingsSection) => vo
   </div>
 }
 
-function ProfileMenu({ profile, themeOpen, setThemeOpen, onSelect, onThemeChange }: { profile?: Profile; themeOpen: boolean; setThemeOpen: (open: boolean) => void; onSelect: (section: SettingsSection) => void; onThemeChange: (theme: ThemePreference) => void }) {
+function ProfileMenu({ profile, themeOpen, setThemeOpen, onSelect, onHomeClick, onThemeChange }: { profile?: Profile; themeOpen: boolean; setThemeOpen: (open: boolean) => void; onSelect: (section: SettingsSection) => void; onHomeClick: () => void; onThemeChange: (theme: ThemePreference) => void }) {
   const initials = getInitials(profile?.displayName)
   return <div className="absolute right-0 top-11 w-[320px] max-w-[90vw] rounded-xl border border-gray-200 bg-white p-3 text-gray-900 shadow-2xl">
-    <div className="mb-2 flex items-center gap-3 rounded-lg bg-gray-50 p-3"><span className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-400 text-lg font-bold">{initials}</span><div className="min-w-0"><p className="truncate font-semibold">{profile?.displayName ?? 'Orbit user'}</p><p className="truncate text-xs text-gray-500">{profile?.email ?? 'Loading account…'}</p></div></div>
+    <div className="mb-2 flex items-center gap-3 rounded-lg bg-gray-50 p-3">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-400 text-lg font-bold overflow-hidden">
+        {profile?.avatarUrl ? <img src={profile.avatarUrl} alt={profile.displayName} className="w-full h-full object-cover" /> : initials}
+      </span>
+      <div className="min-w-0"><p className="truncate font-semibold">{profile?.displayName ?? 'Orbit user'}</p><p className="truncate text-xs text-gray-500">{profile?.email ?? 'Loading account…'}</p></div>
+    </div>
     <MenuItem icon={<CircleUserRound size={19} />} title="Profile" onClick={() => onSelect('profile')} />
     <MenuItem icon={<Shield size={19} />} title="Account settings" onClick={() => onSelect('security')} />
     <div className="relative"><MenuItem icon={<SlidersHorizontal size={19} />} title="Theme" trailing={<ChevronRight size={17} />} onClick={() => setThemeOpen(!themeOpen)} />{themeOpen && <div className="mx-2 mb-2 rounded-lg border border-gray-200 bg-gray-50 p-1">{(['Light', 'Dark', 'System'] as ThemePreference[]).map((theme) => <button key={theme} onClick={() => onThemeChange(theme)} className={`flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-white ${profile?.theme === theme ? 'font-semibold text-blue-700' : ''}`}>{theme === 'System' ? 'Match browser' : theme}</button>)}</div>}</div>
-    <MenuItem icon={<HelpCircle size={19} />} title="Open Quickstart" disabled />
+    <MenuItem icon={<HelpCircle size={19} />} title="Open Quickstart / Home" onClick={onHomeClick} />
     <div className="my-2 border-t border-gray-200" />
-    <MenuItem icon={<UsersRound size={19} />} title="Switch account" disabled />
-    <MenuItem icon={<LogOut size={19} />} title="Log out" disabled />
+    <MenuItem icon={<LogOut size={19} />} title="Log out" onClick={() => auth.logout()} />
   </div>
 }
 

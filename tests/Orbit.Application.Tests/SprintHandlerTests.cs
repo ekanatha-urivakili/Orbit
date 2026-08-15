@@ -70,16 +70,19 @@ public sealed class SprintHandlerTests
         var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
         var item = NewItem(tenantId, project.Id, WorkItemStatus.Backlog, 1);
         var membership = SprintMembership.Create(tenantId, sprint.Id, item.Id, DateTimeOffset.UtcNow);
+        var memberships = new SprintMembershipRepositoryStub(membership);
         var handler = new ListSprintsHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.View]),
             new SprintRepositoryStub(sprint),
-            new SprintMembershipRepositoryStub(membership));
+            memberships);
 
         var result = await handler.Handle(new ListSprintsQuery(project.Id), CancellationToken.None);
 
         Assert.Single(result);
         Assert.Equal([item.Id], result[0].WorkItemIds);
+        Assert.Equal(1, memberships.ListBySprintsCount);
+        Assert.Equal(0, memberships.ListBySprintCount);
     }
 
     [Fact]
@@ -158,6 +161,8 @@ public sealed class SprintHandlerTests
         var todoMembership = SprintMembership.Create(tenantId, sprint.Id, todoItem.Id, DateTimeOffset.UtcNow);
         var memberships = new SprintMembershipRepositoryStub(doneMembership, todoMembership);
         var facts = new SprintScopeFactRepositoryStub();
+        var unitOfWork = new UnitOfWorkStub();
+        var workItems = new WorkItemRepositoryStub(doneItem, todoItem);
         var handler = new CompleteSprintHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
@@ -165,8 +170,8 @@ public sealed class SprintHandlerTests
             memberships,
             new SprintCompletionOperationRepositoryStub(),
             facts,
-            new WorkItemRepositoryStub(doneItem, todoItem),
-            new UnitOfWorkStub(),
+            workItems,
+            unitOfWork,
             TimeProvider.System);
 
         var result = await handler.Handle(
@@ -178,6 +183,8 @@ public sealed class SprintHandlerTests
         Assert.Null(doneMembership.RemovedAt);
         Assert.Contains(facts.Added, fact => fact.FactType == AgileFactType.SprintRemoved && fact.WorkItemId == todoItem.Id);
         Assert.Contains(facts.Added, fact => fact.FactType == AgileFactType.SprintCompleted && fact.WorkItemId is null);
+        Assert.Equal(1, workItems.ListByIdsCount);
+        Assert.Equal(1, unitOfWork.SaveCount);
     }
 
     [Fact]
@@ -504,6 +511,7 @@ public sealed class SprintHandlerTests
 
     private sealed class WorkItemRepositoryStub(params WorkItem[] items) : IWorkItemRepository
     {
+        public int ListByIdsCount { get; private set; }
         public Task AddAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task<WorkItem?> GetAsync(
@@ -526,9 +534,12 @@ public sealed class SprintHandlerTests
             Guid tenantId,
             IReadOnlyCollection<Guid> workItemIds,
             ProjectPermission permission,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<WorkItem>>(
+            CancellationToken cancellationToken)
+        {
+            ListByIdsCount++;
+            return Task.FromResult<IReadOnlyList<WorkItem>>(
                 items.Where(item => item.TenantId == tenantId && workItemIds.Contains(item.Id)).ToArray());
+        }
     }
 
     private sealed class SprintRepositoryStub(params Sprint[] sprints) : ISprintRepository
@@ -560,6 +571,8 @@ public sealed class SprintHandlerTests
     private sealed class SprintMembershipRepositoryStub(params SprintMembership[] memberships) : ISprintMembershipRepository
     {
         private readonly List<SprintMembership> _memberships = [.. memberships];
+        public int ListBySprintCount { get; private set; }
+        public int ListBySprintsCount { get; private set; }
 
         public Task AddAsync(SprintMembership membership, CancellationToken cancellationToken)
         {
@@ -573,19 +586,25 @@ public sealed class SprintHandlerTests
                 membership.TenantId == tenantId && membership.WorkItemId == workItemId && membership.RemovedAt is null));
 
         public Task<IReadOnlyList<SprintMembership>> ListCurrentBySprintAsync(
-            Guid tenantId, Guid sprintId, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<SprintMembership>>(
+            Guid tenantId, Guid sprintId, CancellationToken cancellationToken)
+        {
+            ListBySprintCount++;
+            return Task.FromResult<IReadOnlyList<SprintMembership>>(
                 [.. _memberships.Where(membership =>
                     membership.TenantId == tenantId && membership.SprintId == sprintId && membership.RemovedAt is null)]);
+        }
 
         public Task<IReadOnlyList<SprintMembership>> ListCurrentBySprintsAsync(
             Guid tenantId,
             IReadOnlyCollection<Guid> sprintIds,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<SprintMembership>>(
+            CancellationToken cancellationToken)
+        {
+            ListBySprintsCount++;
+            return Task.FromResult<IReadOnlyList<SprintMembership>>(
                 [.. _memberships.Where(membership => membership.TenantId == tenantId
                     && sprintIds.Contains(membership.SprintId)
                     && membership.RemovedAt is null)]);
+        }
     }
 
     private sealed class SprintCompletionOperationRepositoryStub(SprintCompletionOperation? existing = null)
@@ -614,10 +633,21 @@ public sealed class SprintHandlerTests
             Added.Add(fact);
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyList<SprintScopeFact>> ListBySprintAsync(
+            Guid tenantId, Guid sprintId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SprintScopeFact>>(
+                [.. Added.Where(fact => fact.TenantId == tenantId && fact.SprintId == sprintId).OrderBy(fact => fact.OccurredAt)]);
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork
     {
-        public Task<int> SaveChangesAsync(CancellationToken cancellationToken) => Task.FromResult(1);
+        public int SaveCount { get; private set; }
+
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken)
+        {
+            SaveCount++;
+            return Task.FromResult(1);
+        }
     }
 }

@@ -3,6 +3,7 @@ using Orbit.Application.Common;
 using Orbit.Application.WorkItems;
 using Orbit.Domain.Access;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Projects;
 using Orbit.Domain.WorkItems;
 
@@ -22,6 +23,7 @@ public sealed class CreateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(),
             projects,
+            new WorkItemTypeRepositoryStub(tenantId),
             workItems,
             unitOfWork,
             TimeProvider.System);
@@ -33,6 +35,27 @@ public sealed class CreateWorkItemHandlerTests
         Assert.Equal("ORB-1", result.Key);
         Assert.NotNull(workItems.Added);
         Assert.Equal(1, unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task Handle_RejectsDisabledWorkspaceItemType()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var handler = new CreateWorkItemHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(),
+            new ProjectRepositoryStub(project),
+            new WorkItemTypeRepositoryStub(tenantId, WorkItemType.Story),
+            new WorkItemRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            new CreateWorkItemCommand(project.Id, "Build the board", null, WorkItemType.Story, Priority.High),
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<FluentValidation.ValidationException>(action);
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
@@ -93,6 +116,40 @@ public sealed class CreateWorkItemHandlerTests
             ProjectPermission permission,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WorkItem>>([]);
+    }
+
+    private sealed class WorkItemTypeRepositoryStub : IWorkItemTypeRepository
+    {
+        private readonly IReadOnlyList<WorkItemTypeDefinition> definitions;
+
+        public WorkItemTypeRepositoryStub(Guid tenantId, WorkItemType? disabled = null)
+        {
+            definitions = WorkItemTypeDefinition.CreateSoftwareDefaults(tenantId, DateTimeOffset.UtcNow);
+            if (disabled.HasValue)
+            {
+                var definition = definitions.Single(itemType => itemType.Id == disabled.Value);
+                definition.Update(
+                    definition.Label,
+                    definition.Description,
+                    definition.Order,
+                    definition.ColorToken,
+                    false,
+                    DateTimeOffset.UtcNow);
+            }
+        }
+
+        public Task<WorkItemTypeDefinition?> GetAsync(
+            Guid requestedTenantId,
+            WorkItemType id,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(definitions.SingleOrDefault(
+                definition => definition.TenantId == requestedTenantId && definition.Id == id));
+
+        public Task<IReadOnlyList<WorkItemTypeDefinition>> ListAsync(
+            Guid requestedTenantId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemTypeDefinition>>(
+                definitions.Where(definition => definition.TenantId == requestedTenantId).ToArray());
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

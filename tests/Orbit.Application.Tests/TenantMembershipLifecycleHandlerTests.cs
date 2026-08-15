@@ -17,10 +17,11 @@ public sealed class TenantMembershipLifecycleHandlerTests
         var tenantId = workspace.Id;
         var membership = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([membership]);
+        var ownerLock = new OwnerLockStub();
         var handler = new ChangeTenantMembershipRoleHandler(
             new TenantContextStub(tenantId),
             new AuthorizationStub(true),
-            new OwnerLockStub(),
+            ownerLock,
             memberships,
             new SettingsRepositoryStub(workspace),
             new UnitOfWorkStub());
@@ -31,6 +32,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
 
         Assert.Equal(TenantRole.Administrator, result.Role);
         Assert.Equal(2, workspace.AuthorizationEpoch);
+        Assert.Equal(tenantId, ownerLock.AcquiredTenantId);
     }
 
     [Fact]
@@ -146,7 +148,13 @@ public sealed class TenantMembershipLifecycleHandlerTests
 
     private sealed class OwnerLockStub : ITenantOwnerLock
     {
-        public Task AcquireAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Guid? AcquiredTenantId { get; private set; }
+
+        public Task AcquireAsync(Guid tenantId, CancellationToken cancellationToken)
+        {
+            AcquiredTenantId = tenantId;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class AuthorizationStub(bool allowed) : ITenantAuthorization
@@ -184,6 +192,10 @@ public sealed class TenantMembershipLifecycleHandlerTests
     {
         public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserAccount?>(null);
+
+        public Task<IReadOnlyList<UserAccount>> GetUserAccountsAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserAccount>>([]);
 
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);

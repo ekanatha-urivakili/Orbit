@@ -2,8 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Orbit.Application.Abstractions;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Messaging;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
 using Orbit.Domain.WorkItems;
@@ -39,6 +41,14 @@ public sealed class OrbitDbContext(
     public DbSet<SprintMembership> SprintMemberships => Set<SprintMembership>();
     public DbSet<SprintCompletionOperation> SprintCompletionOperations => Set<SprintCompletionOperation>();
     public DbSet<SprintScopeFact> SprintScopeFacts => Set<SprintScopeFact>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<ServiceAccountCredential> ServiceAccountCredentials => Set<ServiceAccountCredential>();
+    public DbSet<OutboxEmailMessage> OutboxEmailMessages => Set<OutboxEmailMessage>();
+    public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
+    public DbSet<WorkItemTypeDefinition> WorkItemTypeDefinitions => Set<WorkItemTypeDefinition>();
+    public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
+    public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -69,5 +79,15 @@ public sealed class OrbitDbContext(
         modelBuilder.Entity<SprintCompletionOperation>()
             .HasQueryFilter(operation => operation.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<SprintScopeFact>().HasQueryFilter(fact => fact.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkspaceInvitation>()
+            .HasQueryFilter(invitation => invitation.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkItemTypeDefinition>()
+            .HasQueryFilter(definition => definition.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<CustomFieldDefinition>()
+            .HasQueryFilter(definition => definition.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkItemComment>()
+            .HasQueryFilter(comment => comment.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<Attachment>()
+            .HasQueryFilter(attachment => attachment.TenantId == tenantContext.TenantId);
     }
 }

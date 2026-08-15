@@ -140,6 +140,133 @@ public static class WorkItemEndpoints
         .WithName("ReorderWorkItem")
         .WithTags("Work items");
 
+        // ------------------------------------------------------------------
+        // Comments (E2.3 S2.3.1)
+        // ------------------------------------------------------------------
+
+        group.MapGet("/work-items/{workItemId:guid}/comments", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await sender.Send(new ListWorkItemCommentsQuery(workItemId), cancellationToken);
+            return Results.Ok(result);
+        })
+            .WithName("ListWorkItemComments")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/comments", async (
+            Guid workItemId,
+            AddWorkItemCommentRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var comment = await sender.Send(
+                new AddWorkItemCommentCommand(workItemId, request.Body),
+                cancellationToken);
+            return Results.Created(
+                $"/api/v1/work-items/{workItemId}/comments/{comment.Id}",
+                comment);
+        })
+            .WithName("AddWorkItemComment")
+            .WithTags("Work items");
+
+        group.MapPatch("/work-items/{workItemId:guid}/comments/{commentId:guid}", async (
+            Guid workItemId,
+            Guid commentId,
+            EditWorkItemCommentRequest request,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var comment = await sender.Send(
+                new EditWorkItemCommentCommand(workItemId, commentId, request.Body, expectedVersion),
+                cancellationToken);
+            httpResponse.Headers.ETag = $"\"{comment.Version}\"";
+            return Results.Ok(comment);
+        })
+            .WithName("EditWorkItemComment")
+            .WithTags("Work items");
+
+        group.MapDelete("/work-items/{workItemId:guid}/comments/{commentId:guid}", async (
+            Guid workItemId,
+            Guid commentId,
+            HttpRequest httpRequest,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            await sender.Send(
+                new DeleteWorkItemCommentCommand(workItemId, commentId, expectedVersion),
+                cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("DeleteWorkItemComment")
+            .WithTags("Work items");
+
+        // ------------------------------------------------------------------
+        // Attachments
+        // ------------------------------------------------------------------
+
+        group.MapGet("/work-items/{workItemId:guid}/attachments", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new ListWorkItemAttachmentsQuery(workItemId), cancellationToken)))
+            .WithName("ListWorkItemAttachments")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/attachments/presign", async (
+            Guid workItemId,
+            PresignWorkItemAttachmentUploadRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(
+                new PresignWorkItemAttachmentUploadCommand(
+                    workItemId, request.FileName, request.ContentType, request.SizeBytes),
+                cancellationToken)))
+            .WithName("PresignWorkItemAttachmentUpload")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/attachments", async (
+            Guid workItemId,
+            ConfirmWorkItemAttachmentRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var attachment = await sender.Send(
+                new ConfirmWorkItemAttachmentCommand(
+                    workItemId, request.FileName, request.ContentType, request.SizeBytes, request.ObjectKey),
+                cancellationToken);
+            return Results.Created(
+                $"/api/v1/work-items/{workItemId}/attachments/{attachment.Id}",
+                attachment);
+        })
+            .WithName("ConfirmWorkItemAttachment")
+            .WithTags("Work items");
+
+        group.MapDelete("/work-items/{workItemId:guid}/attachments/{attachmentId:guid}", async (
+            Guid workItemId,
+            Guid attachmentId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new DeleteWorkItemAttachmentCommand(workItemId, attachmentId), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("DeleteWorkItemAttachment")
+            .WithTags("Work items");
+
         return group;
     }
 
@@ -188,4 +315,13 @@ public static class WorkItemEndpoints
     public sealed record ChangeStatusRequest(WorkItemStatus Status);
 
     public sealed record ReorderWorkItemRequest(Guid? BeforeWorkItemId, Guid? AfterWorkItemId);
+
+    public sealed record AddWorkItemCommentRequest(string Body);
+
+    public sealed record EditWorkItemCommentRequest(string Body);
+
+    public sealed record PresignWorkItemAttachmentUploadRequest(string FileName, string ContentType, long SizeBytes);
+
+    public sealed record ConfirmWorkItemAttachmentRequest(
+        string FileName, string ContentType, long SizeBytes, string ObjectKey);
 }

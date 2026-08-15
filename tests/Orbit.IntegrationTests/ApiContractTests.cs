@@ -52,16 +52,34 @@ public sealed class ApiContractTests : IClassFixture<OrbitApiFactory>
         Assert.Equal(TenantRole.Owner, principal.TenantRole);
         Assert.True(principal.IsDevelopmentBypass);
     }
+
+    [Fact]
+    public void SetUser_ResolvesUserPrincipalContextWithoutTenant()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var principal = new CurrentPrincipal();
+
+        principal.SetUser(userId, PrincipalType.User, sessionId);
+
+        Assert.Equal(Guid.Empty, principal.MembershipId);
+        Assert.Equal(userId, principal.UserId);
+        Assert.Equal(sessionId, principal.SessionId);
+        Assert.Equal(PrincipalType.User, principal.PrincipalType);
+        Assert.Equal(TenantRole.Member, principal.TenantRole);
+        Assert.False(principal.IsDevelopmentBypass);
+    }
 }
 
 public sealed class OrbitApiFactory : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        var password = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "orbit_local";
         builder.UseEnvironment("Testing");
         builder.UseSetting(
             "ConnectionStrings:Postgres",
-            "Host=localhost;Database=orbit_test;Username=orbit;Password=unused");
+            $"Host=localhost;Database=orbit_test;Username=orbit;Password={password}");
         builder.UseSetting("Tenancy:AllowHeaderTenant", "true");
         builder.UseSetting("DatabaseSecurity:EnforceRuntimeRole", "false");
     }

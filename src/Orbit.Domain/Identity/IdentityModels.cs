@@ -213,6 +213,24 @@ public sealed class LocalCredential
 
         return new LocalCredential(userId, passwordHash, hashAlgorithm, hashParametersVersion, now);
     }
+
+    public void UpdatePassword(string passwordHash, string hashAlgorithm, int hashParametersVersion, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(passwordHash))
+        {
+            throw new DomainException("Password hash is required.");
+        }
+
+        if (hashAlgorithm.Length is < 1 or > 32 || hashParametersVersion < 1)
+        {
+            throw new DomainException("Password hash metadata is invalid.");
+        }
+
+        PasswordHash = passwordHash;
+        HashAlgorithm = hashAlgorithm;
+        HashParametersVersion = hashParametersVersion;
+        ChangedAt = now;
+    }
 }
 
 public enum RefreshSessionStatus
@@ -371,6 +389,86 @@ public sealed class RefreshSession
     }
 }
 
+public enum PasswordResetTokenStatus
+{
+    Active,
+    Used,
+    Revoked
+}
+
+/// <summary>
+/// A single-use, expiring password-reset token, modeled on <see cref="RefreshSession"/>: only its
+/// hash is stored, and it is consumed exactly once. Any prior active token for the same user is
+/// revoked when a new one is requested (see <c>RevokeActivePasswordResetTokensForUserAsync</c>).
+/// </summary>
+public sealed class PasswordResetToken
+{
+    private PasswordResetToken()
+    {
+    }
+
+    private PasswordResetToken(Guid id, Guid userId, string tokenHash, DateTimeOffset now, DateTimeOffset expiresAt)
+    {
+        Id = id;
+        UserId = userId;
+        TokenHash = tokenHash;
+        Status = PasswordResetTokenStatus.Active;
+        CreatedAt = now;
+        ExpiresAt = expiresAt;
+    }
+
+    public Guid Id { get; private set; }
+    public Guid UserId { get; private set; }
+    public string TokenHash { get; private set; } = string.Empty;
+    public PasswordResetTokenStatus Status { get; private set; }
+    public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset ExpiresAt { get; private set; }
+    public DateTimeOffset? ConsumedAt { get; private set; }
+    public long Version { get; private set; } = 1;
+
+    public static PasswordResetToken Create(Guid userId, string tokenHash, DateTimeOffset now, TimeSpan lifetime)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new DomainException("User id is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(tokenHash))
+        {
+            throw new DomainException("A token hash is required.");
+        }
+
+        return new PasswordResetToken(Guid.CreateVersion7(), userId, tokenHash, now, now + lifetime);
+    }
+
+    public bool IsUsable(DateTimeOffset now) =>
+        Status == PasswordResetTokenStatus.Active && ExpiresAt > now;
+
+    public void Consume(DateTimeOffset now)
+    {
+        if (Status != PasswordResetTokenStatus.Active)
+        {
+            throw new DomainException("Only an active reset token can be consumed.");
+        }
+
+        Status = PasswordResetTokenStatus.Used;
+        ConsumedAt = now;
+        Version++;
+    }
+
+    public void Revoke(DateTimeOffset now)
+    {
+        if (Status != PasswordResetTokenStatus.Active)
+        {
+            return;
+        }
+
+        Status = PasswordResetTokenStatus.Revoked;
+        ConsumedAt = now;
+        Version++;
+    }
+}
+
 public sealed class SiteRoleAssignment
 {
     private SiteRoleAssignment()
@@ -397,4 +495,68 @@ public sealed class SiteRoleAssignment
 
         return new SiteRoleAssignment(userId, SiteRole.SuperAdministrator, now);
     }
+}
+
+/// <summary>
+/// A rotatable client-secret credential for a service-account <c>TenantMembership</c> (see
+/// <c>Orbit.Domain.Access</c>). <see cref="ClientId"/> is the membership's <c>Subject</c> - stable
+/// across rotation, since it's what both the JWT's <c>client_id</c> claim and
+/// <c>TenantTransactionMiddleware</c>'s membership lookup key on - while <see cref="Id"/> is this
+/// row's own identity, so a revoked row from a previous rotation and its active replacement can
+/// coexist under the same <see cref="ClientId"/>. The secret is a 256-bit CSPRNG value, so - like
+/// <see cref="RefreshSession"/>'s and <see cref="PasswordResetToken"/>'s bearer tokens, and unlike a
+/// human-chosen <see cref="LocalCredential"/> password - it only needs a fast, non-adaptive hash
+/// (SHA-256), not Argon2id. Global, not tenant-scoped, for the same reason those two are: the
+/// token-issuance endpoint authenticates by <see cref="ClientId"/> before any tenant context exists.
+/// <see cref="TenantId"/> and <see cref="MembershipId"/> are plain columns here (no FK/RLS) purely
+/// so the issuing handler knows which tenant to establish once the secret has been verified.
+/// </summary>
+public sealed class ServiceAccountCredential
+{
+    private ServiceAccountCredential()
+    {
+    }
+
+    private ServiceAccountCredential(
+        Guid id, Guid tenantId, Guid membershipId, Guid clientId, string secretHash, DateTimeOffset now)
+    {
+        Id = id;
+        TenantId = tenantId;
+        MembershipId = membershipId;
+        ClientId = clientId;
+        SecretHash = secretHash;
+        CreatedAt = now;
+    }
+
+    public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
+    public Guid MembershipId { get; private set; }
+    public Guid ClientId { get; private set; }
+    public string SecretHash { get; private set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset? RevokedAt { get; private set; }
+
+    public bool IsActive => RevokedAt is null;
+
+    public static ServiceAccountCredential Create(
+        Guid tenantId,
+        Guid membershipId,
+        Guid clientId,
+        string secretHash,
+        DateTimeOffset now)
+    {
+        if (tenantId == Guid.Empty || membershipId == Guid.Empty || clientId == Guid.Empty)
+        {
+            throw new DomainException("Tenant, membership, and client ids are required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(secretHash))
+        {
+            throw new DomainException("A secret hash is required.");
+        }
+
+        return new ServiceAccountCredential(Guid.CreateVersion7(), tenantId, membershipId, clientId, secretHash, now);
+    }
+
+    public void Revoke(DateTimeOffset now) => RevokedAt ??= now;
 }

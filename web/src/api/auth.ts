@@ -2,10 +2,12 @@ import type { AuthSession } from './types'
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5014/api/v1'
 const refreshTokenStorageKey = 'orbit.refresh-token'
+export const tenantStorageKey = 'orbit.tenant-id'
 
 let accessToken: string | null = null
 let accessTokenExpiresAt = 0
 let refreshPromise: Promise<AuthSession | null> | null = null
+let currentSession: AuthSession | null = null
 
 type Listener = () => void
 const listeners = new Set<Listener>()
@@ -38,6 +40,8 @@ function applySession(session: AuthSession) {
   accessToken = session.accessToken
   accessTokenExpiresAt = new Date(session.accessTokenExpiresAt).getTime()
   sessionStorage.setItem(refreshTokenStorageKey, session.refreshToken)
+  localStorage.setItem(tenantStorageKey, session.workspaceId)
+  currentSession = session
   notify()
 }
 
@@ -47,6 +51,10 @@ export function getAccessToken(): string | null {
 
 export function isAuthenticated(): boolean {
   return accessToken !== null
+}
+
+export function getCurrentSession(): AuthSession | null {
+  return currentSession
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
@@ -60,19 +68,25 @@ export async function login(email: string, password: string): Promise<AuthSessio
   return session
 }
 
-async function refresh(): Promise<AuthSession | null> {
+async function refresh(workspaceId?: string): Promise<AuthSession | null> {
   const refreshToken = sessionStorage.getItem(refreshTokenStorageKey)
   if (!refreshToken) return null
 
   const response = await fetch(`${apiUrl}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify({ refreshToken, workspaceId }),
   })
   if (!response.ok) {
-    sessionStorage.removeItem(refreshTokenStorageKey)
-    accessToken = null
-    notify()
+    // Only a 401 means the refresh token itself is invalid/expired/revoked - clear the session.
+    // A 403 (e.g. switching to a workspace the user is no longer an active member of) leaves the
+    // existing session valid, so it must not be torn down here.
+    if (response.status === 401) {
+      sessionStorage.removeItem(refreshTokenStorageKey)
+      accessToken = null
+      currentSession = null
+      notify()
+    }
     return null
   }
 
@@ -92,6 +106,7 @@ export async function logout(): Promise<void> {
   const refreshToken = sessionStorage.getItem(refreshTokenStorageKey)
   sessionStorage.removeItem(refreshTokenStorageKey)
   accessToken = null
+  currentSession = null
   notify()
   if (!refreshToken) return
 
@@ -100,6 +115,39 @@ export async function logout(): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken }),
   }).catch(() => undefined)
+}
+
+export async function switchWorkspace(workspaceId: string): Promise<AuthSession> {
+  if (refreshPromise) await refreshPromise
+  refreshPromise = refresh(workspaceId).finally(() => {
+    refreshPromise = null
+  })
+  const session = await refreshPromise
+  if (!session) throw new Error('The workspace session could not be activated.')
+  return session
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  const response = await fetch(`${apiUrl}/auth/password-reset/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  if (!response.ok) {
+    throw new Error('Unable to request a password reset. Please try again.')
+  }
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+  const response = await fetch(`${apiUrl}/auth/password-reset/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, newPassword }),
+  })
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => ({}))) as ProblemDetails
+    throw new Error(problem.detail ?? problem.title ?? `Request failed (${response.status})`)
+  }
 }
 
 function jwtExpiryMillis(token: string): number {
@@ -122,6 +170,7 @@ function jwtExpiryMillis(token: string): number {
 export function setExternalAccessToken(token: string): void {
   accessToken = token
   accessTokenExpiresAt = jwtExpiryMillis(token)
+  currentSession = null
   notify()
 }
 

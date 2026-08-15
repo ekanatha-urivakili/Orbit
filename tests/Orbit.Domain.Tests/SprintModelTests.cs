@@ -252,7 +252,7 @@ public sealed class SprintModelTests
     {
         var now = DateTimeOffset.UtcNow;
         var action = () =>
-            SprintScopeFact.Create(Guid.Empty, Guid.NewGuid(), Guid.NewGuid(), AgileFactType.SprintAdded, now, now);
+            SprintScopeFact.Create(Guid.Empty, Guid.NewGuid(), Guid.NewGuid(), AgileFactType.SprintAdded, null, now, now);
 
         Assert.Throws<DomainException>(action);
     }
@@ -262,9 +262,19 @@ public sealed class SprintModelTests
     {
         var now = DateTimeOffset.UtcNow;
 
-        var fact = SprintScopeFact.Create(Guid.NewGuid(), Guid.NewGuid(), null, AgileFactType.SprintCompleted, now, now);
+        var fact = SprintScopeFact.Create(Guid.NewGuid(), Guid.NewGuid(), null, AgileFactType.SprintCompleted, null, now, now);
 
         Assert.Null(fact.WorkItemId);
         Assert.Equal(AgileFactType.SprintCompleted, fact.FactType);
+    }
+
+    [Fact]
+    public void SprintScopeFact_Create_StoresEstimateDelta()
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        var fact = SprintScopeFact.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), AgileFactType.SprintAdded, 5m, now, now);
+
+        Assert.Equal(5m, fact.EstimateDelta);
     }
 }

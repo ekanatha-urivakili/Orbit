@@ -1,0 +1,223 @@
+using FluentValidation;
+using MediatR;
+using Orbit.Application.Abstractions;
+using Orbit.Application.Common;
+using Orbit.Domain.Access;
+using Orbit.Domain.WorkItems;
+
+namespace Orbit.Application.WorkItems;
+
+/// <summary>
+/// Content types accepted for work-item attachments. Deliberately narrow — this is a self-hosted
+/// MVP upload path with no malware/quarantine scanning (see ARCH-ORBIT-001 §13.5.2), so the
+/// allowlist is the only defense against arbitrary executable content.
+/// </summary>
+internal static class AttachmentContentTypes
+{
+    public static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+        "application/pdf", "text/plain", "text/csv", "application/json",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/zip",
+    };
+
+    public const long MaxSizeBytes = 25 * 1024 * 1024;
+}
+
+// ---------------------------------------------------------------------------
+// Presign upload
+// ---------------------------------------------------------------------------
+
+public sealed record PresignWorkItemAttachmentUploadCommand(
+    Guid WorkItemId,
+    string FileName,
+    string ContentType,
+    long SizeBytes) : ICommand<PresignedAttachmentUploadDto>;
+
+public sealed class PresignWorkItemAttachmentUploadValidator : AbstractValidator<PresignWorkItemAttachmentUploadCommand>
+{
+    public PresignWorkItemAttachmentUploadValidator()
+    {
+        RuleFor(command => command.WorkItemId).NotEmpty();
+        RuleFor(command => command.FileName).NotEmpty().MaximumLength(255);
+        RuleFor(command => command.ContentType)
+            .Must(contentType => AttachmentContentTypes.Allowed.Contains(contentType))
+            .WithMessage("This file type is not allowed for attachments.");
+        RuleFor(command => command.SizeBytes).InclusiveBetween(1, AttachmentContentTypes.MaxSizeBytes);
+    }
+}
+
+public sealed class PresignWorkItemAttachmentUploadHandler(
+    ITenantContext tenantContext,
+    IWorkItemRepository workItems,
+    IObjectStorageService storage)
+    : IRequestHandler<PresignWorkItemAttachmentUploadCommand, PresignedAttachmentUploadDto>
+{
+    public async Task<PresignedAttachmentUploadDto> Handle(
+        PresignWorkItemAttachmentUploadCommand request,
+        CancellationToken cancellationToken)
+    {
+        var workItem = await workItems.GetAsync(
+                tenantContext.TenantId, request.WorkItemId, ProjectPermission.TransitionWorkItem, cancellationToken)
+            ?? throw new NotFoundException("Work item was not found.");
+
+        var objectKey = $"{tenantContext.TenantId:N}/{workItem.Id:N}/{Guid.NewGuid():N}-{SanitizeFileName(request.FileName)}";
+        var upload = storage.CreatePresignedUpload(objectKey, request.ContentType, TimeSpan.FromMinutes(15));
+        return new PresignedAttachmentUploadDto(upload.UploadUrl, upload.ObjectKey, upload.ExpiresAt);
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        var safeChars = fileName.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_').ToArray();
+        return new string(safeChars);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Confirm upload
+// ---------------------------------------------------------------------------
+
+public sealed record ConfirmWorkItemAttachmentCommand(
+    Guid WorkItemId,
+    string FileName,
+    string ContentType,
+    long SizeBytes,
+    string ObjectKey) : ICommand<WorkItemAttachmentDto>;
+
+public sealed class ConfirmWorkItemAttachmentValidator : AbstractValidator<ConfirmWorkItemAttachmentCommand>
+{
+    public ConfirmWorkItemAttachmentValidator()
+    {
+        RuleFor(command => command.WorkItemId).NotEmpty();
+        RuleFor(command => command.FileName).NotEmpty().MaximumLength(255);
+        RuleFor(command => command.ContentType)
+            .Must(contentType => AttachmentContentTypes.Allowed.Contains(contentType))
+            .WithMessage("This file type is not allowed for attachments.");
+        RuleFor(command => command.SizeBytes).InclusiveBetween(1, AttachmentContentTypes.MaxSizeBytes);
+        RuleFor(command => command.ObjectKey).NotEmpty().MaximumLength(1024);
+    }
+}
+
+public sealed class ConfirmWorkItemAttachmentHandler(
+    ITenantContext tenantContext,
+    ICurrentPrincipal principal,
+    IWorkItemRepository workItems,
+    IAttachmentRepository attachments,
+    IObjectStorageService storage,
+    IUnitOfWork unitOfWork,
+    TimeProvider timeProvider) : IRequestHandler<ConfirmWorkItemAttachmentCommand, WorkItemAttachmentDto>
+{
+    public async Task<WorkItemAttachmentDto> Handle(
+        ConfirmWorkItemAttachmentCommand request,
+        CancellationToken cancellationToken)
+    {
+        var workItem = await workItems.GetAsync(
+                tenantContext.TenantId, request.WorkItemId, ProjectPermission.TransitionWorkItem, cancellationToken)
+            ?? throw new NotFoundException("Work item was not found.");
+
+        // The object key must be one this tenant/work item's presign step could have minted —
+        // otherwise a caller could attach metadata pointing at an object it never uploaded.
+        var expectedPrefix = $"{tenantContext.TenantId:N}/{workItem.Id:N}/";
+        if (!request.ObjectKey.StartsWith(expectedPrefix, StringComparison.Ordinal))
+        {
+            throw new ValidationException("The object key does not belong to this work item.");
+        }
+
+        var attachment = Attachment.Create(
+            tenantContext.TenantId,
+            workItem.Id,
+            request.FileName,
+            request.ContentType,
+            request.SizeBytes,
+            request.ObjectKey,
+            principal.MembershipId,
+            timeProvider.GetUtcNow());
+
+        await attachments.AddAsync(attachment, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var downloadUrl = storage.CreatePresignedDownloadUrl(attachment.ObjectKey, TimeSpan.FromMinutes(15));
+        return WorkItemAttachmentDto.From(attachment, downloadUrl);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// List attachments
+// ---------------------------------------------------------------------------
+
+public sealed record ListWorkItemAttachmentsQuery(Guid WorkItemId) : IQuery<IReadOnlyList<WorkItemAttachmentDto>>;
+
+public sealed class ListWorkItemAttachmentsValidator : AbstractValidator<ListWorkItemAttachmentsQuery>
+{
+    public ListWorkItemAttachmentsValidator() => RuleFor(query => query.WorkItemId).NotEmpty();
+}
+
+public sealed class ListWorkItemAttachmentsHandler(
+    ITenantContext tenantContext,
+    IWorkItemRepository workItems,
+    IAttachmentRepository attachments,
+    IObjectStorageService storage)
+    : IRequestHandler<ListWorkItemAttachmentsQuery, IReadOnlyList<WorkItemAttachmentDto>>
+{
+    public async Task<IReadOnlyList<WorkItemAttachmentDto>> Handle(
+        ListWorkItemAttachmentsQuery request,
+        CancellationToken cancellationToken)
+    {
+        _ = await workItems.GetAsync(
+                tenantContext.TenantId, request.WorkItemId, ProjectPermission.View, cancellationToken)
+            ?? throw new NotFoundException("Work item was not found.");
+
+        var workItemAttachments = await attachments.ListByWorkItemAsync(
+            tenantContext.TenantId, request.WorkItemId, cancellationToken);
+
+        return workItemAttachments
+            .Select(attachment => WorkItemAttachmentDto.From(
+                attachment, storage.CreatePresignedDownloadUrl(attachment.ObjectKey, TimeSpan.FromMinutes(15))))
+            .ToArray();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Delete attachment
+// ---------------------------------------------------------------------------
+
+public sealed record DeleteWorkItemAttachmentCommand(Guid WorkItemId, Guid AttachmentId) : ICommand<Unit>;
+
+public sealed class DeleteWorkItemAttachmentValidator : AbstractValidator<DeleteWorkItemAttachmentCommand>
+{
+    public DeleteWorkItemAttachmentValidator()
+    {
+        RuleFor(command => command.WorkItemId).NotEmpty();
+        RuleFor(command => command.AttachmentId).NotEmpty();
+    }
+}
+
+public sealed class DeleteWorkItemAttachmentHandler(
+    ITenantContext tenantContext,
+    ICurrentPrincipal principal,
+    IAttachmentRepository attachments,
+    IObjectStorageService storage,
+    IUnitOfWork unitOfWork) : IRequestHandler<DeleteWorkItemAttachmentCommand, Unit>
+{
+    public async Task<Unit> Handle(DeleteWorkItemAttachmentCommand request, CancellationToken cancellationToken)
+    {
+        var attachment = await attachments.GetAsync(
+                tenantContext.TenantId, request.WorkItemId, request.AttachmentId, cancellationToken)
+            ?? throw new NotFoundException("Attachment was not found.");
+
+        if (attachment.UploadedByMembershipId != principal.MembershipId)
+        {
+            // Return 404 to avoid leaking existence of another member's attachment.
+            throw new NotFoundException("Attachment was not found.");
+        }
+
+        await storage.DeleteAsync(attachment.ObjectKey, cancellationToken);
+        await attachments.RemoveAsync(attachment, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return Unit.Value;
+    }
+}

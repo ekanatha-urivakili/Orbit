@@ -1,6 +1,6 @@
 # Orbit Work Management
 
-Orbit is an open-source, headless sprint and Kanban work-management platform. The current implementation includes one-time local installation bootstrap, local email/password login with rotating sessions, global accounts and workspaces, workspace teams and admin lifecycle (promote/demote/remove members), projects, tenant-isolated work items, stable software item types, optimistic status transitions, OIDC-backed tenant memberships, project roles, query-level permission enforcement, and a responsive installable PWA.
+Orbit is an open-source, headless sprint and Kanban work-management platform. The current implementation includes one-time local installation bootstrap, site-admin workspace creation, local email/password login with rotating sessions, global accounts and secure workspace switching, workspace teams and admin lifecycle (promote/demote/remove members), projects, tenant-isolated work items, a tenant-configurable stable software item-type registry, optimistic status transitions, OIDC-backed tenant memberships, project roles, query-level permission enforcement, and a responsive installable PWA.
 
 The target architecture and phased backlog are in [ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md](ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md).
 
@@ -67,6 +67,14 @@ curl -X POST http://localhost:5014/api/v1/auth/login \
   --data '{"email":"admin@example.com","password":"ReplaceWithStrongPassword123"}'
 ```
 
+Accounts belonging to multiple workspaces can select the active workspace from the application
+header. The switch is authorized server-side and rotates the refresh session into the selected
+workspace; changing `X-Tenant-Id` or browser storage alone never grants access.
+
+The bootstrap-created site super administrator can create additional workspaces from the plus button
+beside the workspace selector. Orbit creates the workspace and owner membership in one transaction,
+then rotates the current session into the new workspace.
+
 ## Workspace administration
 
 Once signed in, an owner or administrator can manage teams and workspace membership:
@@ -85,7 +93,19 @@ curl -X PUT http://localhost:5014/api/v1/memberships/$MEMBERSHIP_ID/role -H "Aut
 curl -X DELETE http://localhost:5014/api/v1/memberships/$MEMBERSHIP_ID -H "Authorization: Bearer $TOKEN"
 ```
 
-Email-delivered invitations are not implemented yet — new members are added directly by an owner/administrator via `POST /api/v1/memberships` (federated identity or, once linked, a local account). Invitation delivery/acceptance is tracked as the next identity increment; see [ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md §13.5](ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md).
+Owners and administrators can invite a local account by email. The invitation is hashed at rest,
+expires after seven days, is single-use, and may add the accepted member to a team:
+
+```bash
+curl -X POST http://localhost:5014/api/v1/invitations -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"email":"member@example.com","role":"Member","teamId":null}'
+curl http://localhost:5014/api/v1/invitations -H "Authorization: Bearer $TOKEN"
+```
+
+The email opens the PWA acceptance form. Existing local accounts prove their password; a new email
+creates its global account and workspace membership atomically. Federated-only invitation acceptance
+remains a follow-up increment.
 
 ## Verify
 

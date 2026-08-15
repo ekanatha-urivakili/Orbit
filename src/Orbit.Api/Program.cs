@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Orbit.Api.Endpoints;
@@ -52,7 +53,7 @@ builder.Services.AddAuthentication(options =>
                         ? localBearerScheme
                         : externalBearerScheme;
                 }
-                catch (ArgumentException)
+                catch (Exception)
                 {
                 }
             }
@@ -64,6 +65,12 @@ builder.Services.AddAuthentication(options =>
     {
         options.MapInboundClaims = false;
         var configuredKey = builder.Configuration[$"{LocalTokenOptions.SectionName}:SigningKey"];
+        if (string.IsNullOrWhiteSpace(configuredKey) && builder.Environment.IsProduction())
+        {
+            throw new InvalidOperationException(
+                "Authentication:Local:SigningKey must be explicitly configured in production environments.");
+        }
+
         var keyBytes = string.IsNullOrWhiteSpace(configuredKey)
             ? RandomNumberGenerator.GetBytes(32)
             : Convert.FromBase64String(configuredKey);
@@ -84,7 +91,7 @@ builder.Services.AddAuthentication(options =>
     .AddJwtBearer(externalBearerScheme, options =>
     {
         options.MapInboundClaims = false;
-        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+        options.RequireHttpsMetadata = builder.Environment.IsProduction();
         if (!string.IsNullOrWhiteSpace(externalAuthority))
         {
             options.Authority = externalAuthority;
@@ -118,7 +125,7 @@ builder.Services.AddRateLimiter(options =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 10,
+            PermitLimit = 20,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst
@@ -135,7 +142,12 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-if (app.Configuration.GetValue("DatabaseSecurity:EnforceRuntimeRole", !app.Environment.IsDevelopment()))
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
+if (app.Configuration.GetValue("DatabaseSecurity:EnforceRuntimeRole", app.Environment.IsProduction()))
 {
     await using var scope = app.Services.CreateAsyncScope();
     await scope.ServiceProvider.GetRequiredService<RuntimeDatabaseSecurityValidator>()
@@ -143,10 +155,20 @@ if (app.Configuration.GetValue("DatabaseSecurity:EnforceRuntimeRole", !app.Envir
 }
 
 app.UseExceptionHandler();
-if (!app.Environment.IsDevelopment())
+if (app.Environment.IsProduction())
 {
     app.UseHttpsRedirection();
+    app.UseHsts();
 }
+
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("X-Frame-Options", "DENY");
+    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+    await next();
+});
+
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -166,16 +188,21 @@ app.MapGet("/health/ready", HealthEndpoints.ReadyAsync)
 
 app.MapGroup("/api/v1").MapBootstrapEndpoints();
 app.MapGroup("/api/v1").MapAuthEndpoints();
+app.MapGroup("/api/v1").MapInvitationAcceptanceEndpoints();
 
 var api = app.MapGroup("/api/v1");
-if (!app.Configuration.GetValue<bool>("Tenancy:AllowHeaderTenant"))
+if (app.Environment.IsProduction() || !app.Configuration.GetValue<bool>("Tenancy:AllowHeaderTenant"))
 {
     api.RequireAuthorization();
 }
 api.MapChoiceEndpoints();
+api.MapWorkItemTypeEndpoints();
+api.MapCustomFieldEndpoints();
 api.MapIdentityEndpoints();
+api.MapWorkspaceEndpoints();
 api.MapSettingsEndpoints();
 api.MapAccessEndpoints();
+api.MapInvitationAdminEndpoints();
 api.MapTeamEndpoints();
 api.MapGroupEndpoints();
 api.MapProjectEndpoints();

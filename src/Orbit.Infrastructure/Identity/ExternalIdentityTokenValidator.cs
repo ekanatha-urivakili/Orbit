@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -16,7 +17,7 @@ internal sealed class ExternalIdentityTokenValidator : IExternalIdentityTokenVal
     private readonly ConfigurationManager<OpenIdConnectConfiguration>? _configurationManager;
     private readonly JsonWebTokenHandler _handler = new();
 
-    public ExternalIdentityTokenValidator(IConfiguration configuration)
+    public ExternalIdentityTokenValidator(IConfiguration configuration, IHostEnvironment environment)
     {
         _authority = configuration["Authentication:Authority"]?.TrimEnd('/');
         _audience = configuration["Authentication:ExternalIdentityAudience"];
@@ -24,7 +25,8 @@ internal sealed class ExternalIdentityTokenValidator : IExternalIdentityTokenVal
         {
             _configurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
                 $"{_authority}/.well-known/openid-configuration",
-                new OpenIdConnectConfigurationRetriever());
+                new OpenIdConnectConfigurationRetriever(),
+                new HttpDocumentRetriever { RequireHttps = !environment.IsDevelopment() });
         }
     }
 
@@ -67,7 +69,13 @@ internal sealed class ExternalIdentityTokenValidator : IExternalIdentityTokenVal
                 throw new AuthenticationException("The external identity proof has no issuer or subject.");
             }
 
-            return new VerifiedExternalIdentity(issuer, subject);
+            var email = result.ClaimsIdentity.FindFirst(ClaimTypes.Email)?.Value
+                ?? result.ClaimsIdentity.FindFirst("email")?.Value;
+            var emailVerified = bool.TryParse(
+                result.ClaimsIdentity.FindFirst("email_verified")?.Value,
+                out var parsedEmailVerified) && parsedEmailVerified;
+
+            return new VerifiedExternalIdentity(issuer, subject, email, emailVerified);
         }
         catch (AuthenticationException)
         {

@@ -90,6 +90,14 @@ public static class SprintEndpoints
         .WithName("ReopenSprint")
         .WithTags("Sprints");
 
+        group.MapGet("/sprints/{sprintId:guid}/report", async (
+            Guid sprintId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new SprintReportQuery(sprintId), cancellationToken)))
+        .WithName("GetSprintReport")
+        .WithTags("Sprints");
+
         group.MapPut("/work-items/{workItemId:guid}/sprint", async (
             Guid workItemId,
             AssignWorkItemToSprintRequest request,

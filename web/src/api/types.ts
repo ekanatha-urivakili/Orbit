@@ -54,6 +54,39 @@ export interface WorkItem {
   updatedAt: string
 }
 
+export interface WorkItemComment {
+  id: string
+  tenantId: string
+  workItemId: string
+  authorMembershipId: string
+  authorDisplayName: string
+  authorAvatarUrl: string | null
+  body: string | null
+  mentionedUserIds: string[]
+  version: number
+  isDeleted: boolean
+  createdAt: string
+  updatedAt: string
+  lastEditedAt: string | null
+}
+
+export interface WorkItemAttachment {
+  id: string
+  workItemId: string
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  uploadedByMembershipId: string
+  uploadedAt: string
+  downloadUrl: string
+}
+
+export interface PresignedAttachmentUpload {
+  uploadUrl: string
+  objectKey: string
+  expiresAt: string
+}
+
 export interface Choice {
   id: string
   value: string
@@ -68,6 +101,30 @@ export interface SystemChoices {
   workItemTypes: Choice[]
   workItemStatuses: Choice[]
   priorities: Choice[]
+}
+
+export interface WorkItemTypeDefinition {
+  id: WorkItemType
+  label: string
+  description: string
+  order: number
+  colorToken: string
+  enabled: boolean
+  canAdminister: boolean
+  version: number
+}
+
+export type CustomFieldType = 'Text' | 'Number' | 'Date' | 'Checkbox'
+
+export interface CustomFieldDefinition {
+  id: string
+  key: string
+  label: string
+  fieldType: CustomFieldType
+  required: boolean
+  order: number
+  enabled: boolean
+  version: number
 }
 
 export interface CreateWorkItemInput {
@@ -198,6 +255,8 @@ export interface TenantMembership {
   role: TenantRole
   isActive: boolean
   createdAt: string
+  displayName: string | null
+  avatarUrl: string | null
 }
 
 export interface CreateMembershipInput {
@@ -227,6 +286,19 @@ export interface TeamMembership {
   teamId: string
   membershipId: string
   createdAt: string
+}
+
+export type WorkspaceInvitationStatus = 'Active' | 'Accepted' | 'Revoked'
+
+export interface WorkspaceInvitation {
+  id: string
+  email: string
+  role: TenantRole
+  teamId: string | null
+  status: WorkspaceInvitationStatus
+  expiresAt: string
+  createdAt: string
+  acceptedAt: string | null
 }
 
 export type BoardType = 'Kanban' | 'Scrum'
@@ -261,6 +333,32 @@ export interface Sprint {
   workItemIds: string[]
 }
 
+export interface BurndownPoint {
+  date: string
+  remainingPoints: number
+}
+
+export interface SprintScopeChange {
+  workItemId: string | null
+  factType: 'SprintAdded' | 'SprintRemoved' | 'EstimateChanged' | 'StatusChanged' | 'ColumnChanged' | 'SprintCompleted' | 'SprintReopened'
+  estimateDelta: number | null
+  occurredAt: string
+}
+
+export interface SprintReport {
+  sprintId: string
+  sprintName: string
+  state: SprintState
+  startDate: string | null
+  endDate: string | null
+  committedPoints: number
+  completedPoints: number
+  addedAfterStartPoints: number
+  removedAfterStartPoints: number
+  burndown: BurndownPoint[]
+  scopeChanges: SprintScopeChange[]
+}
+
 export interface AuthSession {
   accessToken: string
   accessTokenExpiresAt: string
@@ -273,6 +371,25 @@ export interface AuthSession {
   workspaceId: string
   workspaceSlug: string
   workspaceName: string
+  role: TenantRole
+}
+
+export interface AccountWorkspace {
+  id: string
+  slug: string
+  name: string
+  role: TenantRole
+}
+
+export interface SiteCapabilities {
+  canCreateWorkspace: boolean
+}
+
+export interface CreatedWorkspace {
+  id: string
+  slug: string
+  name: string
+  membershipId: string
   role: TenantRole
 }
 

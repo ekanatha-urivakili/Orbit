@@ -18,9 +18,20 @@ Provision PostgreSQL and Valkey in the same region. Configure these service vari
 | API | `Authentication__Authority` | OIDC issuer URL, for federated/enterprise identity instead of local accounts |
 | API | `Authentication__Audience` | API audience (only used with `Authentication__Authority`) |
 | API | `Authentication__ExternalIdentityAudience` | OIDC SPA client id accepted when linking an external identity |
+| API | `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Set to `true` behind Railway ingress so rate limits use client IPs |
+| API | `Frontend__BaseUrl` | Public web origin; used to build the link in password-reset emails |
 | Worker | `ConnectionStrings__Postgres` | PostgreSQL private connection string |
 | Worker | `ConnectionStrings__Redis` | Valkey private connection string |
+| Worker | `Email__Smtp__Host` | SMTP relay hostname |
+| Worker | `Email__Smtp__Port` | SMTP relay port |
+| Worker | `Email__Smtp__Username` | SMTP relay username; leave unset for an unauthenticated relay |
+| Worker | `Email__Smtp__Password` | SMTP relay password |
+| Worker | `Email__Smtp__UseStartTls` | Set to `true` if the relay requires STARTTLS |
+| Worker | `Email__Smtp__FromAddress` | Sender address for outbound mail |
+| Worker | `Email__Smtp__FromName` | Sender display name for outbound mail |
 | Web build | `VITE_API_URL` | Public API URL ending in `/api/v1` |
+| Web build | `VITE_OIDC_AUTHORITY` | OIDC issuer URL used for authorization code and token endpoints |
+| Web build | `VITE_OIDC_CLIENT_ID` | Public SPA client id; use the same value for `Authentication__ExternalIdentityAudience` |
 
 Set `RAILWAY_TOKEN` in protected GitHub environments. The deployment workflow runs migrations before updating the services. Use a project-scoped token, never an account-wide token.
 

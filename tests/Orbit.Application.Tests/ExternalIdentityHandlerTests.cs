@@ -57,6 +57,61 @@ public sealed class ExternalIdentityHandlerTests
     }
 
     [Fact]
+    public async Task Link_DoesNotPersistAnUnverifiedIdentity()
+    {
+        var repository = new AuthRepositoryStub();
+        var handler = new LinkExternalIdentityHandler(
+            new CurrentPrincipalStub(Guid.NewGuid()),
+            new RejectingTokenValidatorStub(),
+            repository,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(new LinkExternalIdentityCommand("invalid-proof"), CancellationToken.None);
+
+        await Assert.ThrowsAsync<AuthenticationException>(action);
+        Assert.Empty(repository.ExternalIdentities);
+    }
+
+    [Fact]
+    public async Task Link_AllowsMatchingVerifiedEmail()
+    {
+        var userId = Guid.NewGuid();
+        var account = UserAccount.Create("person@example.test", "Person", DateTimeOffset.UtcNow);
+        var repository = new AuthRepositoryStub { Account = account };
+        var handler = new LinkExternalIdentityHandler(
+            new CurrentPrincipalStub(userId),
+            new TokenValidatorStub("Person@Example.Test", emailVerified: true),
+            repository,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(new LinkExternalIdentityCommand("valid-proof"), CancellationToken.None);
+
+        Assert.Equal("subject-1", result.Subject);
+        Assert.Single(repository.ExternalIdentities);
+    }
+
+    [Fact]
+    public async Task Link_RejectsMismatchedVerifiedEmail()
+    {
+        var userId = Guid.NewGuid();
+        var account = UserAccount.Create("person@example.test", "Person", DateTimeOffset.UtcNow);
+        var repository = new AuthRepositoryStub { Account = account };
+        var handler = new LinkExternalIdentityHandler(
+            new CurrentPrincipalStub(userId),
+            new TokenValidatorStub("someone-else@example.test", emailVerified: true),
+            repository,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(new LinkExternalIdentityCommand("valid-proof"), CancellationToken.None);
+
+        await Assert.ThrowsAsync<ConflictException>(action);
+        Assert.Empty(repository.ExternalIdentities);
+    }
+
+    [Fact]
     public async Task List_ReturnsOnlyTheCurrentUsersIdentities()
     {
         var userId = Guid.NewGuid();
@@ -113,18 +168,26 @@ public sealed class ExternalIdentityHandlerTests
         public bool IsDevelopmentBypass => false;
     }
 
-    private sealed class TokenValidatorStub : IExternalIdentityTokenValidator
+    private sealed class TokenValidatorStub(string? email = null, bool emailVerified = false)
+        : IExternalIdentityTokenValidator
     {
         public Task<VerifiedExternalIdentity> ValidateAsync(string token, CancellationToken cancellationToken) =>
-            Task.FromResult(new VerifiedExternalIdentity("https://idp.example.test", "subject-1"));
+            Task.FromResult(new VerifiedExternalIdentity("https://idp.example.test", "subject-1", email, emailVerified));
+    }
+
+    private sealed class RejectingTokenValidatorStub : IExternalIdentityTokenValidator
+    {
+        public Task<VerifiedExternalIdentity> ValidateAsync(string token, CancellationToken cancellationToken) =>
+            throw new AuthenticationException("Invalid proof.");
     }
 
     private sealed class AuthRepositoryStub : IAuthenticationRepository
     {
         public List<ExternalIdentity> ExternalIdentities { get; } = [];
+        public UserAccount? Account { get; set; }
 
         public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
-            Task.FromResult<UserAccount?>(null);
+            Task.FromResult(Account);
 
         public Task<UserAccount?> GetUserAccountByEmailAsync(
             string normalizedEmail, CancellationToken cancellationToken) =>
@@ -139,6 +202,11 @@ public sealed class ExternalIdentityHandlerTests
 
         public Task<Domain.Workspaces.Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<Domain.Workspaces.Workspace?>(null);
+
+        public Task<IReadOnlyList<Domain.Workspaces.Workspace>> GetWorkspacesAsync(
+            IReadOnlyCollection<Guid> tenantIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Domain.Workspaces.Workspace>>([]);
 
         public Task AddRefreshSessionAsync(RefreshSession session, CancellationToken cancellationToken) =>
             Task.CompletedTask;
@@ -184,6 +252,34 @@ public sealed class ExternalIdentityHandlerTests
             ExternalIdentities.Remove(identity);
             return Task.CompletedTask;
         }
+
+        public Task AddPasswordResetTokenAsync(PasswordResetToken token, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<PasswordResetToken?> GetPasswordResetTokenByHashAsync(
+            string tokenHash, CancellationToken cancellationToken) =>
+            Task.FromResult<PasswordResetToken?>(null);
+
+        public Task RevokeActivePasswordResetTokensForUserAsync(
+            Guid userId, DateTimeOffset now, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddServiceAccountCredentialAsync(ServiceAccountCredential credential, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<ServiceAccountCredential?> GetActiveServiceAccountCredentialByClientIdAsync(Guid clientId, CancellationToken cancellationToken) =>
+            Task.FromResult<ServiceAccountCredential?>(null);
+
+        public Task<IReadOnlyList<ServiceAccountCredential>> ListActiveServiceAccountCredentialsByMembershipAsync(
+            Guid membershipId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ServiceAccountCredential>>([]);
+
+        public Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
+            Guid tenantId, Guid membershipId, CancellationToken cancellationToken) =>
+            Task.FromResult<TenantMembership?>(null);
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

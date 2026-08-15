@@ -1,5 +1,6 @@
 using MediatR;
 using Orbit.Application.Access;
+using Orbit.Application.Identity;
 using Orbit.Domain.Access;
 
 namespace Orbit.Api.Endpoints;
@@ -8,6 +9,25 @@ public static class AccessEndpoints
 {
     public static RouteGroupBuilder MapAccessEndpoints(this RouteGroupBuilder group)
     {
+        group.MapPost("/service-accounts", async (
+            CreateServiceAccountRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var credential = await sender.Send(new CreateServiceAccountCommand(request.Role), cancellationToken);
+            return Results.Created($"/api/v1/memberships/{credential.MembershipId}", credential);
+        })
+        .WithName("CreateServiceAccount")
+        .WithTags("Access");
+
+        group.MapPost("/service-accounts/{membershipId:guid}/rotate", async (
+            Guid membershipId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new RotateServiceAccountCredentialCommand(membershipId), cancellationToken)))
+            .WithName("RotateServiceAccountCredential")
+            .WithTags("Access");
+
         group.MapGet("/memberships", async (
             ISender sender,
             CancellationToken cancellationToken) =>
@@ -106,4 +126,6 @@ public static class AccessEndpoints
     public sealed record AssignGroupProjectRoleRequest(ProjectRole Role);
 
     public sealed record ChangeTenantMembershipRoleRequest(TenantRole Role);
+
+    public sealed record CreateServiceAccountRequest(TenantRole Role);
 }

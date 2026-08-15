@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Orbit.Application.Abstractions;
 using Orbit.Domain.Access;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Workspaces;
 
@@ -51,6 +52,9 @@ internal sealed class BootstrapRepository(OrbitDbContext dbContext) : IBootstrap
         await dbContext.SiteRoleAssignments.AddAsync(siteRole, cancellationToken);
         await dbContext.Workspaces.AddAsync(workspace, cancellationToken);
         await dbContext.TenantMemberships.AddAsync(ownerMembership, cancellationToken);
+        await dbContext.WorkItemTypeDefinitions.AddRangeAsync(
+            WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;

@@ -236,7 +236,8 @@ public sealed class CompleteSprintHandler(
                 membership.Remove(now);
                 await facts.AddAsync(
                     SprintScopeFact.Create(
-                        tenant.TenantId, sprint.Id, membership.WorkItemId, AgileFactType.SprintRemoved, now, now),
+                        tenant.TenantId, sprint.Id, membership.WorkItemId, AgileFactType.SprintRemoved,
+                        -(workItem.StoryPoints ?? 0), now, now),
                     cancellationToken);
                 if (operation.RolloverTargetSprintId is { } targetSprintId)
                 {
@@ -245,7 +246,8 @@ public sealed class CompleteSprintHandler(
                         cancellationToken);
                     await facts.AddAsync(
                         SprintScopeFact.Create(
-                            tenant.TenantId, targetSprintId, membership.WorkItemId, AgileFactType.SprintAdded, now, now),
+                            tenant.TenantId, targetSprintId, membership.WorkItemId, AgileFactType.SprintAdded,
+                            workItem.StoryPoints ?? 0, now, now),
                         cancellationToken);
                 }
             }
@@ -260,7 +262,7 @@ public sealed class CompleteSprintHandler(
         operation.RecordProgress(operation.TotalCount, now);
         operation.MarkCompleted(now);
         await facts.AddAsync(
-            SprintScopeFact.Create(tenant.TenantId, sprint.Id, null, AgileFactType.SprintCompleted, now, now),
+            SprintScopeFact.Create(tenant.TenantId, sprint.Id, null, AgileFactType.SprintCompleted, null, now, now),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SprintDto.From(sprint, remaining);
@@ -302,7 +304,7 @@ public sealed class ReopenSprintHandler(
         var now = timeProvider.GetUtcNow();
         sprint.Reopen(now);
         await facts.AddAsync(
-            SprintScopeFact.Create(tenant.TenantId, sprint.Id, null, AgileFactType.SprintReopened, now, now),
+            SprintScopeFact.Create(tenant.TenantId, sprint.Id, null, AgileFactType.SprintReopened, null, now, now),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -365,13 +367,15 @@ public sealed class AssignWorkItemToSprintHandler(
             existing.Remove(now);
             await facts.AddAsync(
                 SprintScopeFact.Create(
-                    tenant.TenantId, existing.SprintId, workItem.Id, AgileFactType.SprintRemoved, now, now),
+                    tenant.TenantId, existing.SprintId, workItem.Id, AgileFactType.SprintRemoved,
+                    -(workItem.StoryPoints ?? 0), now, now),
                 cancellationToken);
         }
 
         await memberships.AddAsync(SprintMembership.Create(tenant.TenantId, sprint.Id, workItem.Id, now), cancellationToken);
         await facts.AddAsync(
-            SprintScopeFact.Create(tenant.TenantId, sprint.Id, workItem.Id, AgileFactType.SprintAdded, now, now),
+            SprintScopeFact.Create(
+                tenant.TenantId, sprint.Id, workItem.Id, AgileFactType.SprintAdded, workItem.StoryPoints ?? 0, now, now),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -409,7 +413,9 @@ public sealed class RemoveWorkItemFromSprintHandler(
         var now = timeProvider.GetUtcNow();
         membership.Remove(now);
         await facts.AddAsync(
-            SprintScopeFact.Create(tenant.TenantId, sprint.Id, workItem.Id, AgileFactType.SprintRemoved, now, now),
+            SprintScopeFact.Create(
+                tenant.TenantId, sprint.Id, workItem.Id, AgileFactType.SprintRemoved,
+                -(workItem.StoryPoints ?? 0), now, now),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 

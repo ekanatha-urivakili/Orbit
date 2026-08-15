@@ -21,6 +21,13 @@ public static class IdentityEndpoints
         .WithName("GetCurrentProfile")
         .WithTags("Identity");
 
+        group.MapGet("/me/workspaces", async (
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new ListAccountWorkspacesQuery(), cancellationToken)))
+        .WithName("ListAccountWorkspaces")
+        .WithTags("Identity");
+
         group.MapPatch("/me/profile", async (
             UpdateProfileRequest request,
             HttpRequest httpRequest,

@@ -36,6 +36,12 @@ public sealed record SessionSummaryDto(
     DateTimeOffset ExpiresAt,
     bool IsCurrent);
 
+public sealed record AccountWorkspaceDto(
+    Guid Id,
+    string Slug,
+    string Name,
+    TenantRole Role);
+
 internal static class RefreshTokenCodec
 {
     public static string GenerateToken() =>
@@ -287,6 +293,36 @@ public sealed class LogoutHandler(
 
 public sealed record ListSessionsQuery : IQuery<IReadOnlyList<SessionSummaryDto>>;
 
+public sealed record ListAccountWorkspacesQuery : IQuery<IReadOnlyList<AccountWorkspaceDto>>;
+
+public sealed class ListAccountWorkspacesHandler(
+    ICurrentPrincipal principal,
+    IAuthenticationRepository repository)
+    : IRequestHandler<ListAccountWorkspacesQuery, IReadOnlyList<AccountWorkspaceDto>>
+{
+    public async Task<IReadOnlyList<AccountWorkspaceDto>> Handle(
+        ListAccountWorkspacesQuery request,
+        CancellationToken cancellationToken)
+    {
+        var userId = PrincipalGuards.RequireUser(principal);
+        var memberships = await repository.ListActiveMembershipsByUserAsync(userId, cancellationToken);
+        var workspaces = (await repository.GetWorkspacesAsync(
+                memberships.Select(membership => membership.TenantId).ToArray(),
+                cancellationToken))
+            .ToDictionary(workspace => workspace.Id);
+        var result = new List<AccountWorkspaceDto>(memberships.Count);
+        foreach (var membership in memberships)
+        {
+            if (workspaces.TryGetValue(membership.TenantId, out var workspace))
+            {
+                result.Add(new AccountWorkspaceDto(workspace.Id, workspace.Slug, workspace.Name, membership.Role));
+            }
+        }
+
+        return result;
+    }
+}
+
 public sealed class ListSessionsHandler(
     ICurrentPrincipal principal,
     IAuthenticationRepository repository) : IRequestHandler<ListSessionsQuery, IReadOnlyList<SessionSummaryDto>>
@@ -298,15 +334,9 @@ public sealed class ListSessionsHandler(
         var userId = PrincipalGuards.RequireUser(principal);
         var sessions = await repository.ListActiveSessionsByUserAsync(userId, cancellationToken);
 
-        var workspaces = new Dictionary<Guid, Workspace>();
-        foreach (var tenantId in sessions.Select(session => session.TenantId).Distinct())
-        {
-            var workspace = await repository.GetWorkspaceAsync(tenantId, cancellationToken);
-            if (workspace is not null)
-            {
-                workspaces[tenantId] = workspace;
-            }
-        }
+        var tenantIds = sessions.Select(session => session.TenantId).Distinct().ToArray();
+        var workspaces = (await repository.GetWorkspacesAsync(tenantIds, cancellationToken))
+            .ToDictionary(workspace => workspace.Id);
 
         return sessions
             .OrderByDescending(session => session.LastUsedAt)

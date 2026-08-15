@@ -2,7 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import { useUpdateWorkItem } from '../../hooks/useUpdateWorkItem'
 import { Field } from '../../components/form/Field'
-import type { Priority, Profile, WorkItem, WorkItemLinkType } from '../../api/types'
+import { WorkItemComments } from './WorkItemComments'
+import { WorkItemAttachments } from './WorkItemAttachments'
+import type { Priority, Profile, TenantMembership, WorkItem, WorkItemLinkType } from '../../api/types'
 
 const countries = ['Global', 'Argentina', 'Brasil', 'Nigeria', 'South Africa', 'US', 'Saudi Arabia', 'Turkey']
 
@@ -10,12 +12,14 @@ export function EditWorkItemDialog({
   item,
   workItems,
   profile,
+  members,
   priorities,
   onClose,
 }: {
   item: WorkItem
   workItems: WorkItem[]
   profile?: Profile
+  members: TenantMembership[]
   priorities: Priority[]
   onClose: () => void
 }) {
@@ -88,11 +92,24 @@ export function EditWorkItemDialog({
           {type === 'Bug' && <Field label="Steps to conduct action"><textarea value={details.stepsToConduct ?? ''} onChange={(event) => patch({ stepsToConduct: event.target.value || null })} maxLength={32000} rows={4} /></Field>}
 
           <div className="form-row">
-            {(type === 'Bug' || type === 'Spike') && <Field label="Assignee"><select value={details.assigneeUserId ?? ''} onChange={(event) => patch({ assigneeUserId: event.target.value || null })}><option value="">Automatic</option>{profile && <option value={profile.userId}>Assign to me — {profile.displayName}</option>}</select></Field>}
+            <Field label="Assignee">
+              <select value={details.assigneeUserId ?? ''} onChange={(event) => patch({ assigneeUserId: event.target.value || null })}>
+                <option value="">Unassigned</option>
+                {members.filter((member) => member.userId).map((member) => (
+                  <option key={member.id} value={member.userId ?? ''}>
+                    {member.displayName ?? 'Unnamed member'}{profile && member.userId === profile.userId ? ' (me)' : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{priorities.map((value) => <option key={value}>{value}</option>)}</select></Field>
           </div>
 
           {type !== 'Initiative' && <Field label="Parent"><select value={details.parentId ?? ''} onChange={(event) => patch({ parentId: event.target.value || null })}><option value="">No parent</option>{parentOptions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.key} — {candidate.summary}</option>)}</select></Field>}
+
+          {(type === 'Task' || type === 'Story') && (
+            <Field label="Story points"><input type="number" min="0" max="10000" step="0.5" value={details.storyPoints ?? ''} onChange={(event) => patch({ storyPoints: event.target.value ? Number(event.target.value) : null })} /></Field>
+          )}
 
           {type === 'Bug' && <>
             <div className="form-row">
@@ -114,6 +131,10 @@ export function EditWorkItemDialog({
             <Field label="Linked work items"><select value={details.linkType ?? ''} onChange={(event) => patch({ linkType: event.target.value ? event.target.value as WorkItemLinkType : null, linkedWorkItemId: event.target.value ? details.linkedWorkItemId : null })}><option value="">No relationship</option><option value="DependsOn">Depends on</option><option value="Blocks">Blocks</option><option value="RelatesTo">Relates to</option></select></Field>
             <Field label="Target work item"><select disabled={!details.linkType} value={details.linkedWorkItemId ?? ''} onChange={(event) => patch({ linkedWorkItemId: event.target.value || null })}><option value="">Select work item</option>{linkOptions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.key} — {candidate.summary}</option>)}</select></Field>
           </div>
+
+          <WorkItemAttachments workItemId={item.id} members={members} />
+
+          <WorkItemComments workItemId={item.id} profile={profile} members={members} />
 
           {mutation.isError && <p className="form-error">{mutation.error.message}</p>}
           <footer className="sticky bottom-0 -mx-6 -mb-6 border-t border-gray-200 bg-white px-6 py-4">

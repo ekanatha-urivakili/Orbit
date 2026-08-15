@@ -30,5 +30,38 @@ services:
       retries: 15
     restart: unless-stopped
 
+  mailpit:
+    image: docker.io/axllent/mailpit:v1.30.7
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  minio:
+    image: docker.io/minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-orbit}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-orbit_local_secret}
+    # The bucket itself is created by Orbit.Api's ObjectStorageBucketInitializer hosted service on
+    # startup, not by this image — MINIO_DEFAULT_BUCKETS does not auto-create it on this release.
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - orbit_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
 volumes:
   orbit_pgdata:
+  orbit_minio_data:

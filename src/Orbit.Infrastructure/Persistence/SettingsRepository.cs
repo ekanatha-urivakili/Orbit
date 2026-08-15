@@ -11,6 +11,20 @@ internal sealed class SettingsRepository(OrbitDbContext dbContext) : ISettingsRe
     public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
         dbContext.UserAccounts.SingleOrDefaultAsync(account => account.Id == userId, cancellationToken);
 
+    public async Task<IReadOnlyList<UserAccount>> GetUserAccountsAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await dbContext.UserAccounts
+            .Where(account => userIds.Contains(account.Id))
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
         dbContext.UserPreferences.SingleOrDefaultAsync(preference => preference.UserId == userId, cancellationToken);
 

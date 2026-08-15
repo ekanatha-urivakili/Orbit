@@ -3,7 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { orbitApi } from './api/client'
 import * as auth from './api/auth'
 import { completeOidcCallback } from './features/auth/oidcPkce'
-import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus, WorkItemType } from './api/types'
+import { ResetPasswordView } from './features/auth/ResetPasswordView'
+import { AcceptInvitationView } from './features/auth/AcceptInvitationView'
+import { LoginView } from './features/auth/LoginView'
+import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus } from './api/types'
 
 import './App.css'
 
@@ -25,13 +28,16 @@ import { ProjectOnboarding } from './features/onboarding/ProjectOnboarding'
 import { SettingsView } from './features/settings/SettingsView'
 import type { SettingsSection } from './features/settings/SettingsView'
 import { HomeView } from './features/home/HomeView'
+import { CreateWorkspaceDialog } from './features/workspaces/CreateWorkspaceDialog'
 
 type ActiveView = 'home' | 'project' | 'settings'
 
 function App() {
   const queryClient = useQueryClient()
+  const [authSession, setAuthSession] = useState(auth.getCurrentSession())
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
   const [editingWorkItemId, setEditingWorkItemId] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
@@ -39,6 +45,27 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('project')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [oidcError, setOidcError] = useState<string | null>(null)
+  const [resetToken] = useState(() => {
+    const url = new URL(window.location.href)
+    const token = new URLSearchParams(url.hash.slice(1)).get('resetToken') ?? url.searchParams.get('resetToken')
+    if (token) {
+      url.hash = ''
+      url.searchParams.delete('resetToken')
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
+    }
+    return token
+  })
+  const [invitation] = useState(() => {
+    const url = new URL(window.location.href)
+    const fragment = new URLSearchParams(url.hash.slice(1))
+    const token = fragment.get('invitationToken')
+    const tenantId = fragment.get('invitationTenantId')
+    if (token || tenantId) {
+      url.hash = ''
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
+    }
+    return token && tenantId ? { token, tenantId } : null
+  })
 
   useEffect(() => {
     const updateOnlineState = () => setOnline(navigator.onLine)
@@ -50,6 +77,8 @@ function App() {
     }
   }, [])
 
+  useEffect(() => auth.subscribe(() => setAuthSession(auth.getCurrentSession())), [])
+
   // Runs once on every load, including immediately after an OIDC redirect back to the app root -
   // there is no client-side router to restore the view the user started from, so the callback is
   // handled globally here rather than inside whichever panel initiated it.
@@ -59,6 +88,7 @@ function App() {
         if (!result) return
         if (result.mode === 'login') {
           auth.setExternalAccessToken(result.accessToken)
+          void queryClient.resetQueries()
           return
         }
 
@@ -66,6 +96,23 @@ function App() {
           setOidcError('The identity provider did not return an identity proof.')
           return
         }
+
+        if (result.mode === 'accept-invitation') {
+          if (!result.pendingInvitation) {
+            setOidcError('The pending invitation could not be recovered after sign-in.')
+            return
+          }
+          const { token, tenantId, displayName } = result.pendingInvitation
+          orbitApi
+            .acceptInvitationWithExternalIdentity(tenantId, { token, externalIdToken: result.idToken, displayName })
+            .then(async () => {
+              auth.setExternalAccessToken(result.accessToken)
+              await queryClient.resetQueries()
+            })
+            .catch((acceptError: Error) => setOidcError(acceptError.message))
+          return
+        }
+
         orbitApi
           .linkExternalIdentity(result.idToken)
           .then(() => queryClient.invalidateQueries({ queryKey: ['linked-identities'] }))
@@ -83,10 +130,49 @@ function App() {
   })
   const projects = projectsQuery.data?.items ?? []
   const choicesQuery = useQuery({ queryKey: ['choices'], queryFn: orbitApi.getChoices, staleTime: Infinity })
+  const itemTypesQuery = useQuery({
+    queryKey: ['work-item-types'],
+    queryFn: orbitApi.listWorkItemTypes,
+    enabled: bootstrapQuery.data?.initializationRequired === false,
+  })
   const profileQuery = useQuery({
     queryKey: ['profile'],
     queryFn: orbitApi.getProfile,
     enabled: bootstrapQuery.data?.initializationRequired === false,
+  })
+  const membersQuery = useQuery({
+    queryKey: ['memberships'],
+    queryFn: orbitApi.listMemberships,
+    enabled: bootstrapQuery.data?.initializationRequired === false,
+  })
+  const members = membersQuery.data ?? []
+  const accountWorkspacesQuery = useQuery({
+    queryKey: ['account-workspaces'],
+    queryFn: orbitApi.listAccountWorkspaces,
+    enabled: authSession !== null,
+  })
+  const siteCapabilitiesQuery = useQuery({
+    queryKey: ['site-capabilities'],
+    queryFn: orbitApi.getSiteCapabilities,
+    enabled: authSession !== null,
+  })
+  const workspaceSwitchMutation = useMutation({
+    mutationFn: auth.switchWorkspace,
+    onSuccess: async () => {
+      setSelectedProjectId(null)
+      setActiveView('project')
+      await queryClient.resetQueries()
+    },
+  })
+  const createWorkspaceMutation = useMutation({
+    mutationFn: orbitApi.createWorkspace,
+    onSuccess: async (workspace) => {
+      setCreateWorkspaceOpen(false)
+      setSelectedProjectId(null)
+      setActiveView('project')
+      await queryClient.invalidateQueries({ queryKey: ['account-workspaces'] })
+      workspaceSwitchMutation.mutate(workspace.id)
+    },
   })
 
   useEffect(() => {
@@ -219,6 +305,9 @@ function App() {
     },
   })
 
+  if (resetToken) return <ResetPasswordView token={resetToken} />
+  if (invitation) return <AcceptInvitationView token={invitation.token} tenantId={invitation.tenantId} />
+
   if (bootstrapQuery.isPending || choicesQuery.isPending) return <LoadingScreen />
   if (bootstrapQuery.isError || choicesQuery.isError) {
     return <ErrorScreen message={(bootstrapQuery.error ?? choicesQuery.error)?.message ?? 'Unable to load Orbit.'} />
@@ -226,32 +315,64 @@ function App() {
 
   if (bootstrapQuery.data.initializationRequired) return <BootstrapOnboarding />
 
+  if (!authSession) return <LoginView />
+
   if (projectsQuery.isPending) return <LoadingScreen />
   if (projectsQuery.isError) return <ErrorScreen message={projectsQuery.error.message} />
-
-  if (projects.length === 0) return <ProjectOnboarding />
 
   return (
     <div className="min-h-screen bg-white">
       <Header
         online={online}
         profile={profileQuery.data}
-        onCreateClick={() => setCreateOpen(true)}
+        onCreateClick={selectedProject ? () => setCreateOpen(true) : undefined}
         onHomeClick={() => setActiveView('home')}
         onOpenSettings={(section) => { setSettingsSection(section); setActiveView('settings') }}
         onThemeChange={(theme) => themeMutation.mutate(theme)}
+        workspaces={accountWorkspacesQuery.data}
+        currentWorkspaceId={authSession?.workspaceId}
+        switchingWorkspace={workspaceSwitchMutation.isPending}
+        onWorkspaceChange={(workspaceId) => workspaceSwitchMutation.mutate(workspaceId)}
+        onCreateWorkspace={siteCapabilitiesQuery.data?.canCreateWorkspace ? () => setCreateWorkspaceOpen(true) : undefined}
       />
+      {workspaceSwitchMutation.isError && (
+        <div className="error-banner m-4">{workspaceSwitchMutation.error.message}</div>
+      )}
       {oidcError && (
         <div className="error-banner m-4 flex items-center justify-between">
           <span>{oidcError}</span>
           <button onClick={() => setOidcError(null)} className="ml-4 text-sm font-medium underline">Dismiss</button>
         </div>
       )}
+      {createWorkspaceOpen && (
+        <CreateWorkspaceDialog
+          pending={createWorkspaceMutation.isPending}
+          error={createWorkspaceMutation.error}
+          onCreate={(name) => createWorkspaceMutation.mutate(name)}
+          onClose={() => setCreateWorkspaceOpen(false)}
+        />
+      )}
 
       <div className="flex">
-        <Sidebar mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+        <Sidebar
+          mobileMenuOpen={mobileMenuOpen}
+          setMobileMenuOpen={setMobileMenuOpen}
+          projects={projects}
+          selectedProjectId={selectedProjectId ?? undefined}
+          onSelectProject={(projectId) => {
+            setSelectedProjectId(projectId)
+            setActiveView('project')
+          }}
+          activeView={activeView}
+          onHomeClick={() => setActiveView('home')}
+          onOpenSettings={(section) => {
+            setSettingsSection(section)
+            setActiveView('settings')
+          }}
+        />
         
         <main className="flex-1 lg:ml-[240px] min-h-[calc(100vh-56px)] bg-white relative">
+          {projects.length === 0 ? <ProjectOnboarding /> : <>
           {activeView === 'home' && <HomeView profile={profileQuery.data} projects={projects} workItems={workItems} onCreate={() => setCreateOpen(true)} onOpenProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }} />}
           {activeView === 'settings' && selectedProject && (
             <SettingsView key={settingsSection} project={selectedProject} initialSection={settingsSection} onClose={() => setActiveView('project')} />
@@ -268,12 +389,13 @@ function App() {
                 Showing {workItems.length} of {workItemsQuery.data?.totalCount} work items — narrow with a filter to see the rest.
               </div>
             )}
-            {activeTab === 'Summary' && <SummaryView workItems={workItems} profile={profileQuery.data} />}
+            {activeTab === 'Summary' && <SummaryView workItems={workItems} profile={profileQuery.data} members={members} />}
 
             {activeTab === 'Backlog' && (
               <BacklogView
                 workItems={workItems}
                 projectId={selectedProjectId ?? ''}
+                members={members}
                 sprints={sprints}
                 sprintsLoading={sprintsQuery.isPending}
                 onCreateSprint={(name) => createSprintMutation.mutate(name)}
@@ -324,6 +446,7 @@ function App() {
             )}
             </div>
           </>}
+          </>}
         </main>
       </div>
 
@@ -332,9 +455,8 @@ function App() {
           project={selectedProject}
           workItems={workItems}
           profile={profileQuery.data}
-          types={(choicesQuery.data?.workItemTypes ?? [])
-            .filter((choice) => choice.enabled)
-            .map((choice) => choice.value as WorkItemType)}
+          members={members}
+          types={(itemTypesQuery.data ?? []).filter((itemType) => itemType.enabled)}
           priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
           onClose={() => setCreateOpen(false)}
         />
@@ -347,6 +469,7 @@ function App() {
             item={editingWorkItem}
             workItems={workItems}
             profile={profileQuery.data}
+            members={members}
             priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
             onClose={() => setEditingWorkItemId(null)}
           />
