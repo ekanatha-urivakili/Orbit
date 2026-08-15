@@ -633,6 +633,11 @@ public sealed class SprintHandlerTests
             Added.Add(fact);
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyList<SprintScopeFact>> ListBySprintAsync(
+            Guid tenantId, Guid sprintId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SprintScopeFact>>(
+                [.. Added.Where(fact => fact.TenantId == tenantId && fact.SprintId == sprintId).OrderBy(fact => fact.OccurredAt)]);
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

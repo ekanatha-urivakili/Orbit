@@ -31,10 +31,9 @@ internal sealed class WorkspaceProvisioningRepository(OrbitDbContext dbContext)
         Guid currentTenantId,
         CancellationToken cancellationToken)
     {
-        if (dbContext.Database.CurrentTransaction is null)
-        {
-            throw new InvalidOperationException("Workspace provisioning requires an ambient request transaction.");
-        }
+        await using var transaction = dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
 
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT set_config('app.tenant_id', {workspace.Id.ToString()}, true)",
@@ -45,8 +44,17 @@ internal sealed class WorkspaceProvisioningRepository(OrbitDbContext dbContext)
             WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
             cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT set_config('app.tenant_id', {currentTenantId.ToString()}, true)",
-            cancellationToken);
+
+        if (currentTenantId != Guid.Empty)
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT set_config('app.tenant_id', {currentTenantId.ToString()}, true)",
+                cancellationToken);
+        }
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
     }
 }

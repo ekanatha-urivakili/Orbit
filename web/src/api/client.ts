@@ -19,6 +19,7 @@ import type {
   SessionSummary,
   SiteCapabilities,
   Sprint,
+  SprintReport,
   Team,
   TeamMembership,
   TenantMembership,
@@ -28,6 +29,9 @@ import type {
   WorkspaceInvitationStatus,
   SystemChoices,
   WorkItem,
+  WorkItemAttachment,
+  PresignedAttachmentUpload,
+  WorkItemComment,
   WorkItemTypeDefinition,
   WorkItemStatus,
   CustomFieldDefinition,
@@ -124,6 +128,53 @@ export const orbitApi = {
       headers: { 'If-Match': `"${workItem.version}"` },
       body: JSON.stringify({ beforeWorkItemId: neighbors.beforeId, afterWorkItemId: neighbors.afterId }),
     }),
+  listWorkItemComments: (workItemId: string) =>
+    request<WorkItemComment[]>(`/work-items/${encodeURIComponent(workItemId)}/comments`),
+  addWorkItemComment: (workItemId: string, body: string) =>
+    request<WorkItemComment>(`/work-items/${encodeURIComponent(workItemId)}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+  editWorkItemComment: (workItemId: string, commentId: string, body: string, version: number) =>
+    request<WorkItemComment>(`/work-items/${encodeURIComponent(workItemId)}/comments/${encodeURIComponent(commentId)}`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${version}"` },
+      body: JSON.stringify({ body }),
+    }),
+  deleteWorkItemComment: (workItemId: string, commentId: string, version: number) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/comments/${encodeURIComponent(commentId)}`, {
+      method: 'DELETE',
+      headers: { 'If-Match': `"${version}"` },
+    }),
+  listWorkItemAttachments: (workItemId: string) =>
+    request<WorkItemAttachment[]>(`/work-items/${encodeURIComponent(workItemId)}/attachments`),
+  presignWorkItemAttachmentUpload: (workItemId: string, fileName: string, contentType: string, sizeBytes: number) =>
+    request<PresignedAttachmentUpload>(`/work-items/${encodeURIComponent(workItemId)}/attachments/presign`, {
+      method: 'POST',
+      body: JSON.stringify({ fileName, contentType, sizeBytes }),
+    }),
+  confirmWorkItemAttachment: (
+    workItemId: string,
+    input: { fileName: string; contentType: string; sizeBytes: number; objectKey: string },
+  ) =>
+    request<WorkItemAttachment>(`/work-items/${encodeURIComponent(workItemId)}/attachments`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  deleteWorkItemAttachment: (workItemId: string, attachmentId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/attachments/${encodeURIComponent(attachmentId)}`, {
+      method: 'DELETE',
+    }),
+  // Direct PUT to the presigned object-storage URL — bypasses the Orbit API wrapper entirely,
+  // since the file bytes go straight to MinIO/S3, not through the Orbit backend.
+  uploadAttachmentFile: async (uploadUrl: string, file: File) => {
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    })
+    if (!response.ok) throw new Error(`Upload failed (${response.status})`)
+  },
   getProfile: () => request<Profile>('/me'),
   listAccountWorkspaces: () => request<AccountWorkspace[]>('/me/workspaces'),
   getSiteCapabilities: () => request<SiteCapabilities>('/me/site-capabilities'),
@@ -233,6 +284,8 @@ export const orbitApi = {
     }),
   removeWorkItemFromSprint: (workItemId: string) =>
     request<Sprint>(`/work-items/${encodeURIComponent(workItemId)}/sprint`, { method: 'DELETE' }),
+  getSprintReport: (sprintId: string) =>
+    request<SprintReport>(`/sprints/${encodeURIComponent(sprintId)}/report`),
   listTeams: () => request<Team[]>('/teams'),
   createTeam: (name: string) =>
     request<Team>('/teams', { method: 'POST', body: JSON.stringify({ name }) }),

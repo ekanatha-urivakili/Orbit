@@ -3,6 +3,7 @@ using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
+using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
 
 namespace Orbit.Application.WorkItems;
@@ -23,6 +24,8 @@ public sealed class ChangeWorkItemStatusValidator : AbstractValidator<ChangeWork
 public sealed class ChangeWorkItemStatusHandler(
     ITenantContext tenantContext,
     IWorkItemRepository workItems,
+    ISprintMembershipRepository sprintMemberships,
+    ISprintScopeFactRepository sprintScopeFacts,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : IRequestHandler<ChangeWorkItemStatusCommand, WorkItemDto>
@@ -43,7 +46,29 @@ public sealed class ChangeWorkItemStatusHandler(
             throw new ConcurrencyException("The work item changed after it was loaded.");
         }
 
-        workItem.ChangeStatus(request.Status, timeProvider.GetUtcNow());
+        var previousStatus = workItem.Status;
+        var now = timeProvider.GetUtcNow();
+        workItem.ChangeStatus(request.Status, now);
+
+        // A burndown only moves when an item crosses the Done boundary while it's sprint-scoped;
+        // other status moves (e.g. Backlog -> InProgress) don't change remaining points.
+        var enteredDone = previousStatus != WorkItemStatus.Done && request.Status == WorkItemStatus.Done;
+        var leftDone = previousStatus == WorkItemStatus.Done && request.Status != WorkItemStatus.Done;
+        if (enteredDone || leftDone)
+        {
+            var membership = await sprintMemberships.GetCurrentByWorkItemAsync(
+                tenantContext.TenantId, workItem.Id, cancellationToken);
+            if (membership is not null)
+            {
+                var delta = enteredDone ? -(workItem.StoryPoints ?? 0) : (workItem.StoryPoints ?? 0);
+                await sprintScopeFacts.AddAsync(
+                    SprintScopeFact.Create(
+                        tenantContext.TenantId, membership.SprintId, workItem.Id, AgileFactType.StatusChanged,
+                        delta, now, now),
+                    cancellationToken);
+            }
+        }
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);
     }

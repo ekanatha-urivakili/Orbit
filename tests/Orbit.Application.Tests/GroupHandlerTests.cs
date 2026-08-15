@@ -297,6 +297,10 @@ public sealed class GroupHandlerTests
         public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserAccount?>(null);
 
+        public Task<IReadOnlyList<UserAccount>> GetUserAccountsAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserAccount>>([]);
+
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
 

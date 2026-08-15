@@ -54,6 +54,39 @@ export interface WorkItem {
   updatedAt: string
 }
 
+export interface WorkItemComment {
+  id: string
+  tenantId: string
+  workItemId: string
+  authorMembershipId: string
+  authorDisplayName: string
+  authorAvatarUrl: string | null
+  body: string | null
+  mentionedUserIds: string[]
+  version: number
+  isDeleted: boolean
+  createdAt: string
+  updatedAt: string
+  lastEditedAt: string | null
+}
+
+export interface WorkItemAttachment {
+  id: string
+  workItemId: string
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  uploadedByMembershipId: string
+  uploadedAt: string
+  downloadUrl: string
+}
+
+export interface PresignedAttachmentUpload {
+  uploadUrl: string
+  objectKey: string
+  expiresAt: string
+}
+
 export interface Choice {
   id: string
   value: string
@@ -222,6 +255,8 @@ export interface TenantMembership {
   role: TenantRole
   isActive: boolean
   createdAt: string
+  displayName: string | null
+  avatarUrl: string | null
 }
 
 export interface CreateMembershipInput {
@@ -296,6 +331,32 @@ export interface Sprint {
   endDate: string | null
   version: number
   workItemIds: string[]
+}
+
+export interface BurndownPoint {
+  date: string
+  remainingPoints: number
+}
+
+export interface SprintScopeChange {
+  workItemId: string | null
+  factType: 'SprintAdded' | 'SprintRemoved' | 'EstimateChanged' | 'StatusChanged' | 'ColumnChanged' | 'SprintCompleted' | 'SprintReopened'
+  estimateDelta: number | null
+  occurredAt: string
+}
+
+export interface SprintReport {
+  sprintId: string
+  sprintName: string
+  state: SprintState
+  startDate: string | null
+  endDate: string | null
+  committedPoints: number
+  completedPoints: number
+  addedAfterStartPoints: number
+  removedAfterStartPoints: number
+  burndown: BurndownPoint[]
+  scopeChanges: SprintScopeChange[]
 }
 
 export interface AuthSession {

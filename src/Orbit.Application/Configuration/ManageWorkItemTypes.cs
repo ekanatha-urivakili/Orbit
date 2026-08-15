@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
+using Orbit.Application.Settings;
 using Orbit.Domain.Access;
 using Orbit.Domain.Choices;
 using Orbit.Domain.Configuration;
@@ -92,10 +93,8 @@ public sealed class UpdateWorkItemTypeHandler(
 
         var definition = await repository.GetAsync(tenant.TenantId, request.Id, cancellationToken)
             ?? throw new NotFoundException("Work item type was not found.");
-        if (definition.Version != request.ExpectedVersion)
-        {
-            throw new ConcurrencyException("The work item type changed after it was loaded.");
-        }
+        SettingsConcurrency.EnsureVersion(
+            true, definition.Version, request.ExpectedVersion, "The work item type changed after it was loaded.");
 
         definition.Update(
             request.Label,

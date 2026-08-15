@@ -47,6 +47,8 @@ public sealed class OrbitDbContext(
     public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
     public DbSet<WorkItemTypeDefinition> WorkItemTypeDefinitions => Set<WorkItemTypeDefinition>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
+    public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -83,5 +85,9 @@ public sealed class OrbitDbContext(
             .HasQueryFilter(definition => definition.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<CustomFieldDefinition>()
             .HasQueryFilter(definition => definition.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkItemComment>()
+            .HasQueryFilter(comment => comment.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<Attachment>()
+            .HasQueryFilter(attachment => attachment.TenantId == tenantContext.TenantId);
     }
 }

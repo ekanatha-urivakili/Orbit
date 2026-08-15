@@ -51,6 +51,9 @@ public interface ITenantMembershipRepository
 public interface ISettingsRepository
 {
     Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<UserAccount>> GetUserAccountsAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken);
     Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken);
     Task<NotificationPreference?> GetNotificationPreferenceAsync(Guid userId, CancellationToken cancellationToken);
     Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
@@ -373,6 +376,10 @@ public interface ISprintCompletionOperationRepository
 public interface ISprintScopeFactRepository
 {
     Task AddAsync(SprintScopeFact fact, CancellationToken cancellationToken);
+    Task<IReadOnlyList<SprintScopeFact>> ListBySprintAsync(
+        Guid tenantId,
+        Guid sprintId,
+        CancellationToken cancellationToken);
 }
 
 public interface IWorkItemRepository
@@ -397,6 +404,57 @@ public interface IWorkItemRepository
         CancellationToken cancellationToken);
 }
 
+public interface IWorkItemCommentRepository
+{
+    Task AddAsync(WorkItemComment comment, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns a single comment by id, scoped to the work item. Returns <c>null</c> when the
+    /// comment does not exist, belongs to a different work item, or the caller's tenant does
+    /// not match. The work-item visibility check is the caller's responsibility.
+    /// </summary>
+    Task<WorkItemComment?> GetAsync(
+        Guid tenantId,
+        Guid workItemId,
+        Guid commentId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns all comments for a work item ordered by <c>CreatedAt ASC</c>, including
+    /// soft-deleted stubs. The caller must have verified work-item visibility.
+    /// </summary>
+    Task<IReadOnlyList<WorkItemComment>> ListByWorkItemAsync(
+        Guid tenantId,
+        Guid workItemId,
+        CancellationToken cancellationToken);
+}
+
+public interface IAttachmentRepository
+{
+    Task AddAsync(Attachment attachment, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns a single attachment by id, scoped to the work item. Returns <c>null</c> when it
+    /// does not exist, belongs to a different work item, or the caller's tenant does not match.
+    /// </summary>
+    Task<Attachment?> GetAsync(
+        Guid tenantId,
+        Guid workItemId,
+        Guid attachmentId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns all attachments for a work item ordered by <c>UploadedAt ASC</c>. The caller must
+    /// have verified work-item visibility.
+    /// </summary>
+    Task<IReadOnlyList<Attachment>> ListByWorkItemAsync(
+        Guid tenantId,
+        Guid workItemId,
+        CancellationToken cancellationToken);
+
+    Task RemoveAsync(Attachment attachment, CancellationToken cancellationToken);
+}
+
 public interface ITenantOwnerLock
 {
     Task AcquireAsync(Guid tenantId, CancellationToken cancellationToken);
@@ -406,3 +464,4 @@ public interface IUnitOfWork
 {
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }
+

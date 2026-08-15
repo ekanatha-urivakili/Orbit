@@ -26,91 +26,24 @@ public sealed class OutboxEmailProcessor(
 
     public async Task ProcessPendingAsync(CancellationToken cancellationToken)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-
-        var claimed = await dbContext.OutboxEmailMessages
-            .FromSqlInterpolated($"""
-                SELECT * FROM outbox_email_messages
-                WHERE published_at IS NULL AND attempts < {MaxAttempts}
-                ORDER BY created_at
-                LIMIT {BatchSize}
-                FOR UPDATE SKIP LOCKED
-                """)
+        var pendingMessageIds = await dbContext.OutboxEmailMessages
+            .AsNoTracking()
+            .Where(message => message.PublishedAt == null && message.Attempts < MaxAttempts)
+            .OrderBy(message => message.CreatedAt)
+            .Select(message => message.Id)
+            .Take(BatchSize)
             .ToListAsync(cancellationToken);
 
-        if (claimed.Count == 0)
+        if (pendingMessageIds.Count == 0)
         {
-            await transaction.RollbackAsync(cancellationToken);
             return;
         }
 
-        var now = timeProvider.GetUtcNow();
-        foreach (var message in claimed)
+        foreach (var messageId in pendingMessageIds)
         {
             try
             {
-                var htmlBody = message.HtmlBody;
-                WorkspaceInvitation? invitation = null;
-                string? tokenHash = null;
-                if (message.WorkspaceInvitationId is { } invitationId
-                    && message.TenantId is { } tenantId
-                    && message.FrontendBaseUrl is { } frontendBaseUrl)
-                {
-                    await dbContext.Database.ExecuteSqlInterpolatedAsync(
-                        $"SELECT set_config('app.tenant_id', {tenantId.ToString()}, true)",
-                        cancellationToken);
-                    invitation = await dbContext.WorkspaceInvitations
-                        .IgnoreQueryFilters()
-                        .SingleOrDefaultAsync(
-                            value => value.TenantId == tenantId && value.Id == invitationId,
-                            cancellationToken);
-                    if (invitation is null || invitation.Status != WorkspaceInvitationStatus.Active)
-                    {
-                        message.MarkPublished(now);
-                        // Flush while app.tenant_id still matches this message's tenant - the
-                        // batch loop moves on to switch it to the next message's tenant next.
-                        await dbContext.SaveChangesAsync(cancellationToken);
-                        continue;
-                    }
-
-                    var workspace = await dbContext.Workspaces
-                        .AsNoTracking()
-                        .SingleAsync(value => value.Id == tenantId, cancellationToken);
-                    var rawToken = InvitationTokenCodec.Generate();
-                    tokenHash = InvitationTokenCodec.Hash(rawToken);
-                    var linkBuilder = new UriBuilder(frontendBaseUrl)
-                    {
-                        Fragment = $"invitationToken={Uri.EscapeDataString(rawToken)}" +
-                            $"&invitationTenantId={tenantId:D}"
-                    };
-                    var link = System.Net.WebUtility.HtmlEncode(linkBuilder.Uri.AbsoluteUri);
-                    htmlBody = $"""
-                        <p>You have been invited to join {System.Net.WebUtility.HtmlEncode(workspace.Name)} on Orbit.</p>
-                        <p><a href="{link}">Accept invitation</a></p>
-                        <p>This invitation expires in seven days and can only be used once.</p>
-                        """;
-                }
-
-                // Send before persisting the token rotation: if delivery fails, the invitation's
-                // existing token (still valid) is untouched instead of being burned for nothing.
-                await emailSender.SendAsync(message.ToEmail, message.Subject, htmlBody, cancellationToken);
-                if (invitation is not null)
-                {
-                    invitation.Renew(
-                        invitation.Role,
-                        invitation.TeamId,
-                        tokenHash!,
-                        invitation.InvitedByMembershipId,
-                        now,
-                        TimeSpan.FromDays(7));
-                }
-
-                message.MarkPublished(now);
-                // Flush per message, not once after the loop: app.tenant_id is transaction-local
-                // and switches with every invitation message, so a single trailing SaveChangesAsync
-                // would apply every prior message's invitation write under the *last* message's
-                // tenant context and fail RLS for all but one tenant in a mixed-tenant batch.
-                await dbContext.SaveChangesAsync(cancellationToken);
+                await ProcessSingleMessageAsync(messageId, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -118,12 +51,92 @@ public sealed class OutboxEmailProcessor(
             }
             catch (Exception exception)
             {
-                logger.LogWarning(exception, "Failed to send outbox email {MessageId}", message.Id);
-                message.RecordFailure(exception.Message);
-                await dbContext.SaveChangesAsync(cancellationToken);
+                logger.LogError(exception, "Unexpected error processing outbox email {MessageId}", messageId);
             }
         }
+    }
 
-        await transaction.CommitAsync(cancellationToken);
+    private async Task ProcessSingleMessageAsync(Guid messageId, CancellationToken cancellationToken)
+    {
+        var message = await dbContext.OutboxEmailMessages
+            .SingleOrDefaultAsync(
+                m => m.Id == messageId && m.PublishedAt == null && m.Attempts < MaxAttempts,
+                cancellationToken);
+
+        if (message is null)
+        {
+            return;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        try
+        {
+            var htmlBody = message.HtmlBody;
+            if (message.WorkspaceInvitationId is { } invitationId
+                && message.TenantId is { } tenantId
+                && message.FrontendBaseUrl is { } frontendBaseUrl)
+            {
+                await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT set_config('app.tenant_id', {tenantId.ToString()}, true)",
+                    cancellationToken);
+
+                var invitation = await dbContext.WorkspaceInvitations
+                    .IgnoreQueryFilters()
+                    .SingleOrDefaultAsync(
+                        value => value.TenantId == tenantId && value.Id == invitationId,
+                        cancellationToken);
+
+                if (invitation is null || invitation.Status != WorkspaceInvitationStatus.Active)
+                {
+                    message.MarkPublished(now);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    return;
+                }
+
+                var workspace = await dbContext.Workspaces
+                    .AsNoTracking()
+                    .SingleAsync(value => value.Id == tenantId, cancellationToken);
+
+                var rawToken = InvitationTokenCodec.Generate();
+                var tokenHash = InvitationTokenCodec.Hash(rawToken);
+
+                invitation.Renew(
+                    invitation.Role,
+                    invitation.TeamId,
+                    tokenHash,
+                    invitation.InvitedByMembershipId,
+                    now,
+                    TimeSpan.FromDays(7));
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+
+                var linkBuilder = new UriBuilder(frontendBaseUrl)
+                {
+                    Fragment = $"invitationToken={Uri.EscapeDataString(rawToken)}" +
+                        $"&invitationTenantId={tenantId:D}"
+                };
+                var link = System.Net.WebUtility.HtmlEncode(linkBuilder.Uri.AbsoluteUri);
+                htmlBody = $"""
+                    <p>You have been invited to join {System.Net.WebUtility.HtmlEncode(workspace.Name)} on Orbit.</p>
+                    <p><a href="{link}">Accept invitation</a></p>
+                    <p>This invitation expires in seven days and can only be used once.</p>
+                    """;
+            }
+
+            await emailSender.SendAsync(message.ToEmail, message.Subject, htmlBody, cancellationToken);
+
+            message.MarkPublished(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to send outbox email {MessageId}", message.Id);
+            message.RecordFailure(exception.Message);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 }

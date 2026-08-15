@@ -1376,6 +1376,68 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.ToTable("workspace_settings", (string)null);
                 });
 
+            modelBuilder.Entity("Orbit.Domain.WorkItems.Attachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("content_type");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("ObjectKey")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("object_key");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.Property<Guid>("UploadedByMembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("uploaded_by_membership_id");
+
+                    b.Property<Guid>("WorkItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("work_item_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ObjectKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_attachments_object_key");
+
+                    b.HasIndex("TenantId", "WorkItemId", "Id")
+                        .HasDatabaseName("ix_attachments_tenant_item_id");
+
+                    b.HasIndex("TenantId", "WorkItemId", "UploadedAt")
+                        .HasDatabaseName("ix_attachments_tenant_item_uploaded");
+
+                    b.ToTable("attachments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_attachments_size_bytes", "size_bytes > 0 AND size_bytes <= 26214400");
+                        });
+                });
+
             modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1549,6 +1611,72 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_work_items_type", "type IN ('Initiative', 'Epic', 'Task', 'Story', 'Spike', 'Test', 'Feature', 'Request', 'Bug', 'Subtask')");
 
                             t.HasCheckConstraint("ck_work_items_version", "version > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItemComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AuthorMembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_membership_id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<DateTimeOffset?>("LastEditedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_edited_at");
+
+                    b.PrimitiveCollection<Guid[]>("MentionedUserIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("mentioned_user_ids");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.Property<Guid>("WorkItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("work_item_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "WorkItemId", "CreatedAt")
+                        .HasDatabaseName("ix_work_item_comments_tenant_item_created");
+
+                    b.HasIndex("TenantId", "WorkItemId", "Id")
+                        .HasDatabaseName("ix_work_item_comments_tenant_item_id");
+
+                    b.ToTable("work_item_comments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_work_item_comments_body_length", "char_length(body) BETWEEN 1 AND 10000");
+
+                            t.HasCheckConstraint("ck_work_item_comments_version", "version > 0");
                         });
                 });
 
@@ -1892,6 +2020,16 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Orbit.Domain.WorkItems.Attachment", b =>
+                {
+                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "WorkItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItem", b =>
                 {
                     b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
@@ -1917,6 +2055,16 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "Type")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItemComment", b =>
+                {
+                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "WorkItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 #pragma warning restore 612, 618

@@ -5,6 +5,7 @@ import * as auth from './api/auth'
 import { completeOidcCallback } from './features/auth/oidcPkce'
 import { ResetPasswordView } from './features/auth/ResetPasswordView'
 import { AcceptInvitationView } from './features/auth/AcceptInvitationView'
+import { LoginView } from './features/auth/LoginView'
 import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus } from './api/types'
 
 import './App.css'
@@ -87,6 +88,7 @@ function App() {
         if (!result) return
         if (result.mode === 'login') {
           auth.setExternalAccessToken(result.accessToken)
+          void queryClient.resetQueries()
           return
         }
 
@@ -103,7 +105,10 @@ function App() {
           const { token, tenantId, displayName } = result.pendingInvitation
           orbitApi
             .acceptInvitationWithExternalIdentity(tenantId, { token, externalIdToken: result.idToken, displayName })
-            .then(() => auth.setExternalAccessToken(result.accessToken))
+            .then(async () => {
+              auth.setExternalAccessToken(result.accessToken)
+              await queryClient.resetQueries()
+            })
             .catch((acceptError: Error) => setOidcError(acceptError.message))
           return
         }
@@ -135,6 +140,12 @@ function App() {
     queryFn: orbitApi.getProfile,
     enabled: bootstrapQuery.data?.initializationRequired === false,
   })
+  const membersQuery = useQuery({
+    queryKey: ['memberships'],
+    queryFn: orbitApi.listMemberships,
+    enabled: bootstrapQuery.data?.initializationRequired === false,
+  })
+  const members = membersQuery.data ?? []
   const accountWorkspacesQuery = useQuery({
     queryKey: ['account-workspaces'],
     queryFn: orbitApi.listAccountWorkspaces,
@@ -304,6 +315,8 @@ function App() {
 
   if (bootstrapQuery.data.initializationRequired) return <BootstrapOnboarding />
 
+  if (!authSession) return <LoginView />
+
   if (projectsQuery.isPending) return <LoadingScreen />
   if (projectsQuery.isError) return <ErrorScreen message={projectsQuery.error.message} />
 
@@ -367,6 +380,7 @@ function App() {
               <BacklogView
                 workItems={workItems}
                 projectId={selectedProjectId ?? ''}
+                members={members}
                 sprints={sprints}
                 sprintsLoading={sprintsQuery.isPending}
                 onCreateSprint={(name) => createSprintMutation.mutate(name)}
@@ -439,6 +453,7 @@ function App() {
             item={editingWorkItem}
             workItems={workItems}
             profile={profileQuery.data}
+            members={members}
             priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
             onClose={() => setEditingWorkItemId(null)}
           />

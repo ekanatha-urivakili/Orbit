@@ -3,6 +3,7 @@ using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
+using Orbit.Domain.Identity;
 
 namespace Orbit.Application.Access;
 
@@ -20,9 +21,11 @@ public sealed record TenantMembershipDto(
     PrincipalType PrincipalType,
     TenantRole Role,
     bool IsActive,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    string? DisplayName,
+    string? AvatarUrl)
 {
-    public static TenantMembershipDto From(TenantMembership membership) =>
+    public static TenantMembershipDto From(TenantMembership membership, UserAccount? account = null) =>
         new(
             membership.Id,
             membership.UserId,
@@ -31,7 +34,9 @@ public sealed record TenantMembershipDto(
             membership.PrincipalType,
             membership.Role,
             membership.IsActive,
-            membership.CreatedAt);
+            membership.CreatedAt,
+            account?.DisplayName,
+            account?.AvatarUrl);
 }
 
 public sealed class CreateTenantMembershipValidator : AbstractValidator<CreateTenantMembershipCommand>

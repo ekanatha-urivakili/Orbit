@@ -73,6 +73,24 @@ public sealed class WorkItemTypeHandlerTests
         await Assert.ThrowsAsync<AccessDeniedException>(action);
     }
 
+    [Fact]
+    public async Task Update_RejectsStaleVersion()
+    {
+        var tenantId = Guid.NewGuid();
+        var handler = new UpdateWorkItemTypeHandler(
+            new TenantContextStub(tenantId),
+            new AuthorizationStub(true),
+            new RepositoryStub(tenantId),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            new UpdateWorkItemTypeCommand(WorkItemType.Task, "Task", string.Empty, 30, "blue", true, 999),
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<ConcurrencyException>(action);
+    }
+
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
 
     private sealed class AuthorizationStub(bool allowed) : ITenantAuthorization

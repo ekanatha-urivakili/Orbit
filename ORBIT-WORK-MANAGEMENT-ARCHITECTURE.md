@@ -6,10 +6,10 @@
 
 **Document ID:** ARCH-ORBIT-001
 **Status:** Proposed
-**Version:** 1.19
+**Version:** 1.22
 **Owner:** ORBIT maintainers
 **Reviewers:** Product, Architecture, Security, SRE, Open-source maintainers
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-15
 
 ---
 
@@ -2227,10 +2227,10 @@ The repository contains the first executable vertical slice. This baseline is in
 | Tenancy | Global user account and workspace persistence; one-time advisory-lock bootstrap; site-super-admin workspace provisioning and owner assignment; local email/password login with concurrency-safe rotating refresh-session families; locally-signed and external OIDC bearer validation; proof-validated external identity linking; self-service password reset; authenticated workspace discovery and refresh-token-rotated workspace switching (`GET /api/v1/me/workspaces`); complete EF tenant filters; transaction-local PostgreSQL RLS; production startup rejection of `SUPERUSER`/`BYPASSRLS` runtime roles; separate migration-owner connection | External-SSO workspace switching, connection-reuse isolation suite |
 | Access control | Owner/admin/member tenant roles; direct and directory-group administrator/member/viewer project roles; shared permission predicates inside project/work-item queries; existence-hiding reads; authorization epoch/cache; advisory-lock-serialized owner lifecycle | Permission schemes and dynamic grants, issue security, administration UI and audit |
 | Workspace directory | Bootstrap-created first workspace and owner membership; tenant memberships and project roles; workspace-scoped teams; hashed, expiring, single-use workspace/team invitations with transactional email delivery, renewal/revocation, forced RLS, and local-account acceptance (`/api/v1/invitations`, `/api/v1/workspaces/{tenantId}/invitations/accept`) | Workspace selection, federated-only invitation acceptance, verified-email account linking, invitation audit search |
-| Work items | Create/list; tenant-scoped versioned registry for stable Initiative, Epic, Task, Story, Bug, Spike, Test, Feature, Request and disabled historical Subtask ids; administrator rename/enable/order UI; typed creation fields; portfolio hierarchy; self-referencing dependency links; ownership ids; labels/countries arrays; attachment-name metadata; `If-Match` status transition; versioned full-field update (`PATCH /api/v1/work-items/{id}`, summary/description/priority/hierarchy/ownership/labels, `WorkItemType` immutable post-creation) | Administrator-created item-type ids and hierarchy capabilities, configurable field/screen registry, multi-link relation table, quarantined object upload, audit history |
-| Agile UI | Persisted boards, configurable columns/WIP limits, fractional ranking, and Future/Active/Closing/Closed/Reopened sprint lifecycle; temporal memberships; atomic sprint completion with optional rollover, idempotent operation records, reopening, and sprint-scope facts; batched sprint/member reads | Parallel active sprints, worker-backed completion for very large sprints, burndown/velocity projections, swimlanes, virtualization, cross-column drag |
+| Work items | Create/list; tenant-scoped versioned registry for stable Initiative, Epic, Task, Story, Bug, Spike, Test, Feature, Request and disabled historical Subtask ids; administrator rename/enable/order UI; typed creation fields; portfolio hierarchy; self-referencing dependency links; ownership ids; labels/countries arrays; attachment-name metadata; `If-Match` status transition; versioned full-field update (`PATCH /api/v1/work-items/{id}`, summary/description/priority/hierarchy/ownership/labels, `WorkItemType` immutable post-creation); comments; real file attachments via presigned MinIO/S3 upload (`POST /work-items/{id}/attachments/presign`\|``, `GET`/`DELETE`, v1.22) | Administrator-created item-type ids and hierarchy capabilities, configurable field/screen registry, multi-link relation table, malware/quarantine scanning for uploaded attachments, audit history |
+| Agile UI | Persisted boards, configurable columns/WIP limits, fractional ranking, and Future/Active/Closing/Closed/Reopened sprint lifecycle; temporal memberships; atomic sprint completion with optional rollover, idempotent operation records, reopening, and sprint-scope facts with `EstimateDelta` written on scope/status/estimate changes; batched sprint/member reads; sprint burndown/scope-change/velocity report projected from the immutable fact log, reproducible for closed sprints (`GET /sprints/{id}/report`, v1.21); backlog/board search and an assignee quick-filter backed by an enriched member directory (v1.20) | Parallel active sprints, worker-backed completion for very large sprints, cumulative-flow/control-chart/cycle-time reports, swimlanes, virtualization, cross-column drag |
 | PWA | Installable manifest, generated service worker, offline application shell, responsive sidebar/bottom navigation | Encrypted offline drafts, background sync review, update prompt, accessibility/device conformance suite |
-| Data | EF Core/Npgsql migrations, PostgreSQL choice/role constraints, tenant-composite foreign keys, indexes, forced RLS for work and access tables (including `sprints`/`sprint_memberships` and `workspace_invitations`); a global, unfiltered `outbox_email_messages` table for transactional email | Field definitions/options, typed projections, workflow graph, audit partitions |
+| Data | EF Core/Npgsql migrations, PostgreSQL choice/role constraints, tenant-composite foreign keys, indexes, forced RLS for work and access tables (including `sprints`/`sprint_memberships`, `workspace_invitations`, and `attachments`); a global, unfiltered `outbox_email_messages` table for transactional email | Field definitions/options, typed projections, workflow graph, audit partitions |
 | Delivery | Podman PostgreSQL 18 and Valkey 9.1, separate OCI files, Railway service configs, SHA-pinned GitHub Actions, pinned `dotnet-ef`, separate admin/runtime database connections, and fail-closed runtime-role validation | GHCR digest promotion, SBOM/provenance/signing, preview environments, migration compatibility gate, rollback automation |
 
 #### 13.5.1 Settings and profile implementation audit
@@ -2298,7 +2298,7 @@ Implementation order from this baseline:
 5. Finish identity hardening: service-account conformance, invitation proofs, and connection-reuse isolation tests. Browser OIDC PKCE/account linking now validates the IdP-issued identity token server-side; directory groups and authorization epoch/cache are implemented; password recovery is done (see step 1).
 6. Add versioned custom field definitions and choice options, screens, typed query projections, and WQL.
 7. ~~Add transactional outbox/jobs and make `Orbit.Worker` process notifications, projections, invitations, imports, and automation under tenant-scoped leases.~~ **Done for the email outbox (v1.15) and invitation email consumer (v1.16):** `outbox_email_messages` is a global table written atomically with password-reset and invitation state. `Orbit.Worker` claims bounded batches with `FOR UPDATE SKIP LOCKED` and delivers through SMTP; failed sends retry up to five times. Scope remains email-only rather than the generic `outbox_event` design. Remaining: projections, imports, automation, tenant-scoped leases, and a dead-letter/retry operator UI (`§9.2` S1.4.4).
-8. Add attachments, search, import/export, observability, capacity tests, and the GA supply-chain/recovery gates.
+8. ~~Add attachments.~~ **Done for presigned MinIO/S3 upload (v1.22):** real file attachments, distinct from the pre-existing `WorkItem.AttachmentNames` typed-name list. Remaining: search, import/export, observability, capacity tests, malware/quarantine scanning, and the GA supply-chain/recovery gates.
 
 ### 13.6 Open-source governance and dependency policy
 
@@ -2355,3 +2355,153 @@ Implementation order from this baseline:
 | 1.17 | 2026-08-14 | Multi-workspace discovery and switching | Implemented local-account workspace discovery and switching without weakening the tenant boundary. `GET /api/v1/me/workspaces` requires an established authenticated tenant principal, then reuses the ambient request transaction and `tenant_memberships_self_lookup` RLS policy to return only that global user's active memberships. The PWA header shows those workspaces; choosing one submits the rotating refresh token with the requested workspace id, and `RefreshSessionHandler` verifies membership before revoking/replacing the old session and issuing a token carrying the new `tenant_id`. Client tenant state and React Query data reset only after the server accepts the switch. Added discovery, successful switch, and unauthorized-target/no-rotation tests. External OIDC sessions still require provider reauthentication and do not yet expose switching. |
 | 1.18 | 2026-08-14 | Site-admin workspace creation | Added `POST /api/v1/workspaces` and capability discovery for authenticated global accounts. The command requires a linked account with the installation-level `SuperAdministrator` assignment, derives and collision-checks the workspace slug, and creates the workspace plus owner membership atomically. The persistence adapter performs the tenant-owned membership insert under the new workspace's transaction-local PostgreSQL RLS context, restores the request tenant before returning, and rejects calls without an ambient transaction. The PWA exposes creation only when `/me/site-capabilities` permits it, refreshes workspace discovery after creation, and uses the existing refresh-token rotation path to enter the new workspace. Unauthorized, duplicate-slug, owner-creation, capability, .NET, and frontend checks pass. External-SSO switching and append-only audit remain follow-ups. |
 | 1.19 | 2026-08-14 | Stable work-item type registry | Added the tenant-scoped versioned `work_item_type_definitions` registry with forced RLS, composite foreign keys, existing-workspace backfill and bootstrap/provisioning seeds; added administrator list/update API and settings UI for labels, enabled state and order; work creation and project-default updates now validate the active tenant registry. Administrator-created type ids, hierarchy capabilities and schemes remain the next configurability increment. |
+| 1.20 | 2026-08-15 | Board search/filter fix and member directory | The Backlog tab's search box, Filter control, and assignee avatar (`web/src/features/backlog/BacklogView.tsx`) were static markup with no bound state or click handlers since the initial commit — not a regression, greenfield missing functionality confirmed via `git log`. Added `searchTerm`/`assigneeFilter` state applied as a predicate over rendered backlog/sprint items; replaced the hardcoded `"EU"` avatar with a real Filter dropdown populated from tenant members; wired the inline-create assignee popover's previously-inert buttons to an `inlineAssigneeUserId` that now flows into the create mutation payload. Backing this, `GET /api/v1/memberships` (`ListTenantMembershipsHandler`) now joins `UserAccount` to return `displayName`/`avatarUrl` on `TenantMembershipDto` — the app previously had no member-directory endpoint at all, so every assignee control degraded to "assign to me." `EditWorkItemDialog.tsx`'s Story Points field was also gated to `type === 'Bug'` only despite `WorkItem.StoryPoints` being fully modeled for every type on the backend; it now renders for Task/Story too, and the Assignee select uses the same enriched member list instead of a single "assign to me" option. Full user picker/directory search beyond this tenant-wide list (project-scoped, searchable) remains a follow-up. |
+| 1.21 | 2026-08-15 | Sprint report and burndown chart | `SprintScopeFact` (added v1.13) was written on every sprint add/remove but its `EstimateDelta` column was never populated and nothing read the facts back — `ISprintScopeFactRepository` had `AddAsync` only, so burndown/velocity reporting was a documented gap with zero read path. Added `EstimateDelta` to every fact write: `SprintAdded`/`SprintRemoved` now carry the item's signed story points, and two previously-unused `AgileFactType` members are now actually emitted — `StatusChanged` (`ChangeWorkItemStatusHandler`, when an item crosses the Done boundary while sprint-scoped) and `EstimateChanged` (`UpdateWorkItemHandler`, when story points change on a not-yet-Done sprint-scoped item). `ISprintScopeFactRepository.ListBySprintAsync` plus a new `SprintReportHandler` (`Application/Boards/SprintReport.cs`) fold the ordered fact log into a day-granularity burndown series, committed/completed/added-after-start/removed-after-start point totals, and a scope-change list — reading only immutable facts, never current work-item state, so a closed sprint's report stays reproducible per NFR-14 even if its items are later edited. New `GET /api/v1/sprints/{id}/report`; frontend `SprintReportDialog.tsx` renders an inline SVG burndown (actual line plus a client-computed ideal reference line) with a "Report" action next to active and closed sprints in the Backlog tab. 5 new fold-logic unit tests cover no-scope-change, mid-sprint estimate change, mid-sprint removal, and closed-sprint reproducibility. Cumulative flow, control chart, and cycle-time reports (§4.6.4) remain unimplemented. |
+| 1.22 | 2026-08-15 | Real attachments via presigned MinIO/S3 upload | Implemented the presigned-transfer design already sketched in §10.3: a new `Attachment` domain entity (id, work item, file name, content type, size, object key, uploader, timestamp — additive, distinct from the pre-existing `WorkItem.AttachmentNames` typed-name list) with forced-RLS `attachments` table; `IObjectStorageService` port (`Application/Abstractions/Storage.cs`) implemented by `S3ObjectStorageService` against the AWS S3 SDK, pointed at MinIO locally and any S3-compatible bucket in production per the stack decision in §3.3. `POST /work-items/{id}/attachments/presign` mints a time-limited presigned PUT scoped to `{tenantId}/{workItemId}/...`; the client PUTs directly to the bucket; `POST /work-items/{id}/attachments` confirms upload and persists metadata after verifying the object key belongs to that tenant/work item (rejecting a key minted for a different work item); `GET`/`DELETE` list and remove, delete restricted to the uploading member (existence-hiding on mismatch, matching the comment-author pattern). A content-type allowlist and 25 MB cap are the only defense — no malware/quarantine scanning, an explicit, documented boundary carried forward from §13.5.2. Frontend `WorkItemAttachments.tsx` (file picker → presign → PUT → confirm → list/download/delete) mounts in `EditWorkItemDialog`. Local dev gets a `minio` Podman service (`deploy/podman/compose.yaml`) with credentials matching `ObjectStorageOptions`' defaults so no config is needed to "just work," mirroring the existing Mailpit/`EmailOptions` pattern; a new `ObjectStorageBucketInitializer` hosted service ensures the bucket exists at API startup (best-effort, never blocks startup) since `MINIO_DEFAULT_BUCKETS` does not actually auto-create it on the pinned image — verified against a live local MinIO container, not assumed. Two AWSSDK.S3 4.x quirks were found and fixed by testing against real MinIO rather than a mock: `GetPreSignedUrlRequest.Protocol` defaults to `https` regardless of client config (silently produced unusable presigned URLs against a plain-HTTP local endpoint) and `ListBucketsAsync` throws a `NullReferenceException` against a non-AWS endpoint without an explicit `AuthenticationRegion` (worked around via `AmazonS3Util.DoesS3BucketExistV2Async` instead). Full presign → PUT → confirm → list → download → delete round trip and a cross-work-item object-key rejection are covered by a live-MinIO integration test (`tests/Orbit.IntegrationTests/AttachmentTests.cs`), plus domain and handler unit tests. |
+
+## 10. Jira Parity Architectural Additions (Proposed Extensions)
+
+Based on the parity analysis against advanced enterprise trackers, the following architectural extensions are required to support advanced Agile teams.
+
+### 10.1 Search & Advanced Filtering (WQL & Quick Filters)
+
+**Partially implemented in v1.20 — see §13.5.** What shipped is deliberately smaller than the WQL design below: `BacklogView.tsx` now filters its rendered list by a client-side `searchTerm`/`assigneeFilter` predicate over the already-fetched work-item page, and the assignee quick-filter is backed by the real member directory (`GET /memberships`, enriched with `displayName` in v1.20) rather than the single hardcoded avatar it used to render. There is no AST, no server-side query compilation, and no faceted-values endpoint — the filter only narrows what the client already has in memory, which is correct at today's scale (`ListWorkItemsQuery` pages, doesn't stream 10M rows) but will not survive to WQL scale. The original design remains the target for when board/backlog result sets stop fitting comfortably in one page:
+
+To support live-filtering (e.g., filtering a board by assignee, or a custom field like "EU Product") at scale, Orbit will eventually implement a dynamic WQL (Work Query Language) execution plan compiled server-side (§4.4), not evaluated client-side over an already-fetched page.
+
+- **Faceted Search:** A `GET /api/v1/projects/{id}/facets` endpoint would aggregate distinct values for active custom fields and assignees to populate UI dropdowns efficiently — still proposed, not built.
+- **Quick Filters Engine:** WQL ASTs constructed when users interact with UI elements (avatar circles, status buttons), translating UI state into AST queries (e.g., `Assignee = "currentUser" AND sprint = "activeSprint" AND cf[EU] = "true"`) — still proposed, not built.
+
+### 10.2 Agile Reporting & Burndown Calculations
+
+**Implemented in v1.21 — see §13.5.** Sprint reports, velocity tracking, and burndown charts require tracking scope changes precisely when they happen (e.g., changing story points mid-sprint) — the immutable-facts strategy below is what shipped, with one refinement: rather than a bare `sprint_scope_fact` table populated only on "story point edit or workflow transition," the existing `SprintScopeFact` entity (already present since v1.13 for `SprintAdded`/`SprintRemoved`/`SprintCompleted`/`SprintReopened`) gained a populated `EstimateDelta` on every fact type, plus two fact types that existed in the `AgileFactType` enum but were never actually emitted until now — `StatusChanged` (only when an item crosses the Done boundary while sprint-scoped) and `EstimateChanged` (only when points change on a not-yet-Done sprint-scoped item). `SprintReportHandler` folds the ordered fact log — never current work-item state — into the burndown series, so a closed sprint's report is byte-reproducible per NFR-14 even if its items are later edited or deleted:
+
+- **Immutable Facts Strategy:** Any sprint-scope change, story point edit, or Done-boundary transition generates a fact with a signed `EstimateDelta` in the append-only `sprint_scope_facts` table (write path — unchanged from the original design):
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant API as Orbit API
+    participant DB as PostgreSQL (Facts)
+
+    User->>API: Edit Story Points (5 -> 8)
+    API->>DB: UPDATE work_items
+    API->>DB: INSERT sprint_scope_fact (EstimateChanged, +3)
+    User->>API: Transition Issue to "Done"
+    API->>DB: UPDATE work_items (status = Done)
+    API->>DB: INSERT sprint_scope_fact (StatusChanged, -8)
+```
+
+- **Burndown Projection:** `GET /api/v1/sprints/{id}/report` reads the fact log back and folds it into a day-granularity time series (read path, new in v1.21 — the write path above previously had no reader at all):
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant API as Orbit API
+    participant Handler as SprintReportHandler
+    participant DB as PostgreSQL (Facts)
+
+    User->>API: GET /sprints/{id}/report
+    API->>Handler: SprintReportQuery
+    Handler->>DB: SELECT sprint_scope_facts WHERE sprint_id = ... ORDER BY occurred_at
+    DB-->>Handler: Ordered fact log
+    Handler->>Handler: Fold EstimateDelta into committed/completed/scope-change totals and a day-by-day running-sum burndown series
+    Handler-->>User: Burndown points + scope changes + velocity summary
+```
+
+Cumulative flow, control chart, and cycle-time reports (§4.6.4) remain unimplemented — only burndown/velocity has a read path today.
+
+### 10.3 Attachment Management (MinIO / S3)
+
+**Implemented in v1.22 — see §13.5.** To ensure the .NET API is not bottlenecked by passing large file streams directly through its memory, Orbit delegates storage to an object store (MinIO for local, S3 for production) using a Pre-signed Upload flow — the flow below shipped essentially as designed, with one addition: the confirm step verifies the submitted object key was actually minted for this tenant/work item (rejecting a key copied from a different work item's presign response) before persisting metadata.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant API as Orbit API
+    participant S3 as MinIO / S3 Object Store
+
+    Client->>API: POST /work-items/{id}/attachments/presign (filename, contentType, size)
+    API-->>Client: 200 OK (Presigned PUT URL, ObjectKey)
+    Client->>S3: PUT [Presigned URL] (Binary payload)
+    S3-->>Client: 200 OK
+    Client->>API: POST /work-items/{id}/attachments (ObjectKey)
+    API->>API: Verify ObjectKey prefix matches this tenant/work item
+    API-->>Client: 201 Created (Attachment metadata linked)
+```
+
+No malware/quarantine scanning exists — a content-type allowlist and a 25 MB size cap are the only defense, an explicit boundary carried forward from §13.5.2 rather than silently assumed away.
+
+### 10.4 Advanced IAM: Teams, Roles & Invitations
+
+**Proposed — not built.** Orbit expands the Workspace Identity model to support explicit **Teams** and strict **Role-Based Access Control (RBAC)** to match complex enterprise governance models. The role matrix and invitation lifecycle below are deepened from the original bullet points using Jira's own project-role + group model as the reference shape (not queried live against a Jira instance this pass); §13.5 tracks what of the *existing* access model (owner/admin/member tenant roles, direct/group project roles v1.4/v1.10, workspace/team invitations v1.16) this would extend rather than replace.
+
+| Role | Scope | Can | Cannot |
+|---|---|---|---|
+| Site super admin | Installation | Create workspaces, appoint/demote site admins, govern all workspaces | Bypass workspace membership to read tenant data directly |
+| Workspace owner | Workspace | Everything a workspace admin can; sole-owner demotion blocked (already enforced, §3.7) | — |
+| Workspace admin | Workspace | Manage members/teams/roles, workspace settings, billing, integrations | Appoint site super admins |
+| Team admin | Team | Add/remove team members, rename team | Change project roles outside the team's granted projects |
+| Project admin | Project | Configure workflow, fields, permissions, project settings | Manage workspace-level membership |
+| Member | Project (role-granted) | Create/edit/transition work items per granted `ProjectPermission` | Administer project or workspace configuration |
+| Viewer | Project (role-granted) | Read work items, boards, reports | Create, edit, or transition |
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending : Admin issues invitation
+    Pending --> Accepted : Recipient authenticates and accepts
+    Pending --> Revoked : Admin revokes
+    Pending --> Expired : TTL elapses (7 days, v1.16)
+    Accepted --> [*]
+    Revoked --> [*]
+    Expired --> [*]
+```
+
+- **Teams:** First-class groupings of active workspace members used for project ownership and `@mention` resolution in comments (comment `@{userId}` mentions exist since the work-item-comments increment; team-level `@team` expansion is still proposed).
+- **Invitations Lifecycle:** `WorkspaceInvitation` (implemented v1.16) already enforces exactly this Pending/Accepted/Revoked/Expired state machine — hashed single-use tokens, forced RLS, no cross-workspace replay. The diagram above documents the *existing* implementation, not a future one.
+- **RBAC Over ABAC:** Project access is evaluated via project-role assignment (direct or directory-group, implemented) with dynamic issue-security predicates (§4.3) remaining proposed.
+
+### 10.5 Notification Engine (Event Outbox)
+
+**Partially implemented — see §13.5.** Every state change, at-mention, and assignment triggers an event; to guarantee delivery without slowing down the HTTP request, Orbit uses the Outbox Pattern for all async comms. The outbox/worker infrastructure below is real and already shipped (v1.15 `outbox_email_messages` + `OutboxEmailProcessor`); what's proposed is wiring more trigger points into it:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as Orbit API
+    participant DB as PostgreSQL (Outbox)
+    participant Worker as Orbit.Worker (OutboxDispatchWorker)
+    participant SMTP as Mailpit / SMTP
+
+    API->>DB: Commit Domain Change + INSERT outbox_email_messages
+    Worker->>DB: FOR UPDATE SKIP LOCKED (bounded batch)
+    Worker->>Worker: Resolve user notification preferences
+    Worker->>Worker: Render HTML Email Template
+    Worker->>SMTP: Dispatch Email
+    SMTP-->>Worker: 250 OK
+    Worker->>DB: UPDATE outbox_email_messages (published_at = NOW)
+```
+
+| Trigger | Wired today | Proposed |
+|---|---|---|
+| Password reset requested | ✅ (v1.15) | — |
+| Workspace/team invitation issued | ✅ (v1.16) | — |
+| Assigned to a work item | ❌ | Fire on `UpdateWorkItemCommand`/`CreateWorkItemCommand` when `AssigneeUserId` changes |
+| Mentioned in a comment | ❌ | `MentionParser.ExtractMentionedUserIds` (implemented, comments feature) already extracts the ids; nothing consumes them for notification yet |
+| Comment added to a watched item | ❌ | Requires a watcher list, which doesn't exist yet |
+| Status transition | ❌ | Fire from `ChangeWorkItemStatusHandler` |
+| Sprint started/completed | ❌ | Fire from `StartSprintHandler`/`CompleteSprintHandler` |
+
+`NotificationPreference` (event/channel/digest-cadence/quiet-hours/self-notify, implemented per-user since the settings vertical slice, §13.5.1) is persisted but not yet consulted by any of the above — "Consume preferences in notification delivery" has been an explicit `§13.5.1` gap since v1.7 and remains one.
+
+### 10.6 GitHub Integration (Webhooks)
+
+**Proposed — not built.** To deeply link commits, branches, and PRs to work items without polling, Orbit would implement a secure Webhook Receiver modeled on GitHub's own delivery contract and Jira's Smart Commits syntax:
+
+- **Payload Validation:** Ingress validates the `X-Hub-Signature-256` header — HMAC-SHA256 over the raw request body using a per-tenant webhook secret — rejecting any delivery whose signature doesn't match before touching the payload, and comparing in constant time to avoid a timing side channel.
+- **Parsing Engine:** Regex extraction of issue keys (e.g., `ORB-123`) from commit messages and branch names, following the Smart Commits convention `<ISSUE-KEY> #<command> <arguments>` (e.g., `ORB-123 #comment Fixed the null check #time 1h`) so commit messages can add comments and log time, not just reference an item.
+- **Automated Transitions:** If a PR is merged, the parsing engine can fire a workflow transition (e.g., "In Review" -> "Done") by proxying an internal CQRS `Command` on behalf of a System Actor — attributed in work-item history as the integration, not a human, matching the extension-platform audit requirement in §4.5.6.
+- **Repository linking:** `ProjectSetting.RepositoryUrl` already exists (implemented, `DevelopmentView.tsx`/project settings) as a plain URL field; the webhook receiver would extend this, not replace it — a repository must be linked before its webhook deliveries can be attributed to a project.

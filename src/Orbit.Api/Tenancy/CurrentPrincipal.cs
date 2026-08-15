@@ -41,6 +41,12 @@ public sealed class CurrentPrincipal : ICurrentPrincipal
         Set(tenantId, null, PrincipalType.User, TenantRole.Owner, isDevelopmentBypass: true);
     }
 
+    public void SetUser(Guid userId, PrincipalType principalType = PrincipalType.User, Guid? sessionId = null)
+    {
+        Set(Guid.Empty, userId, principalType, TenantRole.Member, isDevelopmentBypass: false);
+        SessionId = sessionId;
+    }
+
     private void Set(
         Guid membershipId,
         Guid? userId,

@@ -2,13 +2,22 @@ import { useState } from 'react'
 import { ChevronDown, MoreHorizontal, CheckSquare, Search, Filter, LineChart, SlidersHorizontal, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight } from 'lucide-react'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { groupWorkItemsByStatus } from '../../board'
-import type { Sprint, WorkItem } from '../../api/types'
+import { getInitials } from '../../lib/initials'
+import { SprintReportDialog } from './SprintReportDialog'
+import type { Sprint, TenantMembership, WorkItem } from '../../api/types'
 
 const trackedStatuses: WorkItem['status'][] = ['Backlog', 'InProgress', 'Done']
+
+function matchesSearch(item: WorkItem, term: string): boolean {
+  if (!term) return true
+  const haystack = `${item.key} ${item.summary}`.toLowerCase()
+  return haystack.includes(term.toLowerCase())
+}
 
 interface BacklogViewProps {
   workItems: WorkItem[]
   projectId: string
+  members: TenantMembership[]
   sprints: Sprint[]
   sprintsLoading: boolean
   onCreateSprint: (name: string) => void
@@ -24,6 +33,7 @@ interface BacklogViewProps {
 export function BacklogView({
   workItems,
   projectId,
+  members,
   sprints,
   sprintsLoading,
   onCreateSprint,
@@ -55,15 +65,28 @@ export function BacklogView({
   ]
   const assignedItemIds = new Set(openSprints.flatMap((sprint) => sprint.workItemIds))
   const workItemsById = new Map(workItems.map((item) => [item.id, item]))
-  const backlogItems = workItems.filter((item) => !assignedItemIds.has(item.id))
-  const backlogStatusCounts = groupWorkItemsByStatus(trackedStatuses, backlogItems)
+  const membersByUserId = new Map(
+    members.filter((member): member is TenantMembership & { userId: string } => Boolean(member.userId)).map((member) => [member.userId, member]),
+  )
 
   const [inlineCreateOpen, setInlineCreateOpen] = useState(false)
   const [inlineSummary, setInlineSummary] = useState('')
   const [inlineDueDateOpen, setInlineDueDateOpen] = useState(false)
   const [inlineAssigneeOpen, setInlineAssigneeOpen] = useState(false)
+  const [inlineAssigneeUserId, setInlineAssigneeUserId] = useState<string | null>(null)
   const [rolloverTargets, setRolloverTargets] = useState<Record<string, string>>({})
   const [closedSectionOpen, setClosedSectionOpen] = useState(false)
+  const [reportSprint, setReportSprint] = useState<Sprint | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null)
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false)
+
+  const matchesFilters = (item: WorkItem) =>
+    matchesSearch(item, searchTerm) && (assigneeFilter === null || item.assigneeUserId === assigneeFilter)
+
+  const backlogItems = workItems.filter((item) => !assignedItemIds.has(item.id) && matchesFilters(item))
+  const backlogStatusCounts = groupWorkItemsByStatus(trackedStatuses, backlogItems)
+  const assigneeFilterMember = members.find((member) => member.userId === assigneeFilter)
 
   const mutation = useCreateWorkItem(projectId)
 
@@ -78,13 +101,31 @@ export function BacklogView({
         description: null,
         type: 'Task',
         priority: 'Medium',
+        assigneeUserId: inlineAssigneeUserId,
       },
       {
         onSuccess: () => {
           setInlineSummary('')
           setInlineCreateOpen(false)
+          setInlineAssigneeUserId(null)
         },
       },
+    )
+  }
+
+  const renderAssigneeAvatar = (item: WorkItem) => {
+    const member = item.assigneeUserId ? membersByUserId.get(item.assigneeUserId) : undefined
+    return member ? (
+      <div
+        className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold border border-white"
+        title={member.displayName ?? undefined}
+      >
+        {getInitials(member.displayName ?? undefined)}
+      </div>
+    ) : (
+      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 border border-white" title="Unassigned">
+        <User size={12} />
+      </div>
     )
   }
 
@@ -96,14 +137,51 @@ export function BacklogView({
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
             type="text"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="Search backlog"
             className="pl-9 pr-4 py-1.5 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:border-blue-500 text-sm w-64"
           />
         </div>
-        <div className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold border-2 border-white shadow-sm -ml-2 z-10">EU</div>
-        <button className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded border border-transparent hover:border-gray-200 text-sm font-medium text-gray-700">
-          <Filter size={16} /> Filter
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setFilterMenuOpen(!filterMenuOpen)}
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded border border-transparent hover:border-gray-200 text-sm font-medium text-gray-700"
+          >
+            {assigneeFilterMember ? (
+              <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-[10px] font-bold">
+                {getInitials(assigneeFilterMember.displayName ?? undefined)}
+              </span>
+            ) : (
+              <Filter size={16} />
+            )}
+            {assigneeFilterMember?.displayName ?? 'Filter'}
+            <ChevronDown size={14} />
+          </button>
+          {filterMenuOpen && (
+            <div className="absolute left-0 top-full mt-1 w-56 bg-white border border-gray-200 shadow-xl rounded-lg py-1 z-50">
+              <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase">Assignee</div>
+              <button
+                onClick={() => { setAssigneeFilter(null); setFilterMenuOpen(false) }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${assigneeFilter === null ? 'bg-blue-50 text-blue-700' : ''}`}
+              >
+                <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs"><User size={12} /></div> All assignees
+              </button>
+              {members.filter((member) => member.userId).map((member) => (
+                <button
+                  key={member.id}
+                  onClick={() => { setAssigneeFilter(member.userId); setFilterMenuOpen(false) }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${assigneeFilter === member.userId ? 'bg-blue-50 text-blue-700' : ''}`}
+                >
+                  <div className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold">
+                    {getInitials(member.displayName ?? undefined)}
+                  </div>
+                  {member.displayName ?? 'Unnamed member'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="ml-auto flex items-center gap-2">
           <button className="p-1.5 hover:bg-gray-100 rounded text-gray-600"><LineChart size={18} /></button>
@@ -113,7 +191,10 @@ export function BacklogView({
       </div>
 
       {!sprintsLoading && openSprints.map((sprint) => {
-        const sprintItems = sprint.workItemIds.map((id) => workItemsById.get(id)).filter((item): item is WorkItem => Boolean(item))
+        const sprintItems = sprint.workItemIds
+          .map((id) => workItemsById.get(id))
+          .filter((item): item is WorkItem => Boolean(item))
+          .filter(matchesFilters)
         const sprintStatusCounts = groupWorkItemsByStatus(trackedStatuses, sprintItems)
 
         return (
@@ -171,6 +252,15 @@ export function BacklogView({
                     Resume closing
                   </button>
                 )}
+                {sprint.state !== 'Future' && (
+                  <button
+                    onClick={() => setReportSprint(sprint)}
+                    className="flex items-center gap-1 px-3 py-1 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+                    title="View sprint report"
+                  >
+                    <LineChart size={14} /> Report
+                  </button>
+                )}
                 <button className="p-1 hover:bg-gray-200 rounded text-gray-600"><MoreHorizontal size={16} /></button>
               </div>
             </div>
@@ -201,9 +291,7 @@ export function BacklogView({
                     <div className="px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase flex items-center gap-1">
                       {item.status === 'Backlog' ? 'To Do' : item.status} <ChevronDown size={14} />
                     </div>
-                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500 font-bold border border-white">
-                      A
-                    </div>
+                    {renderAssigneeAvatar(item)}
                   </div>
                 </div>
               ))}
@@ -232,12 +320,20 @@ export function BacklogView({
               {closedSprints.map((sprint) => (
                 <div key={sprint.id} className="flex items-center justify-between px-4 py-2 border-b border-gray-100 last:border-b-0">
                   <span className="text-sm text-gray-700">{sprint.name}</span>
-                  <button
-                    onClick={() => onReopenSprint(sprint)}
-                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
-                  >
-                    Reopen
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setReportSprint(sprint)}
+                      className="flex items-center gap-1 px-3 py-1 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+                    >
+                      <LineChart size={14} /> Report
+                    </button>
+                    <button
+                      onClick={() => onReopenSprint(sprint)}
+                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+                    >
+                      Reopen
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -298,9 +394,7 @@ export function BacklogView({
                 <div className="px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase flex items-center gap-1">
                   {item.status === 'Backlog' ? 'To Do' : item.status} <ChevronDown size={14} />
                 </div>
-                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500 font-bold border border-white">
-                  A
-                </div>
+                {renderAssigneeAvatar(item)}
               </div>
             </div>
           ))}
@@ -348,15 +442,24 @@ export function BacklogView({
                   </button>
                   {inlineAssigneeOpen && (
                     <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 shadow-xl rounded-lg py-1 z-50">
-                      <button className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2">
+                      <button
+                        onClick={() => { setInlineAssigneeUserId(null); setInlineAssigneeOpen(false) }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${inlineAssigneeUserId === null ? 'bg-blue-50 text-blue-700' : ''}`}
+                      >
                         <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs"><User size={12} /></div> Unassigned
                       </button>
-                      <button className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 bg-blue-50 text-blue-700">
-                        <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold">A</div> Automatic
-                      </button>
-                      <button className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold">EU</div> Ekanatha Reddy...
-                      </button>
+                      {members.filter((member) => member.userId).map((member) => (
+                        <button
+                          key={member.id}
+                          onClick={() => { setInlineAssigneeUserId(member.userId); setInlineAssigneeOpen(false) }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${inlineAssigneeUserId === member.userId ? 'bg-blue-50 text-blue-700' : ''}`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold">
+                            {getInitials(member.displayName ?? undefined)}
+                          </div>
+                          {member.displayName ?? 'Unnamed member'}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -379,6 +482,14 @@ export function BacklogView({
           )}
         </div>
       </div>
+
+      {reportSprint && (
+        <SprintReportDialog
+          sprintId={reportSprint.id}
+          sprintName={reportSprint.name}
+          onClose={() => setReportSprint(null)}
+        />
+      )}
     </div>
   )
 }

@@ -39,7 +39,8 @@ public sealed class PersistenceSecurityTests
             typeof(SprintScopeFact),
             typeof(WorkspaceInvitation),
             typeof(WorkItemTypeDefinition),
-            typeof(CustomFieldDefinition)
+            typeof(CustomFieldDefinition),
+            typeof(Attachment)
         ];
 
         foreach (var entity in tenantEntities)

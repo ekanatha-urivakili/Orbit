@@ -66,7 +66,27 @@
       "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d orbit -c \"\\\\dt\")",
       "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d postgres -c \"\\\\l\")",
       "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d postgres -c \"CREATE DATABASE orbit_test;\")",
-      "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d orbit_test -c \"DROP TABLE IF EXISTS service_account_credentials; DELETE FROM \\\\\"__EFMigrationsHistory\\\\\" WHERE \\\\\"MigrationId\\\\\" LIKE '%AddServiceAccountCredentials%';\")"
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -p 5432 -U orbit -d orbit_test -c \"DROP TABLE IF EXISTS service_account_credentials; DELETE FROM \\\\\"__EFMigrationsHistory\\\\\" WHERE \\\\\"MigrationId\\\\\" LIKE '%AddServiceAccountCredentials%';\")",
+      "Bash(curl -s -o /dev/null -w \"api:%{http_code}\\\\n\" http://localhost:5014/api/v1/bootstrap/status)",
+      "Bash(curl -s -o /dev/null -w \"web:%{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5014/api/v1/bootstrap/status)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5014/api/v1/memberships -H \"X-Tenant-Id: 00000000-0000-0000-0000-000000000000\")",
+      "Bash(curl -s \"https://hub.docker.com/v2/repositories/minio/minio/tags?page_size=5&ordering=last_updated\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/awssdk.s3/index.json\")",
+      "Bash(./scripts/start-local-services.sh)",
+      "Read(//Users/ekanathareddyurivakili/.docker/**)",
+      "Bash(podman pull *)",
+      "Bash(podman run *)",
+      "Bash(curl -s -o /dev/null -w \"minio healthz: %{http_code}\\\\n\" http://localhost:9000/minio/health/live)",
+      "Bash(curl -s -o /dev/null -w \"minio console: %{http_code}\\\\n\" http://localhost:9001/)",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit_test -c \"\\\\dt attachments\")",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit_test -c \"SELECT \\\\\"MigrationId\\\\\" FROM \\\\\"__EFMigrationsHistory\\\\\" ORDER BY \\\\\"MigrationId\\\\\" DESC LIMIT 5;\")",
+      "Bash(ConnectionStrings__Postgres=\"Host=localhost;Database=orbit_test;Username=orbit;Password=orbit_local\" dotnet ef database update --project src/Orbit.Infrastructure --startup-project src/Orbit.Infrastructure)",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit_test -c \"SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'orbit';\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:9000/orbit-attachments/)",
+      "Bash(podman exec *)",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit_test -c \"select 1\")",
+      "Bash(web/node_modules/.bin/markdownlint-cli2 README.md ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md)"
     ]
   }
 }

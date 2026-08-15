@@ -3,6 +3,7 @@ using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
+using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
 
 namespace Orbit.Application.WorkItems;
@@ -53,6 +54,8 @@ public sealed class UpdateWorkItemHandler(
     ITenantContext tenantContext,
     ICurrentPrincipal principal,
     IWorkItemRepository workItems,
+    ISprintMembershipRepository sprintMemberships,
+    ISprintScopeFactRepository sprintScopeFacts,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UpdateWorkItemCommand, WorkItemDto>
 {
@@ -75,6 +78,9 @@ public sealed class UpdateWorkItemHandler(
         await WorkItemRelations.GetRelatedItemAsync(
             workItems, tenantContext.TenantId, request.LinkedWorkItemId, workItem.ProjectId, "Linked work item", cancellationToken);
 
+        var previousStoryPoints = workItem.StoryPoints;
+        var previousStatus = workItem.Status;
+        var now = timeProvider.GetUtcNow();
         workItem.Update(
             request.Summary,
             request.Description,
@@ -94,7 +100,24 @@ public sealed class UpdateWorkItemHandler(
             request.Labels,
             request.Countries,
             request.AttachmentNames,
-            timeProvider.GetUtcNow());
+            now);
+
+        // Only an estimate change on a not-yet-Done item moves the burndown line; re-pointing a
+        // completed item doesn't retroactively change points already burned down.
+        if (workItem.StoryPoints != previousStoryPoints && previousStatus != WorkItemStatus.Done)
+        {
+            var membership = await sprintMemberships.GetCurrentByWorkItemAsync(
+                tenantContext.TenantId, workItem.Id, cancellationToken);
+            if (membership is not null)
+            {
+                var delta = (workItem.StoryPoints ?? 0) - (previousStoryPoints ?? 0);
+                await sprintScopeFacts.AddAsync(
+                    SprintScopeFact.Create(
+                        tenantContext.TenantId, membership.SprintId, workItem.Id, AgileFactType.EstimateChanged,
+                        delta, now, now),
+                    cancellationToken);
+            }
+        }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);

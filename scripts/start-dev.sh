@@ -21,10 +21,15 @@ ensure_port_available() {
     local service_name="$2"
 
     if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-        echo "$service_name cannot start because port $port is already in use:" >&2
-        lsof -nP -iTCP:"$port" -sTCP:LISTEN >&2
-        echo "Stop the existing process and run this script again." >&2
-        exit 1
+        echo "$service_name port $port is currently in use. Attempting to kill the process..." >&2
+        local pids
+        pids=$(lsof -t -nP -iTCP:"$port" -sTCP:LISTEN || true)
+        if [[ -n "$pids" ]]; then
+            # Use xargs to pass the PIDs to kill.
+            echo "$pids" | xargs kill -9
+            echo "Process(es) $pids killed." >&2
+            sleep 1
+        fi
     fi
 }
 
@@ -59,6 +64,7 @@ echo "Starting PostgreSQL and Valkey if required..."
 wait_for_container orbit-postgres-1
 wait_for_container orbit-valkey-1
 wait_for_container orbit-mailpit-1
+wait_for_container orbit-minio-1
 
 echo "Applying database migrations..."
 ./scripts/migrate.sh

@@ -7,6 +7,7 @@ using Orbit.Infrastructure.Email;
 using Orbit.Infrastructure.Identity;
 using Orbit.Infrastructure.Messaging;
 using Orbit.Infrastructure.Persistence;
+using Orbit.Infrastructure.Storage;
 
 namespace Orbit.Infrastructure;
 
@@ -24,6 +25,8 @@ public static class DependencyInjection
                 npgsql.MigrationsAssembly(typeof(OrbitDbContext).Assembly.FullName)));
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IWorkItemRepository, WorkItemRepository>();
+        services.AddScoped<IWorkItemCommentRepository, WorkItemCommentRepository>();
+        services.AddScoped<IAttachmentRepository, AttachmentRepository>();
         services.AddScoped<ITenantMembershipRepository, TenantMembershipRepository>();
         services.AddScoped<IProjectRoleRepository, ProjectRoleRepository>();
         services.AddScoped<ITeamRepository, TeamRepository>();
@@ -49,6 +52,9 @@ public static class DependencyInjection
         services.AddScoped<ICustomFieldRepository, CustomFieldRepository>();
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        services.Configure<ObjectStorageOptions>(configuration.GetSection(ObjectStorageOptions.SectionName));
+        services.AddSingleton<IObjectStorageService, S3ObjectStorageService>();
+        services.AddHostedService<ObjectStorageBucketInitializer>();
         services.AddScoped<OutboxEmailProcessor>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.Configure<LocalTokenOptions>(configuration.GetSection(LocalTokenOptions.SectionName));

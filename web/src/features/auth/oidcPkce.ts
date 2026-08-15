@@ -15,6 +15,8 @@ export interface OidcConfig {
   authority: string
   clientId: string
   redirectUri: string
+  authorizeEndpoint?: string
+  tokenEndpoint?: string
 }
 
 /**
@@ -26,8 +28,24 @@ export interface OidcConfig {
 export function getOidcConfig(): OidcConfig | null {
   const authority = import.meta.env.VITE_OIDC_AUTHORITY as string | undefined
   const clientId = import.meta.env.VITE_OIDC_CLIENT_ID as string | undefined
+  const authorizeEndpoint = import.meta.env.VITE_OIDC_AUTHORIZE_ENDPOINT as string | undefined
+  const tokenEndpoint = import.meta.env.VITE_OIDC_TOKEN_ENDPOINT as string | undefined
   if (!authority || !clientId) return null
-  return { authority, clientId, redirectUri: window.location.origin + '/' }
+  return {
+    authority,
+    clientId,
+    redirectUri: window.location.origin + '/',
+    authorizeEndpoint,
+    tokenEndpoint,
+  }
+}
+
+function resolveEndpoint(authority: string, override: string | undefined, defaultRelativePath: string): URL {
+  if (override) {
+    return new URL(override, window.location.origin)
+  }
+  const base = authority.endsWith('/') ? authority : `${authority}/`
+  return new URL(defaultRelativePath.replace(/^\//, ''), base)
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -69,7 +87,7 @@ export async function startOidcLogin(mode: OidcMode, pendingInvitation?: Pending
   }
 
   const challenge = await codeChallengeFor(verifier)
-  const authorizeUrl = new URL('/authorize', config.authority)
+  const authorizeUrl = resolveEndpoint(config.authority, config.authorizeEndpoint, 'authorize')
   authorizeUrl.searchParams.set('response_type', 'code')
   authorizeUrl.searchParams.set('client_id', config.clientId)
   authorizeUrl.searchParams.set('redirect_uri', config.redirectUri)
@@ -116,7 +134,7 @@ export async function completeOidcCallback(): Promise<OidcCallbackResult | null>
     throw new Error('The sign-in request could not be verified. Please try again.')
   }
 
-  const tokenUrl = new URL('/token', config.authority)
+  const tokenUrl = resolveEndpoint(config.authority, config.tokenEndpoint, 'token')
   const response = await fetch(tokenUrl.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
