@@ -6,6 +6,8 @@ import { completeOidcCallback } from './features/auth/oidcPkce'
 import { ResetPasswordView } from './features/auth/ResetPasswordView'
 import { AcceptInvitationView } from './features/auth/AcceptInvitationView'
 import { LoginView } from './features/auth/LoginView'
+import { RegisterView } from './features/auth/RegisterView'
+
 import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus } from './api/types'
 
 import './App.css'
@@ -46,6 +48,16 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('project')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [oidcError, setOidcError] = useState<string | null>(null)
+
+  const [registerRequested, setRegisterRequested] = useState(() => {
+    const url = new URL(window.location.href)
+    const requested = new URLSearchParams(url.hash.slice(1)).get('register') !== null
+    if (requested) {
+      url.hash = ''
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
+    }
+    return requested
+  })
   const [resetToken] = useState(() => {
     const url = new URL(window.location.href)
     const token = new URLSearchParams(url.hash.slice(1)).get('resetToken') ?? url.searchParams.get('resetToken')
@@ -327,7 +339,16 @@ function App() {
 
   if (bootstrapQuery.data.initializationRequired) return <BootstrapOnboarding />
 
-  if (!authSession) return <LoginView />
+  if (!authSession && registerRequested) {
+    return (
+      <RegisterView
+        onSuccess={() => void queryClient.resetQueries()}
+        onBack={() => setRegisterRequested(false)}
+      />
+    )
+  }
+
+  if (!authSession) return <LoginView onRegister={() => setRegisterRequested(true)} />
 
   if (projectsQuery.isPending) return <LoadingScreen />
   if (projectsQuery.isError) return <ErrorScreen message={projectsQuery.error.message} />
@@ -403,6 +424,7 @@ function App() {
                 onBack={() => { setActiveView('project'); setEditingWorkItemId(null) }}
                 onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
                 onOpenWorkItem={(workItem) => setEditingWorkItemId(workItem.id)}
+                sprints={sprints}
               />
             ) : null
           })()}
@@ -487,6 +509,7 @@ function App() {
           members={members}
           types={(itemTypesQuery.data ?? []).filter((itemType) => itemType.enabled)}
           priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
+          sprints={sprints}
           onClose={() => setCreateOpen(false)}
         />
       )}

@@ -161,12 +161,27 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
   )
 }
 
-export function LoginView({ onAuthenticated }: { onAuthenticated?: () => void }) {
+export function LoginView({
+  onAuthenticated,
+  onRegister,
+}: {
+  onAuthenticated?: () => void
+  onRegister?: () => void
+}) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
         <h1 className="mb-6 text-xl font-semibold text-gray-900">Sign in to Orbit</h1>
         <LoginForm onSuccess={onAuthenticated} />
+        {onRegister && (
+          <button
+            type="button"
+            onClick={onRegister}
+            className="mt-4 w-full text-center text-sm text-gray-600 hover:underline"
+          >
+            Create an account
+          </button>
+        )}
       </div>
     </div>
   )

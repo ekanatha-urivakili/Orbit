@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { Paperclip, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { Field, Hint } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import { WorkItemTypeIcon } from './typeIcons'
 import { RichTextEditor } from '../../components/form/RichTextEditor'
+import { orbitApi } from '../../api/client'
 import type {
   CreateWorkItemInput,
   Priority,
@@ -14,6 +16,7 @@ import type {
   WorkItem,
   WorkItemType,
   WorkItemTypeDefinition,
+  Sprint,
 } from '../../api/types'
 
 const countries = ['Global', 'Argentina', 'Brasil', 'Nigeria', 'South Africa', 'US', 'Saudi Arabia', 'Turkey']
@@ -43,6 +46,7 @@ export function CreateWorkItemDialog({
   priorities,
   parent,
   onClose,
+  sprints = [],
 }: {
   project: Project
   workItems: WorkItem[]
@@ -53,7 +57,9 @@ export function CreateWorkItemDialog({
   /** When set, this dialog creates a subtask locked under `parent` instead of a top-level item. */
   parent?: WorkItem
   onClose: () => void
+  sprints?: Sprint[]
 }) {
+  const queryClient = useQueryClient()
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
   const [type, setType] = useState<WorkItemType>(types.find((itemType) => itemType.id === 'Story')?.id ?? types[0]?.id ?? 'Story')
@@ -61,13 +67,30 @@ export function CreateWorkItemDialog({
   const [details, setDetails] = useState({ ...blankDetails, parentId: parent?.id ?? null })
   const [labelsText, setLabelsText] = useState('')
   const [createAnother, setCreateAnother] = useState(false)
+  const [selectedSprintId, setSelectedSprintId] = useState('')
+  const [newSprintName, setNewSprintName] = useState('')
 
   const patch = (change: Partial<typeof blankDetails>) => setDetails((current) => ({ ...current, ...change }))
   const mutation = useCreateWorkItem(project.id)
   const typeLabel = types.find((itemType) => itemType.id === type)?.label ?? type
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    
+    let targetSprintId = selectedSprintId
+    let targetSprintName = details.sprintName
+
+    if (selectedSprintId === '__new_sprint__') {
+      const newSprint = await orbitApi.createSprint(project.id, newSprintName)
+      targetSprintId = newSprint.id
+      targetSprintName = newSprint.name
+    } else if (selectedSprintId) {
+      const s = sprints.find(sp => sp.id === selectedSprintId)
+      targetSprintName = s ? s.name : null
+    } else {
+      targetSprintName = null
+    }
+
     mutation.mutate(
       {
         projectId: project.id,
@@ -76,10 +99,17 @@ export function CreateWorkItemDialog({
         type,
         priority,
         ...details,
+        sprintName: targetSprintName,
         labels: labelsText.split(',').map((label) => label.trim()).filter(Boolean),
       },
       {
-        onSuccess: () => {
+        onSuccess: async (newWorkItem) => {
+          if (targetSprintId) {
+            await orbitApi.assignWorkItemToSprint(newWorkItem.id, targetSprintId)
+            queryClient.invalidateQueries({ queryKey: ['sprints', project.id] })
+          }
+          queryClient.invalidateQueries({ queryKey: ['work-items', project.id] })
+
           if (!createAnother) {
             onClose()
             return
@@ -88,6 +118,8 @@ export function CreateWorkItemDialog({
           setDescription('')
           setDetails({ ...blankDetails, parentId: parent?.id ?? null })
           setLabelsText('')
+          setSelectedSprintId('')
+          setNewSprintName('')
         },
       },
     )
@@ -100,10 +132,20 @@ export function CreateWorkItemDialog({
     return item.type === 'Epic' || item.type === 'Initiative'
   })
 
+  const openSprints = sprints.filter((s) => s.state !== 'Closed')
+  const closedSprints = sprints.filter((s) => s.state === 'Closed')
+  const sprintOptions = [
+    { value: '', label: 'No Sprint' },
+    ...openSprints.map((s) => ({ value: s.id, label: s.name })),
+    ...closedSprints.map((s) => ({ value: s.id, label: `${s.name} (Closed)` })),
+  ]
+  if (openSprints.length === 0) {
+    sprintOptions.push({ value: '__new_sprint__', label: 'Create a new sprint...' })
+  }
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="dialog create-work-dialog" role="dialog" aria-modal="true" aria-labelledby="create-title">
-        <div className="dialog-scroll">
         <header>
           <div>
             <h2 id="create-title" className="flex items-center gap-2"><WorkItemTypeIcon type={type} size={20} /> Create {typeLabel}</h2>
@@ -114,6 +156,7 @@ export function CreateWorkItemDialog({
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}><X size={20} /></button>
         </header>
 
+        <div className="dialog-scroll">
         <form onSubmit={submit}>
           <div className="form-row">
             <Field label="Space *">
@@ -206,13 +249,33 @@ export function CreateWorkItemDialog({
 
           {type === 'Bug' && <>
             <div className="form-row">
-              <Field label="Sprint"><input value={details.sprintName ?? ''} onChange={(event) => patch({ sprintName: event.target.value || null })} maxLength={255} placeholder="Sprint name" /></Field>
+              <Field label="Sprint">
+                <SearchableSelect
+                  size="xl"
+                  value={selectedSprintId}
+                  onChange={(val) => setSelectedSprintId(val)}
+                  options={sprintOptions}
+                  placeholder="No Sprint"
+                />
+                {selectedSprintId === '__new_sprint__' && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="New Sprint Name"
+                      value={newSprintName}
+                      onChange={(e) => setNewSprintName(e.target.value)}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                )}
+              </Field>
               <Field label="Identified on"><input value={details.identifiedOn ?? ''} onChange={(event) => patch({ identifiedOn: event.target.value || null })} maxLength={255} placeholder="Production, staging, device…" /></Field>
             </div>
             <div className="form-row">
               <Field label="Developer">
                 <SearchableSelect
-                size="xl"
+                  size="xl"
                   value={details.developerUserId ?? ''}
                   onChange={(val) => patch({ developerUserId: val || null })}
                   options={[

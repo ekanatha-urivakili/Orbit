@@ -22,7 +22,7 @@ public sealed class IdentityModelTests
     [Fact]
     public void Workspace_CreateBuildsStableAsciiSlug()
     {
-        var workspace = Workspace.Create("Éka's Product Team", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Éka's Product Team", DateTimeOffset.UtcNow);
 
         Assert.Equal("eka-s-product-team", workspace.Slug);
         Assert.Equal(1, workspace.AuthorizationEpoch);

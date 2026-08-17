@@ -2,6 +2,7 @@ using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Application.Workspaces;
 using Orbit.Domain.Access;
+using Orbit.Domain.Organizations;
 using Orbit.Domain.Workspaces;
 
 namespace Orbit.Application.Tests;
@@ -91,7 +92,9 @@ public sealed class WorkspaceProvisioningHandlerTests
         public bool IsSiteSuperAdministrator { get; init; }
         public bool SlugExists { get; init; }
         public int SlugCheckCount { get; private set; }
+        public Organization? Organization { get; private set; }
         public Workspace? Workspace { get; private set; }
+        public OrganizationMembership? OrganizationMembership { get; private set; }
         public TenantMembership? OwnerMembership { get; private set; }
         public Guid CurrentTenantId { get; private set; }
 
@@ -107,12 +110,16 @@ public sealed class WorkspaceProvisioningHandlerTests
         }
 
         public Task AddAsync(
+            Organization organization,
             Workspace workspace,
+            OrganizationMembership organizationMembership,
             TenantMembership ownerMembership,
             Guid currentTenantId,
             CancellationToken cancellationToken)
         {
+            Organization = organization;
             Workspace = workspace;
+            OrganizationMembership = organizationMembership;
             OwnerMembership = ownerMembership;
             CurrentTenantId = currentTenantId;
             return Task.CompletedTask;

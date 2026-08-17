@@ -6,6 +6,7 @@ using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Messaging;
+using Orbit.Domain.Organizations;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
 using Orbit.Domain.WorkItems;
@@ -227,8 +228,30 @@ public interface IBootstrapRepository
         UserAccount account,
         LocalCredential credential,
         SiteRoleAssignment siteRole,
+        Organization organization,
         Workspace workspace,
+        OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Backs public self-service registration (<c>POST /register</c>): unlike <see cref="IBootstrapRepository"/>,
+/// this runs unboundedly many times (no advisory-lock singleton guard) and never grants
+/// <see cref="SiteRole.SuperAdministrator"/> - each call provisions one brand-new, independent
+/// organization/workspace/owner, not the one-time installation superadmin.
+/// </summary>
+public interface ISignUpRepository
+{
+    Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken);
+    Task AddAsync(
+        UserAccount account,
+        LocalCredential credential,
+        Organization organization,
+        Workspace workspace,
+        OrganizationMembership organizationMembership,
+        TenantMembership ownerMembership,
+        RefreshSession refreshSession,
         CancellationToken cancellationToken);
 }
 
@@ -237,7 +260,9 @@ public interface IWorkspaceProvisioningRepository
     Task<bool> IsSiteSuperAdministratorAsync(Guid userId, CancellationToken cancellationToken);
     Task<bool> SlugExistsAsync(string slug, CancellationToken cancellationToken);
     Task AddAsync(
+        Organization organization,
         Workspace workspace,
+        OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
         Guid currentTenantId,
         CancellationToken cancellationToken);

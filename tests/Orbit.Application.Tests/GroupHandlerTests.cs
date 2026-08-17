@@ -55,7 +55,7 @@ public sealed class GroupHandlerTests
     [Fact]
     public async Task AddGroupMember_RejectsDuplicateMembership()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
         var membershipId = Guid.NewGuid();
@@ -82,7 +82,7 @@ public sealed class GroupHandlerTests
     [Fact]
     public async Task AddGroupMember_PersistsNewMembership()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
         var membershipId = Guid.NewGuid();
@@ -108,7 +108,7 @@ public sealed class GroupHandlerTests
     [Fact]
     public async Task AssignGroupProjectRole_CreatesNewAssignment()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
@@ -133,7 +133,7 @@ public sealed class GroupHandlerTests
     [Fact]
     public async Task AssignGroupProjectRole_UpdatesExistingAssignment()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);

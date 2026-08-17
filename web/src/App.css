@@ -158,15 +158,16 @@ h1 { color: var(--ink); font-size: clamp(26px, 3vw, 34px); line-height: 1.15; le
 .rich-text-toolbar button.is-active { background: #dde6fe; color: #3861fb; }
 .rich-text-toolbar-divider { width: 1px; height: 20px; margin: 0 3px; background: #e0e4ec; }
 .rich-text-body { padding: 10px 11px; max-height: 320px; overflow-y: auto; }
-.rich-text-content { min-height: inherit; outline: 0; font-size: 14px; line-height: 1.55; color: var(--ink); }
+.rich-text-content { min-height: inherit; outline: 0; font-family: Verdana, Geneva, sans-serif; font-size: 10px; line-height: 1.55; color: var(--ink); }
 .rich-text-content p { margin: 0 0 8px; }
 .rich-text-content p:last-child { margin-bottom: 0; }
-.rich-text-content ul, .rich-text-content ol { margin: 0 0 8px; padding-left: 22px; }
+.rich-text-content ul { margin: 0 0 8px; padding-left: 22px; list-style-type: disc !important; list-style-position: inside !important; }
+.rich-text-content ol { margin: 0 0 8px; padding-left: 22px; list-style-type: decimal !important; list-style-position: inside !important; }
 .rich-text-content blockquote { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid #d9dee8; color: #5d6879; }
 .rich-text-content code { padding: 1px 5px; border-radius: 4px; background: #f0f2f7; font-size: .9em; }
 .rich-text-content a { color: #3861fb; text-decoration: underline; }
 .rich-text-content p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; color: #9aa3b2; pointer-events: none; }
-.dialog .rich-text-editor { font-size: 14px; }
+.dialog .rich-text-editor { font-size: 10px; }
 .rich-text-toolbar-upload-status, .rich-text-upload-status { margin-left: 6px; color: #747f97; font-size: 11px; font-weight: 600; }
 .rich-text-content pre { margin: 0 0 8px; padding: 10px 12px; border-radius: 8px; background: #1d2125; color: #e5e7eb; font-size: 13px; line-height: 1.5; overflow-x: auto; }
 .rich-text-content pre code { padding: 0; border-radius: 0; background: transparent; color: inherit; font-size: inherit; }

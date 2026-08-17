@@ -2,6 +2,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import { TextStyle } from '@tiptap/extension-text-style'
+import { Color } from '@tiptap/extension-color'
 import { FontFamily } from '@tiptap/extension-font-family'
 import { Link } from '@tiptap/extension-link'
 import { Placeholder } from '@tiptap/extension-placeholder'
@@ -30,7 +31,11 @@ import { orbitApi } from '../../api/client'
 import type { WorkItemAttachment } from '../../api/types'
 
 const fontFamilies = [
-  { label: 'Default', value: '' },
+  { label: 'Verdana (Default)', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Calibri', value: 'Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif' },
+  { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Courier New', value: '"Courier New", Courier, monospace' },
   { label: 'Sans-serif', value: 'ui-sans-serif, system-ui, sans-serif' },
   { label: 'Serif', value: 'ui-serif, Georgia, serif' },
   { label: 'Monospace', value: 'ui-monospace, SFMono-Regular, monospace' },
@@ -40,12 +45,10 @@ export function isRichTextEmpty(html: string): boolean {
   return html.replace(/<[^>]*>/g, '').trim().length === 0
 }
 
-const fontSizes = [
-  { label: 'Small', value: '12px' },
-  { label: 'Normal', value: '' },
-  { label: 'Large', value: '20px' },
-  { label: 'X-Large', value: '26px' },
-]
+const fontSizes = Array.from({ length: 20 }, (_, i) => {
+  const size = `${i + 1}px`
+  return { label: size, value: size }
+})
 
 async function uploadWorkItemAttachment(workItemId: string, file: File) {
   const presigned = await orbitApi.presignWorkItemAttachmentUpload(workItemId, file.name, file.type, file.size)
@@ -87,6 +90,7 @@ export function RichTextEditor({
       StarterKit,
       Underline,
       TextStyle,
+      Color,
       FontFamily,
       FontSize,
       AttachmentImage,
@@ -160,6 +164,7 @@ export function RichTextEditor({
       <div className="rich-text-toolbar">
         <select
           aria-label="Font family"
+          value={editor.getAttributes('textStyle').fontFamily || 'Verdana, Geneva, sans-serif'}
           onChange={(event) => {
             const font = event.target.value
             // Deferred so this runs after the browser finishes returning focus
@@ -177,6 +182,7 @@ export function RichTextEditor({
         </select>
         <select
           aria-label="Font size"
+          value={editor.getAttributes('textStyle').fontSize || '10px'}
           onChange={(event) => {
             const size = event.target.value
             setTimeout(() => {
@@ -189,6 +195,16 @@ export function RichTextEditor({
             <option key={size.label} value={size.value}>{size.label}</option>
           ))}
         </select>
+        <input
+          type="color"
+          aria-label="Font color"
+          value={editor.getAttributes('textStyle').color || '#000000'}
+          onChange={(event) => {
+            const color = event.target.value
+            editor.chain().focus().setColor(color).run()
+          }}
+          className="w-7 h-7 p-0.5 border border-gray-300 rounded cursor-pointer bg-transparent"
+        />
         <span className="rich-text-toolbar-divider" />
         <button type="button" aria-label="Bold" className={editor.isActive('bold') ? 'is-active' : ''} onClick={() => editor.chain().focus().toggleBold().run()}><Bold size={15} /></button>
         <button type="button" aria-label="Italic" className={editor.isActive('italic') ? 'is-active' : ''} onClick={() => editor.chain().focus().toggleItalic().run()}><Italic size={15} /></button>

@@ -18,8 +18,8 @@ public sealed class SessionHandlerTests
         var now = DateTimeOffset.UtcNow;
         var account = UserAccount.Create("member@example.test", "Member One", now);
         var credential = LocalCredential.Create(account.Id, StoredHash, "Argon2id", 1, now);
-        var older = Workspace.Create("Older Workspace", now.AddDays(-2));
-        var newer = Workspace.Create("Newer Workspace", now.AddDays(-1));
+        var older = Workspace.Create(Guid.CreateVersion7(), "Older Workspace", now.AddDays(-2));
+        var newer = Workspace.Create(Guid.CreateVersion7(), "Newer Workspace", now.AddDays(-1));
         var repository = new AuthRepositoryStub();
         repository.Account = account;
         repository.Credential = credential;
@@ -55,8 +55,8 @@ public sealed class SessionHandlerTests
         var now = DateTimeOffset.UtcNow;
         var account = UserAccount.Create("member@example.test", "Member One", now);
         var credential = LocalCredential.Create(account.Id, StoredHash, "Argon2id", 1, now);
-        var older = Workspace.Create("Older Workspace", now.AddDays(-2));
-        var newer = Workspace.Create("Newer Workspace", now.AddDays(-1));
+        var older = Workspace.Create(Guid.CreateVersion7(), "Older Workspace", now.AddDays(-2));
+        var newer = Workspace.Create(Guid.CreateVersion7(), "Newer Workspace", now.AddDays(-1));
         var repository = new AuthRepositoryStub();
         repository.Account = account;
         repository.Credential = credential;
@@ -168,7 +168,7 @@ public sealed class SessionHandlerTests
     {
         var now = DateTimeOffset.UtcNow;
         var (repository, account, currentWorkspace) = await SeedLoggedInAccountAsync(now);
-        var targetWorkspace = Workspace.Create("Target Workspace", now.AddMinutes(1));
+        var targetWorkspace = Workspace.Create(Guid.CreateVersion7(), "Target Workspace", now.AddMinutes(1));
         repository.Workspaces[targetWorkspace.Id] = targetWorkspace;
         repository.Memberships.Add(
             TenantMembership.CreateForUser(targetWorkspace.Id, account.Id, TenantRole.Administrator, now));
@@ -260,7 +260,7 @@ public sealed class SessionHandlerTests
     {
         var now = DateTimeOffset.UtcNow;
         var userId = Guid.NewGuid();
-        var workspace = Workspace.Create("Team Workspace", now);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Team Workspace", now);
         var repository = new AuthRepositoryStub();
         repository.Workspaces[workspace.Id] = workspace;
         var current = RefreshSession.CreateInitial(
@@ -284,8 +284,8 @@ public sealed class SessionHandlerTests
         var now = DateTimeOffset.UtcNow;
         var userId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
-        var first = Workspace.Create("First Workspace", now.AddDays(-2));
-        var second = Workspace.Create("Second Workspace", now.AddDays(-1));
+        var first = Workspace.Create(Guid.CreateVersion7(), "First Workspace", now.AddDays(-2));
+        var second = Workspace.Create(Guid.CreateVersion7(), "Second Workspace", now.AddDays(-1));
         var repository = new AuthRepositoryStub();
         repository.Workspaces[first.Id] = first;
         repository.Workspaces[second.Id] = second;
@@ -347,7 +347,7 @@ public sealed class SessionHandlerTests
     {
         var account = UserAccount.Create("member@example.test", "Member One", now);
         var credential = LocalCredential.Create(account.Id, StoredHash, "Argon2id", 1, now);
-        var workspace = Workspace.Create("Team Workspace", now);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Team Workspace", now);
         var repository = new AuthRepositoryStub { Account = account, Credential = credential };
         repository.Workspaces[workspace.Id] = workspace;
         repository.Memberships.Add(TenantMembership.CreateForUser(workspace.Id, account.Id, TenantRole.Member, now));

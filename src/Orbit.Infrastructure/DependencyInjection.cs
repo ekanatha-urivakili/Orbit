@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantOwnerLock, TenantOwnerLock>();
         services.AddScoped<IAuthorizationContextCache, AuthorizationContextCache>();
         services.AddScoped<IBootstrapRepository, BootstrapRepository>();
+        services.AddScoped<ISignUpRepository, SignUpRepository>();
         services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<IAuthenticationRepository, AuthenticationRepository>();

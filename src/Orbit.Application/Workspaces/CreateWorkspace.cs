@@ -3,6 +3,7 @@ using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
+using Orbit.Domain.Organizations;
 using Orbit.Domain.Workspaces;
 
 namespace Orbit.Application.Workspaces;
@@ -59,7 +60,11 @@ public sealed class CreateWorkspaceHandler(
         }
 
         var now = timeProvider.GetUtcNow();
-        var workspace = Workspace.Create(request.Name, now);
+        // A site super administrator creating a standalone workspace this way gets a same-named
+        // organization of its own, mirroring the pre-organization 1:1 shape - joining an existing
+        // organization's other workspaces is a follow-up increment, not part of this flow.
+        var organization = Organization.Create(request.Name, now);
+        var workspace = Workspace.Create(organization.Id, request.Name, now);
         if (await repository.SlugExistsAsync(workspace.Slug, cancellationToken))
         {
             throw new ConflictException("A workspace with this URL slug already exists.");
@@ -70,8 +75,15 @@ public sealed class CreateWorkspaceHandler(
             userId,
             TenantRole.Owner,
             now);
+        var organizationMembership = OrganizationMembership.Create(
+            organization.Id,
+            userId,
+            OrganizationRole.Owner,
+            now);
         await repository.AddAsync(
+            organization,
             workspace,
+            organizationMembership,
             ownerMembership,
             tenantContext.TenantId,
             cancellationToken);

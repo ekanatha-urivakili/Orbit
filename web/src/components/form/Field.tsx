@@ -22,7 +22,7 @@ export function Field({
       </label>
     )
   }
-  return <label>{renderLabel(label)}{children}</label>
+  return <label><span>{renderLabel(label)}</span>{children}</label>
 }
 
 export function Hint({ children, variant = 'plain' }: { children: ReactNode; variant?: 'plain' | 'panel' }) {

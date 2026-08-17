@@ -10,9 +10,10 @@ public sealed class Workspace
     {
     }
 
-    private Workspace(Guid id, string slug, string name, DateTimeOffset createdAt)
+    private Workspace(Guid id, Guid organizationId, string slug, string name, DateTimeOffset createdAt)
     {
         Id = id;
+        OrganizationId = organizationId;
         Slug = slug;
         Name = name;
         AuthorizationEpoch = 1;
@@ -20,13 +21,19 @@ public sealed class Workspace
     }
 
     public Guid Id { get; private set; }
+    public Guid OrganizationId { get; private set; }
     public string Slug { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public long AuthorizationEpoch { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public static Workspace Create(string name, DateTimeOffset now)
+    public static Workspace Create(Guid organizationId, string name, DateTimeOffset now)
     {
+        if (organizationId == Guid.Empty)
+        {
+            throw new DomainException("Organization id is required.");
+        }
+
         var normalizedName = name.Trim();
         if (normalizedName.Length is < 2 or > 120)
         {
@@ -39,7 +46,7 @@ public sealed class Workspace
             throw new DomainException("Workspace name must contain at least two letters or digits.");
         }
 
-        return new Workspace(Guid.CreateVersion7(), slug, normalizedName, now);
+        return new Workspace(Guid.CreateVersion7(), organizationId, slug, normalizedName, now);
     }
 
     /// <summary>

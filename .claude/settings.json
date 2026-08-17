@@ -132,7 +132,18 @@
       "Bash(curl -s http://127.0.0.1:5014/api/v1/projects -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlmZjFjMS1hNTBjLTcyOTAtOTY2NC1lYmFmYjhjMzVmZjYiLCJ0ZW5hbnRfaWQiOiIwMTlmZjFjMS1hNjI1LTdmY2YtODI1Ni1jMjFjMDVjYjBmZDUiLCJwcmluY2lwYWxfdHlwZSI6InVzZXIiLCJzaWQiOiIwMWEwMGVjMy00NTJkLTdmOTktOWJlMi0wYTQzMzY1NWJjNjUiLCJqdGkiOiIwMWEwMGVjMy00NTM1LTc4MDAtYTkyMy01OGI4ZmEyMTJiZjIiLCJuYmYiOjE3ODY5NTQwNzMsImV4cCI6MTc4Njk1NDk3MywiaXNzIjoidXJuOm9yYml0OmxvY2FsIiwiYXVkIjoib3JiaXQtYXBpIn0.GF03mV3G3jdmhIrebLw2n3Xlx_QQdqlwpKPmqPNBI4E' -H 'X-Tenant-Id: 019ff1c1-a625-7fcf-8256-c21c05cb0fd5' -w '\\\\nHTTP:%{http_code}\\\\n')",
       "Bash(npx vitest *)",
       "Bash(curl -s -o /dev/null -w \"web:%{http_code}\\\\n\" http://127.0.0.1:5173)",
-      "Bash(curl -s -o /dev/null -w \"api:%{http_code}\\\\n\" http://127.0.0.1:5014/api/v1/projects -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlmZjFjMS1hNTBjLTcyOTAtOTY2NC1lYmFmYjhjMzVmZjYiLCJ0ZW5hbnRfaWQiOiIwMTlmZjFjMS1hNjI1LTdmY2YtODI1Ni1jMjFjMDVjYjBmZDUiLCJwcmluY2lwYWxfdHlwZSI6InVzZXIiLCJzaWQiOiIwMWEwMGVjMy00NTJkLTdmOTktOWJlMi0wYTQzMzY1NWJjNjUiLCJqdGkiOiIwMWEwMGVjMy00NTM1LTc4MDAtYTkyMy01OGI4ZmEyMTJiZjIiLCJuYmYiOjE3ODY5NTQwNzMsImV4cCI6MTc4Njk1NDk3MywiaXNzIjoidXJuOm9yYml0OmxvY2FsIiwiYXVkIjoib3JiaXQtYXBpIn0.GF03mV3G3jdmhIrebLw2n3Xlx_QQdqlwpKPmqPNBI4E\" -H \"X-Tenant-Id: 019ff1c1-a625-7fcf-8256-c21c05cb0fd5\")"
+      "Bash(curl -s -o /dev/null -w \"api:%{http_code}\\\\n\" http://127.0.0.1:5014/api/v1/projects -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlmZjFjMS1hNTBjLTcyOTAtOTY2NC1lYmFmYjhjMzVmZjYiLCJ0ZW5hbnRfaWQiOiIwMTlmZjFjMS1hNjI1LTdmY2YtODI1Ni1jMjFjMDVjYjBmZDUiLCJwcmluY2lwYWxfdHlwZSI6InVzZXIiLCJzaWQiOiIwMWEwMGVjMy00NTJkLTdmOTktOWJlMi0wYTQzMzY1NWJjNjUiLCJqdGkiOiIwMWEwMGVjMy00NTM1LTc4MDAtYTkyMy01OGI4ZmEyMTJiZjIiLCJuYmYiOjE3ODY5NTQwNzMsImV4cCI6MTc4Njk1NDk3MywiaXNzIjoidXJuOm9yYml0OmxvY2FsIiwiYXVkIjoib3JiaXQtYXBpIn0.GF03mV3G3jdmhIrebLw2n3Xlx_QQdqlwpKPmqPNBI4E\" -H \"X-Tenant-Id: 019ff1c1-a625-7fcf-8256-c21c05cb0fd5\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5014/health/live)",
+      "Bash(curl -s -X POST http://localhost:5014/api/v1/register -H \"Content-Type: application/json\" -d '{\"displayName\":\"Test Owner\",\"email\":\"owner@example.test\",\"password\":\"StrongPassword123\",\"organizationName\":\"Acme Inc\",\"workspaceName\":\"Acme Workspace\"}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(lsof -i :5014 -sTCP:LISTEN)",
+      "Bash(kill 37442)",
+      "Bash(curl -s -X POST http://localhost:5014/api/v1/register -H \"Content-Type: application/json\" -d '{\"displayName\":\"Test Owner\",\"email\":\"owner@example.test\",\"password\":\"StrongPassword123\",\"organizationName\":\"Acme Inc 2\",\"workspaceName\":\"Acme Workspace 2\"}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(PGPASSWORD=orbit psql -h localhost -U orbit -d orbit -c \"select o.name as org, w.name as workspace, w.organization_id = o.id as fk_ok, om.role from organizations o join workspaces w on w.organization_id=o.id join organization_memberships om on om.organization_id=o.id;\")",
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit -c \"select o.name as org, w.name as workspace, w.organization_id = o.id as fk_ok, om.role from organizations o join workspaces w on w.organization_id=o.id join organization_memberships om on om.organization_id=o.id;\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(node /private/tmp/claude-501/-Users-ekanathareddyurivakili-Documents-GitHub-Orbit/a4a72212-7f19-4b42-bed9-a90b14b889cf/scratchpad/verify-register.mjs)",
+      "Bash(node /Users/ekanathareddyurivakili/Documents/GitHub/Orbit/web/.verify-register.tmp.mjs)",
+      "Bash(MODE=login node /Users/ekanathareddyurivakili/Documents/GitHub/Orbit/web/.verify-register.tmp.mjs)"
     ]
   }
 }

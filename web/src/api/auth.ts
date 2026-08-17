@@ -1,4 +1,4 @@
-import type { AuthSession } from './types'
+import type { AuthSession, RegisterInput } from './types'
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5014/api/v1'
 const refreshTokenStorageKey = 'orbit.refresh-token'
@@ -62,6 +62,17 @@ export async function login(email: string, password: string): Promise<AuthSessio
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
+  })
+  const session = await parseResponse<AuthSession>(response)
+  applySession(session)
+  return session
+}
+
+export async function register(input: RegisterInput): Promise<AuthSession> {
+  const response = await fetch(`${apiUrl}/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   })
   const session = await parseResponse<AuthSession>(response)
   applySession(session)

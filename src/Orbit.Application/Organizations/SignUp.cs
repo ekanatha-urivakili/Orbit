@@ -2,35 +2,26 @@ using FluentValidation;
 using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
+using Orbit.Application.Identity;
 using Orbit.Domain.Access;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Organizations;
 using Orbit.Domain.Workspaces;
 
-namespace Orbit.Application.Identity;
+namespace Orbit.Application.Organizations;
 
-public sealed record GetBootstrapStatusQuery : IQuery<BootstrapStatusDto>;
-
-public sealed record BootstrapStatusDto(bool InitializationRequired);
-
-public sealed record BootstrapCommand(
+public sealed record SignUpCommand(
     string DisplayName,
     string Email,
     string Password,
-    string WorkspaceName) : ICommand<BootstrapResultDto>;
-
-public sealed record BootstrapResultDto(
-    Guid UserId,
-    string Email,
-    string DisplayName,
-    Guid WorkspaceId,
-    string WorkspaceSlug,
+    string OrganizationName,
     string WorkspaceName,
-    Guid MembershipId);
+    string? UserAgent,
+    string? IpAddress) : ICommand<AuthSessionDto>;
 
-public sealed class BootstrapValidator : AbstractValidator<BootstrapCommand>
+public sealed class SignUpValidator : AbstractValidator<SignUpCommand>
 {
-    public BootstrapValidator()
+    public SignUpValidator()
     {
         RuleFor(command => command.DisplayName).NotEmpty().Length(2, 120);
         RuleFor(command => command.Email).NotEmpty().MaximumLength(320).EmailAddress();
@@ -43,32 +34,23 @@ public sealed class BootstrapValidator : AbstractValidator<BootstrapCommand>
             .WithMessage("Password must contain an uppercase letter.")
             .Must(password => password.Any(char.IsDigit))
             .WithMessage("Password must contain a number.");
+        RuleFor(command => command.OrganizationName).NotEmpty().Length(2, 120);
         RuleFor(command => command.WorkspaceName).NotEmpty().Length(2, 120);
     }
 }
 
-public sealed class GetBootstrapStatusHandler(IBootstrapRepository bootstrapRepository)
-    : IRequestHandler<GetBootstrapStatusQuery, BootstrapStatusDto>
-{
-    public async Task<BootstrapStatusDto> Handle(
-        GetBootstrapStatusQuery request,
-        CancellationToken cancellationToken) =>
-        new(await bootstrapRepository.IsInitializationRequiredAsync(cancellationToken));
-}
-
-public sealed class BootstrapHandler(
-    IBootstrapRepository bootstrapRepository,
+public sealed class SignUpHandler(
+    ISignUpRepository repository,
     IPasswordHasher passwordHasher,
-    TimeProvider timeProvider)
-    : IRequestHandler<BootstrapCommand, BootstrapResultDto>
+    IAccessTokenIssuer tokenIssuer,
+    TimeProvider timeProvider) : IRequestHandler<SignUpCommand, AuthSessionDto>
 {
-    public async Task<BootstrapResultDto> Handle(
-        BootstrapCommand request,
-        CancellationToken cancellationToken)
+    public async Task<AuthSessionDto> Handle(SignUpCommand request, CancellationToken cancellationToken)
     {
-        if (!await bootstrapRepository.IsInitializationRequiredAsync(cancellationToken))
+        var normalizedEmail = UserAccount.NormalizeEmail(request.Email);
+        if (await repository.EmailExistsAsync(normalizedEmail, cancellationToken))
         {
-            throw new ConflictException("This ORBIT installation has already been initialized.");
+            throw new ConflictException("An account with this email already exists.");
         }
 
         var now = timeProvider.GetUtcNow();
@@ -80,8 +62,8 @@ public sealed class BootstrapHandler(
             passwordHash.Algorithm,
             passwordHash.ParametersVersion,
             now);
-        var siteRole = SiteRoleAssignment.CreateSuperAdministrator(account.Id, now);
-        var organization = Organization.Create(request.WorkspaceName, now);
+
+        var organization = Organization.Create(request.OrganizationName, now);
         var workspace = Workspace.Create(organization.Id, request.WorkspaceName, now);
         var organizationMembership = OrganizationMembership.Create(
             organization.Id,
@@ -94,27 +76,39 @@ public sealed class BootstrapHandler(
             TenantRole.Owner,
             now);
 
-        var initialized = await bootstrapRepository.TryInitializeAsync(
+        var refreshToken = RefreshTokenCodec.GenerateToken();
+        var session = RefreshSession.CreateInitial(
+            account.Id,
+            workspace.Id,
+            RefreshTokenCodec.Hash(refreshToken),
+            request.UserAgent,
+            request.IpAddress,
+            now,
+            tokenIssuer.RefreshTokenLifetime);
+
+        await repository.AddAsync(
             account,
             credential,
-            siteRole,
             organization,
             workspace,
             organizationMembership,
             ownerMembership,
+            session,
             cancellationToken);
-        if (!initialized)
-        {
-            throw new ConflictException("This ORBIT installation has already been initialized.");
-        }
 
-        return new BootstrapResultDto(
+        var accessToken = tokenIssuer.IssueUserToken(account.Id, workspace.Id, session.Id, now);
+        return new AuthSessionDto(
+            accessToken.Value,
+            accessToken.ExpiresAt,
+            refreshToken,
+            session.ExpiresAt,
+            session.Id,
             account.Id,
-            account.NormalizedEmail,
             account.DisplayName,
+            account.NormalizedEmail,
             workspace.Id,
             workspace.Slug,
             workspace.Name,
-            ownerMembership.Id);
+            ownerMembership.Role);
     }
 }

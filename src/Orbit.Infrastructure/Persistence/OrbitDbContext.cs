@@ -6,6 +6,7 @@ using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Messaging;
+using Orbit.Domain.Organizations;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
 using Orbit.Domain.WorkItems;
@@ -29,6 +30,8 @@ public sealed class OrbitDbContext(
     public DbSet<SiteRoleAssignment> SiteRoleAssignments => Set<SiteRoleAssignment>();
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationMembership> OrganizationMemberships => Set<OrganizationMembership>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<WorkspaceSetting> WorkspaceSettings => Set<WorkspaceSetting>();

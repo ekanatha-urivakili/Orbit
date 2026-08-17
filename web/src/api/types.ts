@@ -198,6 +198,14 @@ export interface BootstrapResult {
   membershipId: string
 }
 
+export interface RegisterInput {
+  displayName: string
+  email: string
+  password: string
+  organizationName: string
+  workspaceName: string
+}
+
 export type ThemePreference = 'System' | 'Light' | 'Dark'
 export type DensityPreference = 'Comfortable' | 'Compact'
 export type DigestCadence = 'None' | 'Daily' | 'Weekly'

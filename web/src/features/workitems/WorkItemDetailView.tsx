@@ -12,7 +12,7 @@ import { WorkItemLinkedItems } from './WorkItemLinkedItems'
 import { WorkItemTypeIcon } from './typeIcons'
 import { RichTextEditor } from '../../components/form/RichTextEditor'
 import { allStatuses, statusMeta } from '../board/constants'
-import type { Priority, Profile, Project, TenantMembership, WorkItem, WorkItemStatus, WorkItemTypeDefinition } from '../../api/types'
+import type { Priority, Profile, Project, TenantMembership, WorkItem, WorkItemStatus, WorkItemTypeDefinition, Sprint } from '../../api/types'
 
 const countries = ['Global', 'Argentina', 'Brasil', 'Nigeria', 'South Africa', 'US', 'Saudi Arabia', 'Turkey']
 
@@ -27,6 +27,7 @@ export function WorkItemDetailView({
   onBack,
   onStatusChange,
   onOpenWorkItem,
+  sprints = [],
 }: {
   item: WorkItem
   project?: Project
@@ -38,6 +39,7 @@ export function WorkItemDetailView({
   onBack: () => void
   onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
   onOpenWorkItem: (workItem: WorkItem) => void
+  sprints?: Sprint[]
 }) {
   const queryClient = useQueryClient()
   const [summary, setSummary] = useState(item.summary)
@@ -59,6 +61,11 @@ export function WorkItemDetailView({
     attachmentNames: item.attachmentNames,
   })
   const [labelsText, setLabelsText] = useState(item.labels.join(', '))
+  const [selectedSprintId, setSelectedSprintId] = useState(() => {
+    const s = sprints.find((sp) => sp.name === item.sprintName)
+    return s?.id ?? ''
+  })
+  const [newSprintName, setNewSprintName] = useState('')
 
   const patch = (change: Partial<typeof details>) => setDetails((current) => ({ ...current, ...change }))
   const mutation = useUpdateWorkItem(item.projectId)
@@ -70,18 +77,48 @@ export function WorkItemDetailView({
   })
   const attachments = attachmentsQuery.data ?? []
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    mutation.mutate({
-      workItem: item,
-      input: {
-        summary,
-        description: description || null,
-        priority,
-        ...details,
-        labels: labelsText.split(',').map((label) => label.trim()).filter(Boolean),
+    
+    let targetSprintId = selectedSprintId
+    let targetSprintName = details.sprintName
+
+    if (selectedSprintId === '__new_sprint__') {
+      const newSprint = await orbitApi.createSprint(item.projectId, newSprintName)
+      targetSprintId = newSprint.id
+      targetSprintName = newSprint.name
+    } else if (selectedSprintId) {
+      const s = sprints.find(sp => sp.id === selectedSprintId)
+      targetSprintName = s ? s.name : null
+    } else {
+      targetSprintName = null
+    }
+
+    mutation.mutate(
+      {
+        workItem: item,
+        input: {
+          summary,
+          description: description || null,
+          priority,
+          ...details,
+          sprintName: targetSprintName,
+          labels: labelsText.split(',').map((label) => label.trim()).filter(Boolean),
+        },
       },
-    })
+      {
+        onSuccess: async () => {
+          if (targetSprintId === '') {
+            await orbitApi.removeWorkItemFromSprint(item.id)
+          } else if (targetSprintId) {
+            await orbitApi.assignWorkItemToSprint(item.id, targetSprintId)
+          }
+          queryClient.invalidateQueries({ queryKey: ['sprints', item.projectId] })
+          queryClient.invalidateQueries({ queryKey: ['work-items', item.projectId] })
+          setNewSprintName('')
+        },
+      }
+    )
   }
 
   const parentOptions = workItems.filter((candidate) => {
@@ -92,6 +129,17 @@ export function WorkItemDetailView({
     return candidate.type === 'Epic' || candidate.type === 'Initiative'
   })
   const membersById = new Map(members.map((member) => [member.userId, member]))
+
+  const openSprints = sprints.filter((s) => s.state !== 'Closed')
+  const closedSprints = sprints.filter((s) => s.state === 'Closed')
+  const sprintOptions = [
+    { value: '', label: 'No Sprint' },
+    ...openSprints.map((s) => ({ value: s.id, label: s.name })),
+    ...closedSprints.map((s) => ({ value: s.id, label: `${s.name} (Closed)` })),
+  ]
+  if (openSprints.length === 0) {
+    sprintOptions.push({ value: '__new_sprint__', label: 'Create a new sprint...' })
+  }
 
   return (
     <div className="work-item-detail">
@@ -271,7 +319,27 @@ export function WorkItemDetailView({
                     searchPlaceholder="Search developers…"
                   />
                 </Field>
-                <Field variant="panel" label="Sprint"><input value={details.sprintName ?? ''} onChange={(event) => patch({ sprintName: event.target.value || null })} maxLength={255} placeholder="Sprint name" /></Field>
+                <Field variant="panel" label="Sprint">
+                  <SearchableSelect
+                    size="xl"
+                    value={selectedSprintId}
+                    onChange={(val) => setSelectedSprintId(val)}
+                    options={sprintOptions}
+                    placeholder="No Sprint"
+                  />
+                  {selectedSprintId === '__new_sprint__' && (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="New Sprint Name"
+                        value={newSprintName}
+                        onChange={(e) => setNewSprintName(e.target.value)}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+                </Field>
                 <Field variant="panel" label="Identified on"><input value={details.identifiedOn ?? ''} onChange={(event) => patch({ identifiedOn: event.target.value || null })} maxLength={255} placeholder="Production, staging, device…" /></Field>
               </>
             )}

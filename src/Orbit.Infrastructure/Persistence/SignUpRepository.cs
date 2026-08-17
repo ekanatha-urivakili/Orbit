@@ -8,39 +8,34 @@ using Orbit.Domain.Workspaces;
 
 namespace Orbit.Infrastructure.Persistence;
 
-internal sealed class WorkspaceProvisioningRepository(OrbitDbContext dbContext)
-    : IWorkspaceProvisioningRepository
+internal sealed class SignUpRepository(OrbitDbContext dbContext) : ISignUpRepository
 {
-    public Task<bool> IsSiteSuperAdministratorAsync(
-        Guid userId,
-        CancellationToken cancellationToken) =>
-        dbContext.SiteRoleAssignments
-            .AsNoTracking()
-            .AnyAsync(
-                assignment => assignment.UserId == userId
-                    && assignment.Role == SiteRole.SuperAdministrator,
-                cancellationToken);
-
-    public Task<bool> SlugExistsAsync(string slug, CancellationToken cancellationToken) =>
-        dbContext.Workspaces.AsNoTracking().AnyAsync(
-            workspace => workspace.Slug == slug,
+    public Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken) =>
+        dbContext.UserAccounts.AsNoTracking().AnyAsync(
+            account => account.NormalizedEmail == normalizedEmail,
             cancellationToken);
 
     public async Task AddAsync(
+        UserAccount account,
+        LocalCredential credential,
         Organization organization,
         Workspace workspace,
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
-        Guid currentTenantId,
+        RefreshSession refreshSession,
         CancellationToken cancellationToken)
     {
-        await using var transaction = dbContext.Database.CurrentTransaction is null
-            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
-            : null;
-
+        // No ambient tenant transaction exists yet (unauthenticated request), so app.tenant_id must
+        // be set from the new workspace's own id before inserting rows that carry FORCE ROW LEVEL
+        // SECURITY (tenant_memberships, work_item_type_definitions) - same technique as
+        // BootstrapRepository/WorkspaceProvisioningRepository.
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT set_config('app.tenant_id', {workspace.Id.ToString()}, true)",
             cancellationToken);
+
+        await dbContext.UserAccounts.AddAsync(account, cancellationToken);
+        await dbContext.LocalCredentials.AddAsync(credential, cancellationToken);
         await dbContext.Organizations.AddAsync(organization, cancellationToken);
         await dbContext.OrganizationMemberships.AddAsync(organizationMembership, cancellationToken);
         await dbContext.Workspaces.AddAsync(workspace, cancellationToken);
@@ -48,18 +43,8 @@ internal sealed class WorkspaceProvisioningRepository(OrbitDbContext dbContext)
         await dbContext.WorkItemTypeDefinitions.AddRangeAsync(
             WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
             cancellationToken);
+        await dbContext.RefreshSessions.AddAsync(refreshSession, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-
-        if (currentTenantId != Guid.Empty)
-        {
-            await dbContext.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT set_config('app.tenant_id', {currentTenantId.ToString()}, true)",
-                cancellationToken);
-        }
-
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
+        await transaction.CommitAsync(cancellationToken);
     }
 }

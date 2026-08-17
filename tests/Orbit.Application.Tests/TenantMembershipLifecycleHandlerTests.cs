@@ -13,7 +13,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task ChangeRole_PromotesMemberToAdministrator()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var membership = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([membership]);
@@ -38,7 +38,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task ChangeRole_RejectsDemotingTheSoleOwner()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var owner = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Owner, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([owner]);
@@ -62,7 +62,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task ChangeRole_AllowsDemotingAnOwnerWhenAnotherOwnerRemains()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var owner = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Owner, DateTimeOffset.UtcNow);
         var coOwner = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Owner, DateTimeOffset.UtcNow);
@@ -85,7 +85,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task ChangeRole_UnknownMembership_ThrowsNotFound()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var handler = new ChangeTenantMembershipRoleHandler(
             new TenantContextStub(workspace.Id),
             new AuthorizationStub(true),
@@ -104,7 +104,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task Deactivate_RejectsRemovingTheSoleOwner()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var owner = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Owner, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([owner]);
@@ -126,7 +126,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task Deactivate_RemovesAnOrdinaryMember()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var member = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([member]);

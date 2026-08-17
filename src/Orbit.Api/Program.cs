@@ -187,6 +187,7 @@ app.MapGet("/health/ready", HealthEndpoints.ReadyAsync)
     .ExcludeFromDescription();
 
 app.MapGroup("/api/v1").MapBootstrapEndpoints();
+app.MapGroup("/api/v1").MapRegistrationEndpoints();
 app.MapGroup("/api/v1").MapAuthEndpoints();
 app.MapGroup("/api/v1").MapInvitationAcceptanceEndpoints();
 
