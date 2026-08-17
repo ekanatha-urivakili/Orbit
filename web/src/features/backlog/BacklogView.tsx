@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { ChevronDown, CheckSquare, Search, Filter, LineChart, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight } from 'lucide-react'
+import { ChevronDown, Search, Filter, LineChart, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight } from 'lucide-react'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { groupWorkItemsByStatus } from '../../board'
 import { getInitials } from '../../lib/initials'
 import { SprintReportDialog } from './SprintReportDialog'
+import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { WorkItemTypeIcon } from '../workitems/typeIcons'
 import type { Sprint, TenantMembership, WorkItem } from '../../api/types'
 
 const trackedStatuses: WorkItem['status'][] = ['Backlog', 'InProgress', 'Done']
@@ -224,29 +226,32 @@ export function BacklogView({
                   </button>
                 )}
                 {(sprint.state === 'Active' || sprint.state === 'Reopened') && (
-                  <>
-                    <select
-                      value={rolloverTargets[sprint.id] ?? ''}
-                      onChange={(e) => setRolloverTargets((current) => ({ ...current, [sprint.id]: e.target.value }))}
-                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white text-gray-600"
-                      aria-label="Move incomplete items to"
-                    >
-                      <option value="">Return incomplete items to backlog</option>
-                      {futureSprints
-                        .filter((candidate) => candidate.id !== sprint.id)
-                        .map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            Move incomplete items to {candidate.name}
-                          </option>
-                        ))}
-                    </select>
+                  <div className="flex items-center gap-2">
+                    <div className="w-64">
+                      <SearchableSelect
+                        size="sm"
+                        value={rolloverTargets[sprint.id] ?? ''}
+                        onChange={(val) => setRolloverTargets((current) => ({ ...current, [sprint.id]: val }))}
+                        options={[
+                          { value: '', label: 'Return incomplete items to backlog' },
+                          ...futureSprints
+                            .filter((candidate) => candidate.id !== sprint.id)
+                            .map((candidate) => ({
+                              value: candidate.id,
+                              label: `Move incomplete items to ${candidate.name}`,
+                            })),
+                        ]}
+                        aria-label="Move incomplete items to"
+                        searchPlaceholder="Search sprints…"
+                      />
+                    </div>
                     <button
                       onClick={() => onCompleteSprint(sprint, rolloverTargets[sprint.id] || null)}
-                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded shrink-0"
                     >
                       Complete sprint
                     </button>
-                  </>
+                  </div>
                 )}
                 {sprint.state === 'Closing' && (
                   <button
@@ -271,7 +276,7 @@ export function BacklogView({
               <div className="bg-white">
                 {sprintItems.map((item) => (
                   <div key={item.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group cursor-pointer transition-colors">
-                    <CheckSquare size={16} className="text-blue-500 flex-shrink-0" />
+                    <WorkItemTypeIcon type={item.type} size={18} />
                     <span className="text-sm text-gray-500 w-16">{item.key}</span>
                     <span
                       className="text-sm text-gray-900 flex-1 truncate hover:underline"
@@ -373,7 +378,7 @@ export function BacklogView({
           <div className="bg-white">
             {backlogItems.map((item) => (
               <div key={item.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group cursor-pointer transition-colors">
-                <CheckSquare size={16} className="text-blue-500 flex-shrink-0" />
+                <WorkItemTypeIcon type={item.type} size={18} />
                 <span className="text-sm text-gray-500 w-16">{item.key}</span>
                 <span
                   className="text-sm text-gray-900 flex-1 truncate hover:underline"
@@ -383,19 +388,22 @@ export function BacklogView({
                 </span>
 
                 {assignableSprints.length > 0 && (
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) onAssignToSprint(item.id, e.target.value)
-                    }}
-                    value=""
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-xs border border-gray-300 rounded px-2 py-1 bg-white text-gray-600"
-                    aria-label="Move to sprint"
-                  >
-                    <option value="" disabled>Move to sprint</option>
-                    {assignableSprints.map((sprint) => (
-                      <option key={sprint.id} value={sprint.id}>{sprint.name}</option>
-                    ))}
-                  </select>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity w-36">
+                    <SearchableSelect
+                      size="sm"
+                      value=""
+                      onChange={(val) => {
+                        if (val) onAssignToSprint(item.id, val)
+                      }}
+                      options={assignableSprints.map((sprint) => ({
+                        value: sprint.id,
+                        label: sprint.name,
+                      }))}
+                      placeholder="Move to sprint"
+                      searchPlaceholder="Search sprints…"
+                      aria-label="Move to sprint"
+                    />
+                  </div>
                 )}
 
                 <div className="flex items-center gap-3 ml-4">

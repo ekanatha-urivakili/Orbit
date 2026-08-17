@@ -58,10 +58,12 @@ public interface ISettingsRepository
     Task<NotificationPreference?> GetNotificationPreferenceAsync(Guid userId, CancellationToken cancellationToken);
     Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ProjectSetting?> GetProjectSettingAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken);
     Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken);
     Task AddNotificationPreferenceAsync(NotificationPreference preference, CancellationToken cancellationToken);
     Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken);
+    Task AddWorkspaceTypographySettingAsync(WorkspaceTypographySetting setting, CancellationToken cancellationToken);
     Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken);
 }
 
@@ -402,6 +404,29 @@ public interface IWorkItemRepository
         IReadOnlyCollection<Guid> workItemIds,
         ProjectPermission permission,
         CancellationToken cancellationToken);
+}
+
+public interface IWorkItemLinkRepository
+{
+    Task AddAsync(WorkItemLink link, CancellationToken cancellationToken);
+    Task<WorkItemLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns all links where the work item is either the source or the target.
+    /// </summary>
+    Task<IReadOnlyList<WorkItemLink>> ListByWorkItemAsync(
+        Guid tenantId,
+        Guid workItemId,
+        CancellationToken cancellationToken);
+
+    Task<bool> ExistsAsync(
+        Guid tenantId,
+        Guid sourceWorkItemId,
+        Guid targetWorkItemId,
+        WorkItemLinkKind kind,
+        CancellationToken cancellationToken);
+
+    Task RemoveAsync(WorkItemLink link, CancellationToken cancellationToken);
 }
 
 public interface IWorkItemCommentRepository

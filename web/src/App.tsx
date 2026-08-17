@@ -22,15 +22,16 @@ import { BacklogView } from './features/backlog/BacklogView'
 import { DevelopmentView } from './features/development/DevelopmentView'
 import { SummaryView } from './features/summary/SummaryView'
 import { CreateWorkItemDialog } from './features/workitems/CreateWorkItemDialog'
-import { EditWorkItemDialog } from './features/workitems/EditWorkItemDialog'
+import { WorkItemDetailView } from './features/workitems/WorkItemDetailView'
 import { BootstrapOnboarding } from './features/onboarding/BootstrapOnboarding'
 import { ProjectOnboarding } from './features/onboarding/ProjectOnboarding'
 import { SettingsView } from './features/settings/SettingsView'
 import type { SettingsSection } from './features/settings/SettingsView'
 import { HomeView } from './features/home/HomeView'
 import { CreateWorkspaceDialog } from './features/workspaces/CreateWorkspaceDialog'
+import { applyTypographySetting } from './typography'
 
-type ActiveView = 'home' | 'project' | 'settings'
+type ActiveView = 'home' | 'project' | 'settings' | 'workitem'
 
 function App() {
   const queryClient = useQueryClient()
@@ -140,6 +141,17 @@ function App() {
     queryFn: orbitApi.getProfile,
     enabled: bootstrapQuery.data?.initializationRequired === false,
   })
+  const typographyQuery = useQuery({
+    queryKey: ['typography-settings'],
+    queryFn: orbitApi.getTypographySettings,
+    enabled: bootstrapQuery.data?.initializationRequired === false,
+    staleTime: Infinity,
+  })
+  useEffect(() => {
+    if (typographyQuery.data) {
+      applyTypographySetting(typographyQuery.data)
+    }
+  }, [typographyQuery.data])
   const membersQuery = useQuery({
     queryKey: ['memberships'],
     queryFn: orbitApi.listMemberships,
@@ -371,12 +383,29 @@ function App() {
           }}
         />
         
-        <main className="flex-1 lg:ml-[240px] min-h-[calc(100vh-56px)] bg-white relative">
+        <main className="region-middle flex-1 lg:ml-[240px] min-h-[calc(100vh-56px)] bg-white relative">
           {projects.length === 0 ? <ProjectOnboarding /> : <>
           {activeView === 'home' && <HomeView profile={profileQuery.data} projects={projects} workItems={workItems} onCreate={() => setCreateOpen(true)} onOpenProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }} />}
           {activeView === 'settings' && selectedProject && (
             <SettingsView key={settingsSection} project={selectedProject} initialSection={settingsSection} onClose={() => setActiveView('project')} />
           )}
+          {activeView === 'workitem' && (() => {
+            const openWorkItem = workItems.find((item) => item.id === editingWorkItemId)
+            return openWorkItem ? (
+              <WorkItemDetailView
+                item={openWorkItem}
+                project={selectedProject}
+                workItems={workItems}
+                profile={profileQuery.data}
+                members={members}
+                types={(itemTypesQuery.data ?? []).filter((itemType) => itemType.enabled)}
+                priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
+                onBack={() => { setActiveView('project'); setEditingWorkItemId(null) }}
+                onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
+                onOpenWorkItem={(workItem) => setEditingWorkItemId(workItem.id)}
+              />
+            ) : null
+          })()}
           {activeView === 'project' && <>
             <SubNavigation
               project={selectedProject}
@@ -404,7 +433,7 @@ function App() {
                 onReopenSprint={(sprint) => reopenSprintMutation.mutate(sprint)}
                 onAssignToSprint={(workItemId, sprintId) => assignToSprintMutation.mutate({ workItemId, sprintId })}
                 onRemoveFromSprint={(workItemId) => removeFromSprintMutation.mutate(workItemId)}
-                onOpenWorkItem={(workItem) => setEditingWorkItemId(workItem.id)}
+                onOpenWorkItem={(workItem) => { setEditingWorkItemId(workItem.id); setActiveView('workitem') }}
                 error={
                   createSprintMutation.error?.message ??
                   startSprintMutation.error?.message ??
@@ -431,7 +460,7 @@ function App() {
                   workItemsLoading={workItemsQuery.isPending}
                   onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
                   onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
-                  onOpen={(workItem) => setEditingWorkItemId(workItem.id)}
+                  onOpen={(workItem) => { setEditingWorkItemId(workItem.id); setActiveView('workitem') }}
                 />
               </div>
             )}
@@ -462,19 +491,6 @@ function App() {
         />
       )}
 
-      {editingWorkItemId && (() => {
-        const editingWorkItem = workItems.find((item) => item.id === editingWorkItemId)
-        return editingWorkItem ? (
-          <EditWorkItemDialog
-            item={editingWorkItem}
-            workItems={workItems}
-            profile={profileQuery.data}
-            members={members}
-            priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
-            onClose={() => setEditingWorkItemId(null)}
-          />
-        ) : null
-      })()}
     </div>
   )
 }

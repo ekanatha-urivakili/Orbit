@@ -24,12 +24,15 @@ import type {
   TeamMembership,
   TenantMembership,
   TenantRole,
+  TypographySetting,
   WorkspaceSetting,
   WorkspaceInvitation,
   WorkspaceInvitationStatus,
   SystemChoices,
   WorkItem,
   WorkItemAttachment,
+  WorkItemLink,
+  WorkItemLinkKind,
   PresignedAttachmentUpload,
   WorkItemComment,
   WorkItemTypeDefinition,
@@ -128,6 +131,17 @@ export const orbitApi = {
       headers: { 'If-Match': `"${workItem.version}"` },
       body: JSON.stringify({ beforeWorkItemId: neighbors.beforeId, afterWorkItemId: neighbors.afterId }),
     }),
+  listWorkItemLinks: (workItemId: string) =>
+    request<WorkItemLink[]>(`/work-items/${encodeURIComponent(workItemId)}/links`),
+  addWorkItemLink: (workItemId: string, input: { kind: WorkItemLinkKind; targetWorkItemId: string; inverse: boolean }) =>
+    request<WorkItemLink>(`/work-items/${encodeURIComponent(workItemId)}/links`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  removeWorkItemLink: (workItemId: string, linkId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/links/${encodeURIComponent(linkId)}`, {
+      method: 'DELETE',
+    }),
   listWorkItemComments: (workItemId: string) =>
     request<WorkItemComment[]>(`/work-items/${encodeURIComponent(workItemId)}/comments`),
   addWorkItemComment: (workItemId: string, body: string) =>
@@ -209,6 +223,13 @@ export const orbitApi = {
   getWorkspaceSettings: () => request<WorkspaceSetting>('/workspaces/current/settings'),
   updateWorkspaceSettings: (input: WorkspaceSetting) =>
     request<WorkspaceSetting>('/workspaces/current/settings', {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${input.version}"` },
+      body: JSON.stringify(input),
+    }),
+  getTypographySettings: () => request<TypographySetting>('/workspaces/current/typography-settings'),
+  updateTypographySettings: (input: TypographySetting) =>
+    request<TypographySetting>('/workspaces/current/typography-settings', {
       method: 'PATCH',
       headers: { 'If-Match': `"${input.version}"` },
       body: JSON.stringify(input),

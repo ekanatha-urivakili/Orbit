@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Orbit.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Orbit.Infrastructure.Persistence;
 namespace Orbit.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(OrbitDbContext))]
-    partial class OrbitDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260815184940_AddWorkspaceTypographySettings")]
+    partial class AddWorkspaceTypographySettings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1573,6 +1576,15 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("text[]")
                         .HasColumnName("labels");
 
+                    b.Property<string>("LinkType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("link_type");
+
+                    b.Property<Guid?>("LinkedWorkItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("linked_work_item_id");
+
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_id");
@@ -1651,6 +1663,8 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Key")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "LinkedWorkItemId");
+
                     b.HasIndex("TenantId", "ParentId");
 
                     b.HasIndex("TenantId", "Type");
@@ -1660,6 +1674,10 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.ToTable("work_items", null, t =>
                         {
                             t.HasCheckConstraint("ck_work_items_epic_name", "type <> 'Epic' OR epic_name IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_work_items_link", "(link_type IS NULL) = (linked_work_item_id IS NULL)");
+
+                            t.HasCheckConstraint("ck_work_items_link_type", "link_type IS NULL OR link_type IN ('DependsOn', 'Blocks', 'RelatesTo')");
 
                             t.HasCheckConstraint("ck_work_items_priority", "priority IN ('Lowest', 'Low', 'Medium', 'High', 'Highest')");
 
@@ -1738,51 +1756,6 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_work_item_comments_body_length", "char_length(body) BETWEEN 1 AND 10000");
 
                             t.HasCheckConstraint("ck_work_item_comments_version", "version > 0");
-                        });
-                });
-
-            modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItemLink", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("kind");
-
-                    b.Property<Guid>("SourceWorkItemId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("source_work_item_id");
-
-                    b.Property<Guid>("TargetWorkItemId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("target_work_item_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "SourceWorkItemId");
-
-                    b.HasIndex("TenantId", "TargetWorkItemId");
-
-                    b.HasIndex("TenantId", "SourceWorkItemId", "TargetWorkItemId", "Kind")
-                        .IsUnique();
-
-                    b.ToTable("work_item_links", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_work_item_links_distinct", "source_work_item_id <> target_work_item_id");
-
-                            t.HasCheckConstraint("ck_work_item_links_kind", "kind IN ('Blocks', 'RelatesTo', 'Duplicates')");
                         });
                 });
 
@@ -2149,6 +2122,12 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
                         .WithMany()
+                        .HasForeignKey("TenantId", "LinkedWorkItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
+                        .WithMany()
                         .HasForeignKey("TenantId", "ParentId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -2172,23 +2151,6 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
                         .WithMany()
                         .HasForeignKey("TenantId", "WorkItemId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItemLink", b =>
-                {
-                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "SourceWorkItemId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "TargetWorkItemId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

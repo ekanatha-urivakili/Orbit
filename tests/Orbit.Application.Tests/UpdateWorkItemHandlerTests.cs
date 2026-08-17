@@ -20,8 +20,11 @@ public sealed class UpdateWorkItemHandlerTests
     private static UpdateWorkItemCommand CommandFor(WorkItem item, string summary = "Updated summary") =>
         new(
             item.Id, summary, "Updated description", Priority.High,
-            null, null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, item.Version);
+            /* ParentId */ null, /* EpicName */ null, /* AcceptanceCriteria */ null, /* StepsToConduct */ null,
+            /* AssigneeUserId */ null, /* DeveloperUserId */ null, /* ProductOwnerUserId */ null,
+            /* SprintName */ null, /* IdentifiedOn */ null, /* StoryPoints */ null,
+            /* Labels */ null, /* Countries */ null, /* AttachmentNames */ null,
+            item.Version);
 
     [Fact]
     public async Task Handle_UpdatesFieldsAndBumpsVersion()
@@ -80,8 +83,11 @@ public sealed class UpdateWorkItemHandlerTests
         var action = () => handler.Handle(
             new UpdateWorkItemCommand(
                 Guid.NewGuid(), "Updated summary", null, Priority.Medium,
-                null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, 1),
+                /* ParentId */ null, /* EpicName */ null, /* AcceptanceCriteria */ null, /* StepsToConduct */ null,
+                /* AssigneeUserId */ null, /* DeveloperUserId */ null, /* ProductOwnerUserId */ null,
+                /* SprintName */ null, /* IdentifiedOn */ null, /* StoryPoints */ null,
+                /* Labels */ null, /* Countries */ null, /* AttachmentNames */ null,
+                /* ExpectedVersion */ 1),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<NotFoundException>(action);
@@ -125,28 +131,6 @@ public sealed class UpdateWorkItemHandlerTests
 
         var action = () => handler.Handle(
             CommandFor(item) with { ParentId = invalidParent.Id, EpicName = "Epic name" }, CancellationToken.None);
-
-        await Assert.ThrowsAsync<ValidationException>(action);
-    }
-
-    [Fact]
-    public async Task Handle_RejectsLinkedItemFromAnotherProject()
-    {
-        var tenantId = Guid.NewGuid();
-        var item = NewItem(tenantId, Guid.NewGuid());
-        var otherProjectItem = NewItem(tenantId, Guid.NewGuid(), sequenceNumber: 2);
-        var handler = new UpdateWorkItemHandler(
-            new TenantContextStub(tenantId),
-            new CurrentPrincipalStub(null),
-            new WorkItemRepositoryStub(item, otherProjectItem),
-            new SprintMembershipRepositoryStub(),
-            new SprintScopeFactRepositoryStub(),
-            new UnitOfWorkStub(),
-            TimeProvider.System);
-
-        var action = () => handler.Handle(
-            CommandFor(item) with { LinkType = WorkItemLinkType.RelatesTo, LinkedWorkItemId = otherProjectItem.Id },
-            CancellationToken.None);
 
         await Assert.ThrowsAsync<ValidationException>(action);
     }

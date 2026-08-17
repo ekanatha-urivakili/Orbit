@@ -44,8 +44,6 @@ public static class WorkItemEndpoints
                 request.SprintName,
                 request.IdentifiedOn,
                 request.StoryPoints,
-                request.LinkType,
-                request.LinkedWorkItemId,
                 request.Labels,
                 request.Countries,
                 request.AttachmentNames);
@@ -83,8 +81,6 @@ public static class WorkItemEndpoints
                 request.SprintName,
                 request.IdentifiedOn,
                 request.StoryPoints,
-                request.LinkType,
-                request.LinkedWorkItemId,
                 request.Labels,
                 request.Countries,
                 request.AttachmentNames,
@@ -139,6 +135,44 @@ public static class WorkItemEndpoints
         })
         .WithName("ReorderWorkItem")
         .WithTags("Work items");
+
+        // ------------------------------------------------------------------
+        // Links
+        // ------------------------------------------------------------------
+
+        group.MapGet("/work-items/{workItemId:guid}/links", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new ListWorkItemLinksQuery(workItemId), cancellationToken)))
+            .WithName("ListWorkItemLinks")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/links", async (
+            Guid workItemId,
+            AddWorkItemLinkRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var link = await sender.Send(
+                new AddWorkItemLinkCommand(workItemId, request.Kind, request.TargetWorkItemId, request.Inverse),
+                cancellationToken);
+            return Results.Created($"/api/v1/work-items/{workItemId}/links/{link.Id}", link);
+        })
+            .WithName("AddWorkItemLink")
+            .WithTags("Work items");
+
+        group.MapDelete("/work-items/{workItemId:guid}/links/{linkId:guid}", async (
+            Guid workItemId,
+            Guid linkId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new RemoveWorkItemLinkCommand(workItemId, linkId), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("RemoveWorkItemLink")
+            .WithTags("Work items");
 
         // ------------------------------------------------------------------
         // Comments (E2.3 S2.3.1)
@@ -286,8 +320,6 @@ public static class WorkItemEndpoints
         string? SprintName,
         string? IdentifiedOn,
         decimal? StoryPoints,
-        WorkItemLinkType? LinkType,
-        Guid? LinkedWorkItemId,
         string[]? Labels,
         string[]? Countries,
         string[]? AttachmentNames);
@@ -306,8 +338,6 @@ public static class WorkItemEndpoints
         string? SprintName,
         string? IdentifiedOn,
         decimal? StoryPoints,
-        WorkItemLinkType? LinkType,
-        Guid? LinkedWorkItemId,
         string[]? Labels,
         string[]? Countries,
         string[]? AttachmentNames);
@@ -315,6 +345,8 @@ public static class WorkItemEndpoints
     public sealed record ChangeStatusRequest(WorkItemStatus Status);
 
     public sealed record ReorderWorkItemRequest(Guid? BeforeWorkItemId, Guid? AfterWorkItemId);
+
+    public sealed record AddWorkItemLinkRequest(WorkItemLinkKind Kind, Guid TargetWorkItemId, bool Inverse);
 
     public sealed record AddWorkItemCommentRequest(string Body);
 

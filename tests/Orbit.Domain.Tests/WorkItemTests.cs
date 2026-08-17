@@ -115,7 +115,7 @@ public sealed class WorkItemTests
 
         var action = () => item.SetDetails(
             null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null);
+            null, null, null);
 
         Assert.Throws<DomainException>(action);
     }
@@ -129,7 +129,7 @@ public sealed class WorkItemTests
 
         item.SetDetails(
             null, null, null, null, null, null, null, null, null, 3,
-            null, null, [" backend ", "Backend"], [" US "], ["trace.txt"]);
+            [" backend ", "Backend"], [" US "], ["trace.txt"]);
 
         Assert.Equal(["backend"], item.Labels, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(["US"], item.Countries);
@@ -146,8 +146,8 @@ public sealed class WorkItemTests
 
         item.Update(
             "Updated summary", "Updated description", Priority.High,
-            null, null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, now.AddMinutes(5));
+            null, null, null, null, null, null, null, null, null, null,
+            null, null, null, now.AddMinutes(5));
 
         Assert.Equal("Updated summary", item.Summary);
         Assert.Equal("Updated description", item.Description);
@@ -166,8 +166,8 @@ public sealed class WorkItemTests
 
         var action = () => item.Update(
             "x", null, Priority.Medium,
-            null, null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, now);
+            null, null, null, null, null, null, null, null, null, null,
+            null, null, null, now);
 
         Assert.Throws<DomainException>(action);
     }
@@ -182,8 +182,8 @@ public sealed class WorkItemTests
 
         var action = () => item.Update(
             "Plan the release", null, Priority.Medium,
-            null, null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, now);
+            null, null, null, null, null, null, null, null, null, null,
+            null, null, null, now);
 
         Assert.Throws<DomainException>(action);
     }

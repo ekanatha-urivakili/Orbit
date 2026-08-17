@@ -33,7 +33,7 @@ export function Sidebar({
   return (
     <>
       <aside
-        className={`fixed inset-y-0 left-0 pt-14 w-[240px] bg-white border-r border-gray-200 flex flex-col z-10 transition-transform ${
+        className={`region-left fixed inset-y-0 left-0 pt-14 w-[240px] bg-white border-r border-gray-200 flex flex-col z-10 transition-transform ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >

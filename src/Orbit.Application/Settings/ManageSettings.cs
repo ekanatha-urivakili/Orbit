@@ -67,6 +67,54 @@ public sealed record ProjectSettingDto(
     string? RepositoryUrl,
     long Version);
 
+public sealed record TypographySettingDto(
+    string LeftFontFamily,
+    string LeftFontColor,
+    int LeftFontSizePx,
+    string MiddleFontFamily,
+    string MiddleFontColor,
+    int MiddleFontSizePx,
+    string RightFontFamily,
+    string RightFontColor,
+    int RightFontSizePx,
+    int ControlHeightPx,
+    int ControlFontSizePx,
+    bool CanAdminister,
+    long Version)
+{
+    public static TypographySettingDto Default(bool canAdminister) =>
+        new(
+            WorkspaceTypographySetting.DefaultFontFamily,
+            WorkspaceTypographySetting.DefaultInkColor,
+            WorkspaceTypographySetting.DefaultFontSizePx,
+            WorkspaceTypographySetting.DefaultFontFamily,
+            WorkspaceTypographySetting.DefaultInkColor,
+            WorkspaceTypographySetting.DefaultFontSizePx,
+            WorkspaceTypographySetting.DefaultFontFamily,
+            WorkspaceTypographySetting.DefaultInkColor,
+            WorkspaceTypographySetting.DefaultFontSizePx,
+            WorkspaceTypographySetting.DefaultControlHeightPx,
+            WorkspaceTypographySetting.DefaultControlFontSizePx,
+            canAdminister,
+            0);
+
+    public static TypographySettingDto From(WorkspaceTypographySetting setting, bool canAdminister) =>
+        new(
+            setting.LeftFontFamily,
+            setting.LeftFontColor,
+            setting.LeftFontSizePx,
+            setting.MiddleFontFamily,
+            setting.MiddleFontColor,
+            setting.MiddleFontSizePx,
+            setting.RightFontFamily,
+            setting.RightFontColor,
+            setting.RightFontSizePx,
+            setting.ControlHeightPx,
+            setting.ControlFontSizePx,
+            canAdminister,
+            setting.Version);
+}
+
 internal static class SettingsConcurrency
 {
     public static void EnsureVersion(bool exists, long actualVersion, long expectedVersion, string message)
@@ -350,6 +398,104 @@ public sealed class UpdateWorkspaceSettingHandler(
             setting.AllowMemberProjectCreation,
             true,
             setting.Version);
+    }
+}
+
+public sealed record GetTypographySettingQuery : IQuery<TypographySettingDto>;
+
+public sealed class GetTypographySettingHandler(
+    ITenantContext tenant,
+    ICurrentPrincipal principal,
+    ISettingsRepository settings) : IRequestHandler<GetTypographySettingQuery, TypographySettingDto>
+{
+    public async Task<TypographySettingDto> Handle(
+        GetTypographySettingQuery request,
+        CancellationToken cancellationToken)
+    {
+        var canAdminister = principal.TenantRole is TenantRole.Owner or TenantRole.Administrator;
+        var setting = await settings.GetWorkspaceTypographySettingAsync(tenant.TenantId, cancellationToken);
+        return setting is null
+            ? TypographySettingDto.Default(canAdminister)
+            : TypographySettingDto.From(setting, canAdminister);
+    }
+}
+
+public sealed record UpdateTypographySettingCommand(
+    string LeftFontFamily,
+    string LeftFontColor,
+    int LeftFontSizePx,
+    string MiddleFontFamily,
+    string MiddleFontColor,
+    int MiddleFontSizePx,
+    string RightFontFamily,
+    string RightFontColor,
+    int RightFontSizePx,
+    int ControlHeightPx,
+    int ControlFontSizePx,
+    long ExpectedVersion) : ICommand<TypographySettingDto>;
+
+public sealed class UpdateTypographySettingValidator : AbstractValidator<UpdateTypographySettingCommand>
+{
+    public UpdateTypographySettingValidator()
+    {
+        RuleFor(command => command.LeftFontFamily).NotEmpty().MaximumLength(200);
+        RuleFor(command => command.LeftFontColor).Matches("^#[0-9a-fA-F]{6}$");
+        RuleFor(command => command.LeftFontSizePx).InclusiveBetween(10, 24);
+        RuleFor(command => command.MiddleFontFamily).NotEmpty().MaximumLength(200);
+        RuleFor(command => command.MiddleFontColor).Matches("^#[0-9a-fA-F]{6}$");
+        RuleFor(command => command.MiddleFontSizePx).InclusiveBetween(10, 24);
+        RuleFor(command => command.RightFontFamily).NotEmpty().MaximumLength(200);
+        RuleFor(command => command.RightFontColor).Matches("^#[0-9a-fA-F]{6}$");
+        RuleFor(command => command.RightFontSizePx).InclusiveBetween(10, 24);
+        RuleFor(command => command.ControlHeightPx).InclusiveBetween(24, 56);
+        RuleFor(command => command.ControlFontSizePx).InclusiveBetween(10, 24);
+        RuleFor(command => command.ExpectedVersion).GreaterThanOrEqualTo(0);
+    }
+}
+
+public sealed class UpdateTypographySettingHandler(
+    ITenantContext tenant,
+    ICurrentPrincipal principal,
+    ISettingsRepository settings,
+    IUnitOfWork unitOfWork,
+    TimeProvider timeProvider) : IRequestHandler<UpdateTypographySettingCommand, TypographySettingDto>
+{
+    public async Task<TypographySettingDto> Handle(
+        UpdateTypographySettingCommand request,
+        CancellationToken cancellationToken)
+    {
+        if (principal.TenantRole is not (TenantRole.Owner or TenantRole.Administrator))
+        {
+            throw new AccessDeniedException("Workspace administration permission is required.");
+        }
+
+        var setting = await settings.GetWorkspaceTypographySettingAsync(tenant.TenantId, cancellationToken);
+        SettingsConcurrency.EnsureVersion(
+            setting is not null,
+            setting?.Version ?? 0,
+            request.ExpectedVersion,
+            "The typography settings changed after they were loaded.");
+        if (setting is null)
+        {
+            setting = WorkspaceTypographySetting.Create(tenant.TenantId, timeProvider.GetUtcNow());
+            await settings.AddWorkspaceTypographySettingAsync(setting, cancellationToken);
+        }
+
+        setting.Update(
+            request.LeftFontFamily,
+            request.LeftFontColor,
+            request.LeftFontSizePx,
+            request.MiddleFontFamily,
+            request.MiddleFontColor,
+            request.MiddleFontSizePx,
+            request.RightFontFamily,
+            request.RightFontColor,
+            request.RightFontSizePx,
+            request.ControlHeightPx,
+            request.ControlFontSizePx,
+            timeProvider.GetUtcNow());
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return TypographySettingDto.From(setting, true);
     }
 }
 

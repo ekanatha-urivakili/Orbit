@@ -210,6 +210,10 @@ public sealed class TenantMembershipLifecycleHandlerTests
         public Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<WorkspaceSetting?>(null);
 
+        public Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(
+            Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkspaceTypographySetting?>(null);
+
         public Task<ProjectSetting?> GetProjectSettingAsync(
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
@@ -222,6 +226,10 @@ public sealed class TenantMembershipLifecycleHandlerTests
             Task.CompletedTask;
 
         public Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddWorkspaceTypographySettingAsync(
+            WorkspaceTypographySetting setting, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>

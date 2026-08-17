@@ -57,12 +57,13 @@ internal static class WorkItemRelations
             return;
         }
 
+        // Any non-Epic, non-Initiative type may nest under any other non-Initiative item, matching
+        // the "create a subtask of any type under any ticket" flow on the work item detail page.
         var valid = childType switch
         {
             WorkItemType.Initiative => false,
             WorkItemType.Epic => parent.Type == WorkItemType.Initiative,
-            WorkItemType.Subtask => parent.Type is not WorkItemType.Initiative,
-            _ => parent.Type is WorkItemType.Epic or WorkItemType.Initiative
+            _ => true
         };
         if (!valid)
         {

@@ -14,11 +14,11 @@ public enum WorkItemType
     Subtask
 }
 
-public enum WorkItemLinkType
+public enum WorkItemLinkKind
 {
-    DependsOn,
     Blocks,
-    RelatesTo
+    RelatesTo,
+    Duplicates
 }
 
 public enum WorkItemStatus

@@ -66,6 +66,31 @@ internal sealed class WorkspaceSettingConfiguration : IEntityTypeConfiguration<W
     }
 }
 
+internal sealed class WorkspaceTypographySettingConfiguration : IEntityTypeConfiguration<WorkspaceTypographySetting>
+{
+    public void Configure(EntityTypeBuilder<WorkspaceTypographySetting> builder)
+    {
+        builder.ToTable("workspace_typography_settings");
+        builder.HasKey(setting => setting.TenantId);
+        builder.Property(setting => setting.TenantId).HasColumnName("tenant_id").ValueGeneratedNever();
+        builder.Property(setting => setting.LeftFontFamily).HasColumnName("left_font_family").HasMaxLength(200).IsRequired();
+        builder.Property(setting => setting.LeftFontColor).HasColumnName("left_font_color").HasMaxLength(7).IsRequired();
+        builder.Property(setting => setting.LeftFontSizePx).HasColumnName("left_font_size_px");
+        builder.Property(setting => setting.MiddleFontFamily).HasColumnName("middle_font_family").HasMaxLength(200).IsRequired();
+        builder.Property(setting => setting.MiddleFontColor).HasColumnName("middle_font_color").HasMaxLength(7).IsRequired();
+        builder.Property(setting => setting.MiddleFontSizePx).HasColumnName("middle_font_size_px");
+        builder.Property(setting => setting.RightFontFamily).HasColumnName("right_font_family").HasMaxLength(200).IsRequired();
+        builder.Property(setting => setting.RightFontColor).HasColumnName("right_font_color").HasMaxLength(7).IsRequired();
+        builder.Property(setting => setting.RightFontSizePx).HasColumnName("right_font_size_px");
+        builder.Property(setting => setting.ControlHeightPx).HasColumnName("control_height_px");
+        builder.Property(setting => setting.ControlFontSizePx).HasColumnName("control_font_size_px");
+        builder.Property(setting => setting.Version).HasColumnName("version").IsConcurrencyToken();
+        builder.Property(setting => setting.UpdatedAt).HasColumnName("updated_at");
+        builder.HasOne<Workspace>().WithOne().HasForeignKey<WorkspaceTypographySetting>(setting => setting.TenantId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal sealed class ProjectSettingConfiguration : IEntityTypeConfiguration<ProjectSetting>
 {
     public void Configure(EntityTypeBuilder<ProjectSetting> builder)

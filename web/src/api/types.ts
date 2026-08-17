@@ -1,5 +1,6 @@
 export type WorkItemType = 'Initiative' | 'Epic' | 'Task' | 'Story' | 'Spike' | 'Test' | 'Feature' | 'Request' | 'Bug' | 'Subtask'
-export type WorkItemLinkType = 'DependsOn' | 'Blocks' | 'RelatesTo'
+export type WorkItemLinkKind = 'Blocks' | 'RelatesTo' | 'Duplicates'
+export type WorkItemLinkDirection = 'Outgoing' | 'Incoming'
 
 export type WorkItemStatus =
   | 'Backlog'
@@ -40,8 +41,6 @@ export interface WorkItem {
   sprintName: string | null
   identifiedOn: string | null
   storyPoints: number | null
-  linkType: WorkItemLinkType | null
-  linkedWorkItemId: string | null
   labels: string[]
   countries: string[]
   attachmentNames: string[]
@@ -52,6 +51,17 @@ export interface WorkItem {
   version: number
   createdAt: string
   updatedAt: string
+}
+
+export interface WorkItemLink {
+  id: string
+  kind: WorkItemLinkKind
+  direction: WorkItemLinkDirection
+  workItemId: string
+  key: string
+  summary: string
+  type: WorkItemType
+  status: WorkItemStatus
 }
 
 export interface WorkItemComment {
@@ -143,8 +153,6 @@ export interface CreateWorkItemInput {
   sprintName?: string | null
   identifiedOn?: string | null
   storyPoints?: number | null
-  linkType?: WorkItemLinkType | null
-  linkedWorkItemId?: string | null
   labels?: string[]
   countries?: string[]
   attachmentNames?: string[]
@@ -164,8 +172,6 @@ export interface UpdateWorkItemInput {
   sprintName?: string | null
   identifiedOn?: string | null
   storyPoints?: number | null
-  linkType?: WorkItemLinkType | null
-  linkedWorkItemId?: string | null
   labels?: string[]
   countries?: string[]
   attachmentNames?: string[]
@@ -239,6 +245,22 @@ export interface ProjectSetting {
   enableReleases: boolean
   enableTimeTracking: boolean
   repositoryUrl: string | null
+  version: number
+}
+
+export interface TypographySetting {
+  leftFontFamily: string
+  leftFontColor: string
+  leftFontSizePx: number
+  middleFontFamily: string
+  middleFontColor: string
+  middleFontSizePx: number
+  rightFontFamily: string
+  rightFontColor: string
+  rightFontSizePx: number
+  controlHeightPx: number
+  controlFontSizePx: number
+  canAdminister: boolean
   version: number
 }
 

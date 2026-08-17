@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Kanban, Pencil, Plus, X } from 'lucide-react'
 import type { Board, BoardColumn, BoardType, WipLimitMode, WorkItem, WorkItemStatus } from '../../api/types'
 import { allStatuses, statusMeta } from './constants'
 import { KanbanBoard } from './KanbanBoard'
+import { SearchableSelect } from '../../components/form/SearchableSelect'
 
 interface MutationShape {
   isPending: boolean
@@ -158,22 +159,20 @@ function BoardForm({
         maxLength={120}
         value={name}
         onChange={(event) => setName(event.target.value)}
-        className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 bg-white dark:bg-[#22272b] dark:border-gray-600"
       />
-      <select
+      <SearchableSelect
         value={type}
-        onChange={(event) => setType(event.target.value as BoardType)}
-        className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-      >
-        <option value="Kanban">Kanban</option>
-        <option value="Scrum">Scrum</option>
-      </select>
+        onChange={(val) => setType(val as BoardType)}
+        options={['Kanban', 'Scrum']}
+        searchable={false}
+      />
 
       <div className="text-left">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Columns</p>
         <ul className="flex flex-col gap-2">
           {columns.map((column, index) => (
-            <li key={column.status} className="flex items-center gap-2 border border-gray-200 rounded px-2 py-1.5">
+            <li key={column.status} className="flex items-center gap-2 border border-gray-200 dark:border-[#394047] rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#1e2327]">
               <div className="flex flex-col">
                 <button type="button" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Move ${statusMeta[column.status].label} up`}>
                   <ArrowUp size={12} />
@@ -182,7 +181,7 @@ function BoardForm({
                   <ArrowDown size={12} />
                 </button>
               </div>
-              <span className="flex-1 text-sm">{statusMeta[column.status].label}</span>
+              <span className="flex-1 text-sm font-medium">{statusMeta[column.status].label}</span>
               <input
                 type="number"
                 min={1}
@@ -191,17 +190,18 @@ function BoardForm({
                 onChange={(event) =>
                   updateColumn(column.status, { wipLimit: event.target.value ? Number(event.target.value) : null })
                 }
-                className="w-16 border border-gray-300 rounded px-2 py-1 text-xs"
+                className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-[#22272b]"
               />
-              <select
-                value={column.wipLimitMode}
-                disabled={column.wipLimit == null}
-                onChange={(event) => updateColumn(column.status, { wipLimitMode: event.target.value as WipLimitMode })}
-                className="border border-gray-300 rounded px-2 py-1 text-xs"
-              >
-                <option value="Warn">Warn</option>
-                <option value="Block">Block</option>
-              </select>
+              <div className="w-24">
+                <SearchableSelect
+                  size="sm"
+                  value={column.wipLimitMode}
+                  disabled={column.wipLimit == null}
+                  onChange={(val) => updateColumn(column.status, { wipLimitMode: val as WipLimitMode })}
+                  options={['Warn', 'Block']}
+                  searchable={false}
+                />
+              </div>
               <button
                 type="button"
                 disabled={columns.length === 1}

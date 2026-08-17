@@ -200,6 +200,128 @@ public sealed class WorkspaceSetting
     }
 }
 
+public sealed class WorkspaceTypographySetting
+{
+    private WorkspaceTypographySetting()
+    {
+    }
+
+    private WorkspaceTypographySetting(Guid tenantId, DateTimeOffset now)
+    {
+        TenantId = tenantId;
+        LeftFontFamily = DefaultFontFamily;
+        LeftFontColor = DefaultInkColor;
+        LeftFontSizePx = DefaultFontSizePx;
+        MiddleFontFamily = DefaultFontFamily;
+        MiddleFontColor = DefaultInkColor;
+        MiddleFontSizePx = DefaultFontSizePx;
+        RightFontFamily = DefaultFontFamily;
+        RightFontColor = DefaultInkColor;
+        RightFontSizePx = DefaultFontSizePx;
+        ControlHeightPx = DefaultControlHeightPx;
+        ControlFontSizePx = DefaultControlFontSizePx;
+        Version = 1;
+        UpdatedAt = now;
+    }
+
+    public const string DefaultFontFamily = "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
+    public const string DefaultInkColor = "#172033";
+    public const int DefaultFontSizePx = 14;
+    public const int DefaultControlHeightPx = 40;
+    public const int DefaultControlFontSizePx = 14;
+
+    public Guid TenantId { get; private set; }
+    public string LeftFontFamily { get; private set; } = string.Empty;
+    public string LeftFontColor { get; private set; } = string.Empty;
+    public int LeftFontSizePx { get; private set; }
+    public string MiddleFontFamily { get; private set; } = string.Empty;
+    public string MiddleFontColor { get; private set; } = string.Empty;
+    public int MiddleFontSizePx { get; private set; }
+    public string RightFontFamily { get; private set; } = string.Empty;
+    public string RightFontColor { get; private set; } = string.Empty;
+    public int RightFontSizePx { get; private set; }
+    public int ControlHeightPx { get; private set; }
+    public int ControlFontSizePx { get; private set; }
+    public long Version { get; private set; }
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    public static WorkspaceTypographySetting Create(Guid tenantId, DateTimeOffset now) =>
+        tenantId == Guid.Empty
+            ? throw new DomainException("Tenant id is required.")
+            : new WorkspaceTypographySetting(tenantId, now);
+
+    public void Update(
+        string leftFontFamily,
+        string leftFontColor,
+        int leftFontSizePx,
+        string middleFontFamily,
+        string middleFontColor,
+        int middleFontSizePx,
+        string rightFontFamily,
+        string rightFontColor,
+        int rightFontSizePx,
+        int controlHeightPx,
+        int controlFontSizePx,
+        DateTimeOffset now)
+    {
+        LeftFontFamily = ValidateFontFamily(leftFontFamily);
+        LeftFontColor = ValidateColor(leftFontColor);
+        LeftFontSizePx = ValidateFontSize(leftFontSizePx);
+        MiddleFontFamily = ValidateFontFamily(middleFontFamily);
+        MiddleFontColor = ValidateColor(middleFontColor);
+        MiddleFontSizePx = ValidateFontSize(middleFontSizePx);
+        RightFontFamily = ValidateFontFamily(rightFontFamily);
+        RightFontColor = ValidateColor(rightFontColor);
+        RightFontSizePx = ValidateFontSize(rightFontSizePx);
+        ControlHeightPx = ValidateControlHeight(controlHeightPx);
+        ControlFontSizePx = ValidateFontSize(controlFontSizePx);
+        Version++;
+        UpdatedAt = now;
+    }
+
+    private static string ValidateFontFamily(string fontFamily)
+    {
+        var normalized = fontFamily.Trim();
+        if (normalized.Length is < 1 or > 200)
+        {
+            throw new DomainException("Font family must contain 1 to 200 characters.");
+        }
+
+        return normalized;
+    }
+
+    private static string ValidateColor(string color)
+    {
+        var normalized = color.Trim();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(normalized, "^#[0-9a-fA-F]{6}$"))
+        {
+            throw new DomainException("Font color must be a hex color in the form #rrggbb.");
+        }
+
+        return normalized;
+    }
+
+    private static int ValidateFontSize(int sizePx)
+    {
+        if (sizePx is < 10 or > 24)
+        {
+            throw new DomainException("Font size must be between 10 and 24 pixels.");
+        }
+
+        return sizePx;
+    }
+
+    private static int ValidateControlHeight(int heightPx)
+    {
+        if (heightPx is < 24 or > 56)
+        {
+            throw new DomainException("Control height must be between 24 and 56 pixels.");
+        }
+
+        return heightPx;
+    }
+}
+
 public sealed class ProjectSetting
 {
     private ProjectSetting()

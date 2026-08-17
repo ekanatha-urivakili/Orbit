@@ -46,6 +46,51 @@ public static class SettingsEndpoints
         .WithName("UpdateWorkspaceSettings")
         .WithTags("Settings");
 
+        group.MapGet("/workspaces/current/typography-settings", async (
+            HttpResponse response,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var setting = await sender.Send(new GetTypographySettingQuery(), cancellationToken);
+            response.Headers.ETag = $"\"{setting.Version}\"";
+            return Results.Ok(setting);
+        })
+        .WithName("GetWorkspaceTypographySettings")
+        .WithTags("Settings");
+
+        group.MapPatch("/workspaces/current/typography-settings", async (
+            UpdateTypographySettingRequest request,
+            HttpRequest httpRequest,
+            HttpResponse response,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryParseVersion(httpRequest.Headers.IfMatch, allowZero: true, out var version))
+            {
+                return PreconditionRequired();
+            }
+
+            var setting = await sender.Send(
+                new UpdateTypographySettingCommand(
+                    request.LeftFontFamily,
+                    request.LeftFontColor,
+                    request.LeftFontSizePx,
+                    request.MiddleFontFamily,
+                    request.MiddleFontColor,
+                    request.MiddleFontSizePx,
+                    request.RightFontFamily,
+                    request.RightFontColor,
+                    request.RightFontSizePx,
+                    request.ControlHeightPx,
+                    request.ControlFontSizePx,
+                    version),
+                cancellationToken);
+            response.Headers.ETag = $"\"{setting.Version}\"";
+            return Results.Ok(setting);
+        })
+        .WithName("UpdateWorkspaceTypographySettings")
+        .WithTags("Settings");
+
         group.MapGet("/projects/{projectId:guid}/settings", async (
             Guid projectId,
             HttpResponse response,
@@ -116,4 +161,17 @@ public static class SettingsEndpoints
         bool EnableReleases,
         bool EnableTimeTracking,
         string? RepositoryUrl);
+
+    public sealed record UpdateTypographySettingRequest(
+        string LeftFontFamily,
+        string LeftFontColor,
+        int LeftFontSizePx,
+        string MiddleFontFamily,
+        string MiddleFontColor,
+        int MiddleFontSizePx,
+        string RightFontFamily,
+        string RightFontColor,
+        int RightFontSizePx,
+        int ControlHeightPx,
+        int ControlFontSizePx);
 }

@@ -3,6 +3,7 @@ import { Bell, ChevronRight, CircleUserRound, CreditCard, Grip, HelpCircle, LogO
 import type { AccountWorkspace, Profile, ThemePreference } from '../../api/types'
 import type { SettingsSection } from '../../features/settings/SettingsView'
 import { getInitials } from '../../lib/initials'
+import { SearchableSelect } from '../form/SearchableSelect'
 import * as auth from '../../api/auth'
 
 interface HeaderProps {
@@ -33,17 +34,18 @@ export function Header({ online, profile, onCreateClick, onHomeClick, onOpenSett
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-sm text-[#0052cc]">O</span>Orbit
         </button>
         {!!workspaces?.length && (
-          <select
-            aria-label="Current workspace"
-            value={currentWorkspaceId ?? ''}
-            disabled={switchingWorkspace}
-            onChange={(event) => onWorkspaceChange(event.target.value)}
-            className="max-w-52 rounded border border-white/30 bg-white/15 px-2 py-1 text-sm text-white disabled:opacity-60"
-          >
-            {workspaces.map((workspace) => (
-              <option key={workspace.id} value={workspace.id} className="text-gray-900">{workspace.name}</option>
-            ))}
-          </select>
+          <div className="w-52">
+            <SearchableSelect
+              aria-label="Current workspace"
+              value={currentWorkspaceId ?? ''}
+              disabled={switchingWorkspace}
+              onChange={(val) => onWorkspaceChange(val)}
+              options={workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name }))}
+              variant="header"
+              size="sm"
+              searchPlaceholder="Search workspaces…"
+            />
+          </div>
         )}
         {onCreateWorkspace && (
           <button onClick={onCreateWorkspace} className="rounded p-1.5 hover:bg-white/20" aria-label="Create workspace">

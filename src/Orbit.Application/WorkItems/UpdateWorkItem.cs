@@ -23,8 +23,6 @@ public sealed record UpdateWorkItemCommand(
     string? SprintName,
     string? IdentifiedOn,
     decimal? StoryPoints,
-    WorkItemLinkType? LinkType,
-    Guid? LinkedWorkItemId,
     string[]? Labels,
     string[]? Countries,
     string[]? AttachmentNames,
@@ -44,9 +42,6 @@ public sealed class UpdateWorkItemValidator : AbstractValidator<UpdateWorkItemCo
         RuleFor(command => command.IdentifiedOn).MaximumLength(255);
         RuleFor(command => command.StoryPoints).InclusiveBetween(0, 10_000).When(command => command.StoryPoints.HasValue);
         RuleFor(command => command.ExpectedVersion).GreaterThan(0);
-        RuleFor(command => command)
-            .Must(command => command.LinkType.HasValue == command.LinkedWorkItemId.HasValue)
-            .WithMessage("A linked work item and relationship type must be supplied together.");
     }
 }
 
@@ -75,8 +70,6 @@ public sealed class UpdateWorkItemHandler(
         var parent = await WorkItemRelations.GetRelatedItemAsync(
             workItems, tenantContext.TenantId, request.ParentId, workItem.ProjectId, "Parent", cancellationToken);
         WorkItemRelations.ValidateParentType(workItem.Type, parent);
-        await WorkItemRelations.GetRelatedItemAsync(
-            workItems, tenantContext.TenantId, request.LinkedWorkItemId, workItem.ProjectId, "Linked work item", cancellationToken);
 
         var previousStoryPoints = workItem.StoryPoints;
         var previousStatus = workItem.Status;
@@ -95,8 +88,6 @@ public sealed class UpdateWorkItemHandler(
             request.SprintName,
             request.IdentifiedOn,
             request.StoryPoints,
-            request.LinkType,
-            request.LinkedWorkItemId,
             request.Labels,
             request.Countries,
             request.AttachmentNames,

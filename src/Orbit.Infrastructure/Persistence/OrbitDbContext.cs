@@ -19,6 +19,7 @@ public sealed class OrbitDbContext(
 {
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<WorkItem> WorkItems => Set<WorkItem>();
+    public DbSet<WorkItemLink> WorkItemLinks => Set<WorkItemLink>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<ProjectRoleAssignment> ProjectRoleAssignments => Set<ProjectRoleAssignment>();
     public DbSet<ProjectGroupRoleAssignment> ProjectGroupRoleAssignments => Set<ProjectGroupRoleAssignment>();
@@ -31,6 +32,7 @@ public sealed class OrbitDbContext(
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<WorkspaceSetting> WorkspaceSettings => Set<WorkspaceSetting>();
+    public DbSet<WorkspaceTypographySetting> WorkspaceTypographySettings => Set<WorkspaceTypographySetting>();
     public DbSet<ProjectSetting> ProjectSettings => Set<ProjectSetting>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
@@ -56,6 +58,7 @@ public sealed class OrbitDbContext(
 
         modelBuilder.Entity<Project>().HasQueryFilter(project => project.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkItem>().HasQueryFilter(workItem => workItem.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkItemLink>().HasQueryFilter(link => link.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<TenantMembership>()
             .HasQueryFilter(membership => membership.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<ProjectRoleAssignment>()
@@ -63,6 +66,8 @@ public sealed class OrbitDbContext(
         modelBuilder.Entity<ProjectGroupRoleAssignment>()
             .HasQueryFilter(assignment => assignment.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkspaceSetting>()
+            .HasQueryFilter(setting => setting.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkspaceTypographySetting>()
             .HasQueryFilter(setting => setting.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<ProjectSetting>()
             .HasQueryFilter(setting => setting.TenantId == tenantContext.TenantId);

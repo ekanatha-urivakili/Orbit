@@ -25,6 +25,7 @@ public static class DependencyInjection
                 npgsql.MigrationsAssembly(typeof(OrbitDbContext).Assembly.FullName)));
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IWorkItemRepository, WorkItemRepository>();
+        services.AddScoped<IWorkItemLinkRepository, WorkItemLinkRepository>();
         services.AddScoped<IWorkItemCommentRepository, WorkItemCommentRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
         services.AddScoped<ITenantMembershipRepository, TenantMembershipRepository>();

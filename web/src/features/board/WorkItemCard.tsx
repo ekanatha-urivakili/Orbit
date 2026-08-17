@@ -1,6 +1,7 @@
 import { ChevronDown } from 'lucide-react'
 import type { BoardColumn, WorkItem, WorkItemStatus } from '../../api/types'
 import { statusMeta } from './constants'
+import { WorkItemTypeIcon } from '../workitems/typeIcons'
 
 export function WorkItemCard({
   item,
@@ -35,7 +36,7 @@ export function WorkItemCard({
       onDrop={onDrop}
     >
       <div className="card-meta">
-        <span className={`type-badge type-${item.type.toLowerCase()}`}>{item.type}</span>
+        <span className={`type-badge type-${item.type.toLowerCase()}`}><WorkItemTypeIcon type={item.type} size={12} />{item.type}</span>
         <span className={`priority priority-${item.priority.toLowerCase()}`}>{item.priority}</span>
       </div>
       <h3 className={onOpen ? 'cursor-pointer hover:underline' : undefined} onClick={() => onOpen?.(item)}>{item.summary}</h3>
