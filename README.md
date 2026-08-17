@@ -1,6 +1,6 @@
 # Orbit Work Management
 
-Orbit is an open-source, headless sprint and Kanban work-management platform. The current implementation includes one-time local installation bootstrap, site-admin workspace creation, local email/password login with rotating sessions, global accounts and secure workspace switching, workspace teams and admin lifecycle (promote/demote/remove members), projects, tenant-isolated work items, a tenant-configurable stable software item-type registry, optimistic status transitions, OIDC-backed tenant memberships, project roles, query-level permission enforcement, and a responsive installable PWA.
+Orbit is an open-source, headless sprint and Kanban work-management platform. The current implementation includes one-time local installation bootstrap, site-admin workspace creation, local email/password login with rotating sessions, global accounts and secure workspace switching, workspace teams and admin lifecycle (promote/demote/remove members), projects, tenant-isolated work items, many-to-many work item dependency linking, workspace-level typography settings, TipTap-based rich text editing with font size and attachment resolution, presigned MinIO/S3 attachment uploads, a tenant-configurable stable software item-type registry, optimistic status transitions, OIDC-backed tenant memberships, project roles, query-level permission enforcement, and a responsive installable PWA.
 
 The target architecture and phased backlog are in [ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md](ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md).
 
