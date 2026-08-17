@@ -90,7 +90,7 @@ child_pids+=("$!")
 
 (
     cd web
-    npm run dev -- --host 127.0.0.1 --strictPort
+    NODE_OPTIONS="--max-old-space-size=4096" npm run dev -- --host 127.0.0.1 --strictPort
 ) &
 child_pids+=("$!")
 
