@@ -4,6 +4,7 @@ using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
+using Orbit.Domain.Messaging;
 using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.WorkItems;
@@ -65,6 +66,7 @@ public sealed class AddWorkItemCommentHandler(
     IWorkItemRepository workItems,
     IWorkItemCommentRepository comments,
     ISettingsRepository settings,
+    IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<AddWorkItemCommentCommand, WorkItemCommentDto>
 {
@@ -73,7 +75,7 @@ public sealed class AddWorkItemCommentHandler(
         CancellationToken cancellationToken)
     {
         // Verify the work item exists and the caller can see it.
-        _ = await workItems.GetAsync(
+        var workItem = await workItems.GetAsync(
                 tenantContext.TenantId,
                 request.WorkItemId,
                 ProjectPermission.View,
@@ -90,13 +92,65 @@ public sealed class AddWorkItemCommentHandler(
             timeProvider.GetUtcNow());
 
         await comments.AddAsync(comment, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         var account = principal.UserId.HasValue
             ? await settings.GetUserAccountAsync(principal.UserId.Value, cancellationToken)
             : null;
 
+        if (mentionedUserIds.Length > 0)
+        {
+            await NotifyMentionedUsersAsync(
+                mentionedUserIds, workItem, account?.DisplayName, cancellationToken);
+        }
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return WorkItemCommentDto.From(comment, account?.DisplayName, account?.AvatarUrl);
+    }
+
+    /// <summary>
+    /// Fires the E8.2 "mentioned in a comment" notification (§10.5): consults each mentioned
+    /// user's <see cref="Domain.Settings.NotificationPreference"/> (a never-touched user defaults
+    /// to <c>EmailEnabled = true</c>, <c>SelfNotify = false</c>, matching
+    /// <see cref="Domain.Settings.NotificationPreference.Create"/>) and enqueues one outbox email
+    /// per user who wants it, atomically with the comment via the caller's single SaveChanges.
+    /// </summary>
+    private async Task NotifyMentionedUsersAsync(
+        Guid[] mentionedUserIds,
+        WorkItem workItem,
+        string? authorDisplayName,
+        CancellationToken cancellationToken)
+    {
+        var mentionedAccounts = (await settings.GetUserAccountsAsync(mentionedUserIds, cancellationToken))
+            .ToDictionary(a => a.Id);
+        var now = timeProvider.GetUtcNow();
+
+        foreach (var userId in mentionedUserIds)
+        {
+            if (!mentionedAccounts.TryGetValue(userId, out var mentionedAccount))
+            {
+                continue;
+            }
+
+            var preference = await settings.GetNotificationPreferenceAsync(userId, cancellationToken);
+            var emailEnabled = preference?.EmailEnabled ?? true;
+            var selfNotify = preference?.SelfNotify ?? false;
+            if (!emailEnabled || (userId == principal.UserId && !selfNotify))
+            {
+                continue;
+            }
+
+            var email = OutboxEmailMessage.Create(
+                mentionedAccount.NormalizedEmail,
+                $"You were mentioned in {workItem.Key}",
+                $"""
+                <p>Hi {System.Net.WebUtility.HtmlEncode(mentionedAccount.DisplayName)},</p>
+                <p>{System.Net.WebUtility.HtmlEncode(authorDisplayName ?? "Someone")} mentioned you in a comment on
+                <strong>{System.Net.WebUtility.HtmlEncode(workItem.Key)}: {System.Net.WebUtility.HtmlEncode(workItem.Summary)}</strong>.</p>
+                """,
+                now);
+            await outbox.AddAsync(email, cancellationToken);
+        }
     }
 }
 
