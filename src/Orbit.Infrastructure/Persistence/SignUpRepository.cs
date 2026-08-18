@@ -47,4 +47,33 @@ internal sealed class SignUpRepository(OrbitDbContext dbContext) : ISignUpReposi
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
+
+    public async Task ProvisionExternalAccountAsync(
+        UserAccount account,
+        ExternalIdentity identity,
+        Organization organization,
+        Workspace workspace,
+        OrganizationMembership organizationMembership,
+        TenantMembership ownerMembership,
+        GoogleSignInHandoff handoff,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.tenant_id', {workspace.Id.ToString()}, true)",
+            cancellationToken);
+
+        await dbContext.UserAccounts.AddAsync(account, cancellationToken);
+        await dbContext.ExternalIdentities.AddAsync(identity, cancellationToken);
+        await dbContext.Organizations.AddAsync(organization, cancellationToken);
+        await dbContext.OrganizationMemberships.AddAsync(organizationMembership, cancellationToken);
+        await dbContext.Workspaces.AddAsync(workspace, cancellationToken);
+        await dbContext.TenantMemberships.AddAsync(ownerMembership, cancellationToken);
+        await dbContext.WorkItemTypeDefinitions.AddRangeAsync(
+            WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
+            cancellationToken);
+        await dbContext.GoogleSignInHandoffs.AddAsync(handoff, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
 }

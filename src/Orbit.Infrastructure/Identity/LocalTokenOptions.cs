@@ -15,5 +15,10 @@ public sealed class LocalTokenOptions
     public string Issuer { get; set; } = DefaultIssuer;
     public string Audience { get; set; } = DefaultAudience;
     public int AccessTokenLifetimeMinutes { get; set; } = 15;
-    public int RefreshTokenLifetimeDays { get; set; } = 30;
+
+    /// <summary>Default refresh-token lifetime for a session that did not opt into "remember me".</summary>
+    public int RefreshTokenLifetimeDays { get; set; } = 1;
+
+    /// <summary>Refresh-token lifetime for a "remember me" session (see RefreshSession.IsPersistent).</summary>
+    public int RememberMeRefreshTokenLifetimeDays { get; set; } = 30;
 }

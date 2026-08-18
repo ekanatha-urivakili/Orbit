@@ -8,7 +8,8 @@ public sealed record CachedAuthorizationContext(
     Guid MembershipId,
     Guid? UserId,
     PrincipalType PrincipalType,
-    TenantRole TenantRole);
+    TenantRole TenantRole,
+    MembershipTier MembershipTier);
 
 /// <summary>
 /// Caches the per-request principal context resolved from a locally-issued user token, keyed by

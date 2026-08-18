@@ -165,6 +165,7 @@ public sealed class GroupHandlerTests
         public Guid MembershipId => membershipId;
         public PrincipalType PrincipalType => PrincipalType.User;
         public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
         public bool IsDevelopmentBypass => false;
     }
 
@@ -289,6 +290,10 @@ public sealed class GroupHandlerTests
             Task.FromResult<TenantMembership?>(null);
 
         public Task<IReadOnlyList<TenantMembership>> ListAsync(Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TenantMembership>>([]);
+
+        public Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>([]);
     }
 

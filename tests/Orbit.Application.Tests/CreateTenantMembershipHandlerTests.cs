@@ -103,6 +103,12 @@ public sealed class CreateTenantMembershipHandlerTests
             Guid tenantId,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>([]);
+
+        public Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> membershipIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TenantMembership>>([]);
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

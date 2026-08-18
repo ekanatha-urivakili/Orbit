@@ -249,7 +249,14 @@ public sealed class ListWorkItemCommentsHandler(
             request.WorkItemId,
             cancellationToken);
 
-        var tenantMembers = (await memberships.ListAsync(tenantContext.TenantId, cancellationToken))
+        // PERF-01: Only load the members actually referenced by the comments rather than
+        // pulling every tenant member — critical for tenants with large rosters.
+        var referencedMemberIds = workItemComments
+            .Select(c => c.AuthorMembershipId)
+            .Distinct()
+            .ToArray();
+
+        var tenantMembers = (await memberships.ListByIdsAsync(tenantContext.TenantId, referencedMemberIds, cancellationToken))
             .ToDictionary(m => m.Id);
 
         var userIds = tenantMembers.Values

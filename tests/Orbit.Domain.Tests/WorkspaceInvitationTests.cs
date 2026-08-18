@@ -37,6 +37,40 @@ public sealed class WorkspaceInvitationTests
     }
 
     [Fact]
+    public void Create_RejectsGuestTierWithAdministratorRole()
+    {
+        var action = () => WorkspaceInvitation.Create(
+            Guid.NewGuid(),
+            "user@example.test",
+            TenantRole.Administrator,
+            null,
+            "token-hash",
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromDays(7),
+            MembershipTier.Guest);
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Fact]
+    public void Create_AllowsGuestTierWithMemberRole()
+    {
+        var invitation = WorkspaceInvitation.Create(
+            Guid.NewGuid(),
+            "user@example.test",
+            TenantRole.Member,
+            null,
+            "token-hash",
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromDays(7),
+            MembershipTier.Guest);
+
+        Assert.Equal(MembershipTier.Guest, invitation.Tier);
+    }
+
+    [Fact]
     public void Renew_RotatesTokenAndExpiry()
     {
         var now = DateTimeOffset.UtcNow;

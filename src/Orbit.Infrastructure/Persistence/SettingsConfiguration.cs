@@ -59,6 +59,7 @@ internal sealed class WorkspaceSettingConfiguration : IEntityTypeConfiguration<W
         builder.Property(setting => setting.DefaultLocale).HasColumnName("default_locale").HasMaxLength(35).IsRequired();
         builder.Property(setting => setting.DefaultTimeZone).HasColumnName("default_time_zone").HasMaxLength(100).IsRequired();
         builder.Property(setting => setting.AllowMemberProjectCreation).HasColumnName("allow_member_project_creation");
+        builder.Property(setting => setting.LogoObjectKey).HasColumnName("logo_object_key").HasMaxLength(1024);
         builder.Property(setting => setting.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(setting => setting.UpdatedAt).HasColumnName("updated_at");
         builder.HasOne<Workspace>().WithOne().HasForeignKey<WorkspaceSetting>(setting => setting.TenantId)

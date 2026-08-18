@@ -160,6 +160,22 @@ public sealed class WorkItemAttachmentHandlerTests
         await Assert.ThrowsAsync<NotFoundException>(action);
     }
 
+    [Fact]
+    public void PresignValidator_RejectsSvg()
+    {
+        var validator = new PresignWorkItemAttachmentUploadValidator();
+        
+        var validCommand = new PresignWorkItemAttachmentUploadCommand(Guid.NewGuid(), "test.png", "image/png", 2048);
+        var invalidCommand = new PresignWorkItemAttachmentUploadCommand(Guid.NewGuid(), "test.svg", "image/svg+xml", 2048);
+        
+        var validResult = validator.Validate(validCommand);
+        var invalidResult = validator.Validate(invalidCommand);
+        
+        Assert.True(validResult.IsValid);
+        Assert.False(invalidResult.IsValid);
+        Assert.Contains(invalidResult.Errors, error => error.PropertyName == nameof(PresignWorkItemAttachmentUploadCommand.ContentType));
+    }
+
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
 
     private sealed class CurrentPrincipalStub(Guid? membershipId = null) : ICurrentPrincipal
@@ -169,6 +185,7 @@ public sealed class WorkItemAttachmentHandlerTests
         public Guid MembershipId { get; } = membershipId ?? Guid.NewGuid();
         public PrincipalType PrincipalType => PrincipalType.User;
         public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
         public bool IsDevelopmentBypass => true;
     }
 
@@ -231,6 +248,8 @@ public sealed class WorkItemAttachmentHandlerTests
             new("https://storage.test/upload", objectKey, DateTimeOffset.UtcNow.Add(expiresIn));
 
         public string CreatePresignedDownloadUrl(string objectKey, TimeSpan expiresIn) => "https://storage.test/download";
+
+        public string CreatePresignedDisplayUrl(string objectKey, TimeSpan expiresIn) => "https://storage.test/display";
 
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
         {

@@ -195,6 +195,13 @@ public static class WorkItemEndpoints
             ISender sender,
             CancellationToken cancellationToken) =>
         {
+            // SEC-10: Early validation at the endpoint layer protects the pipeline
+            // from handling excessively large strings before MediatR/DB execution.
+            if (request.Body is null || request.Body.Length > 15_000)
+            {
+                return Results.BadRequest("Comment body cannot exceed 15,000 characters.");
+            }
+
             var comment = await sender.Send(
                 new AddWorkItemCommentCommand(workItemId, request.Body),
                 cancellationToken);
@@ -217,6 +224,12 @@ public static class WorkItemEndpoints
             if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
             {
                 return SettingsEndpoints.PreconditionRequired();
+            }
+
+            // SEC-10: Early validation at the endpoint layer for updates.
+            if (request.Body is null || request.Body.Length > 15_000)
+            {
+                return Results.BadRequest("Comment body cannot exceed 15,000 characters.");
             }
 
             var comment = await sender.Send(

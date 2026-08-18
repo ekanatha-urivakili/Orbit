@@ -26,8 +26,10 @@ import type {
   TenantRole,
   TypographySetting,
   WorkspaceSetting,
+  PresignedWorkspaceLogoUpload,
   WorkspaceInvitation,
   WorkspaceInvitationStatus,
+  MembershipTier,
   SystemChoices,
   WorkItem,
   WorkItemAttachment,
@@ -227,6 +229,26 @@ export const orbitApi = {
       headers: { 'If-Match': `"${input.version}"` },
       body: JSON.stringify(input),
     }),
+  presignWorkspaceLogoUpload: (fileName: string, contentType: string, sizeBytes: number) =>
+    request<PresignedWorkspaceLogoUpload>('/workspaces/current/settings/logo/presign', {
+      method: 'POST',
+      body: JSON.stringify({ fileName, contentType, sizeBytes }),
+    }),
+  confirmWorkspaceLogoUpload: (objectKey: string, version: number) =>
+    request<WorkspaceSetting>('/workspaces/current/settings/logo', {
+      method: 'PUT',
+      headers: { 'If-Match': `"${version}"` },
+      body: JSON.stringify({ objectKey }),
+    }),
+  // Direct PUT to the presigned object-storage URL, same as uploadAttachmentFile.
+  uploadWorkspaceLogoFile: async (uploadUrl: string, file: File) => {
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    })
+    if (!response.ok) throw new Error(`Upload failed (${response.status})`)
+  },
   getTypographySettings: () => request<TypographySetting>('/workspaces/current/typography-settings'),
   updateTypographySettings: (input: TypographySetting) =>
     request<TypographySetting>('/workspaces/current/typography-settings', {
@@ -334,7 +356,7 @@ export const orbitApi = {
     const query = params.toString()
     return request<WorkspaceInvitation[]>(`/invitations${query ? `?${query}` : ''}`)
   },
-  createInvitation: (input: { email: string; role: TenantRole; teamId: string | null }) =>
+  createInvitation: (input: { email: string; role: TenantRole; teamId: string | null; tier?: MembershipTier }) =>
     request<WorkspaceInvitation>('/invitations', { method: 'POST', body: JSON.stringify(input) }),
   revokeInvitation: (invitationId: string) =>
     request<void>(`/invitations/${encodeURIComponent(invitationId)}`, { method: 'DELETE' }),

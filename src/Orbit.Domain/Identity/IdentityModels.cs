@@ -260,6 +260,7 @@ public sealed class RefreshSession
         string tokenHash,
         string? userAgent,
         string? ipAddress,
+        bool isPersistent,
         DateTimeOffset now,
         DateTimeOffset expiresAt)
     {
@@ -270,6 +271,7 @@ public sealed class RefreshSession
         TokenHash = tokenHash;
         UserAgent = userAgent;
         IpAddress = ipAddress;
+        IsPersistent = isPersistent;
         Status = RefreshSessionStatus.Active;
         CreatedAt = now;
         LastUsedAt = now;
@@ -283,6 +285,13 @@ public sealed class RefreshSession
     public string TokenHash { get; private set; } = string.Empty;
     public string? UserAgent { get; private set; }
     public string? IpAddress { get; private set; }
+
+    /// <summary>
+    /// True when the session was created from a "remember me" login. Carried across rotation so
+    /// <see cref="CreateRotated"/> callers can reapply the long-lived refresh-token lifetime without
+    /// the client having to re-assert the choice on every refresh.
+    /// </summary>
+    public bool IsPersistent { get; private set; }
     public RefreshSessionStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset LastUsedAt { get; private set; }
@@ -297,9 +306,10 @@ public sealed class RefreshSession
         string tokenHash,
         string? userAgent,
         string? ipAddress,
+        bool isPersistent,
         DateTimeOffset now,
         TimeSpan lifetime) =>
-        Create(userId, tenantId, Guid.CreateVersion7(), tokenHash, userAgent, ipAddress, now, lifetime);
+        Create(userId, tenantId, Guid.CreateVersion7(), tokenHash, userAgent, ipAddress, isPersistent, now, lifetime);
 
     /// <summary>
     /// Builds the next session in the rotation family. <paramref name="tenantId"/> is accepted
@@ -313,7 +323,7 @@ public sealed class RefreshSession
         string? ipAddress,
         DateTimeOffset now,
         TimeSpan lifetime) =>
-        Create(UserId, tenantId, FamilyId, tokenHash, userAgent, ipAddress, now, lifetime);
+        Create(UserId, tenantId, FamilyId, tokenHash, userAgent, ipAddress, IsPersistent, now, lifetime);
 
     private static RefreshSession Create(
         Guid userId,
@@ -322,6 +332,7 @@ public sealed class RefreshSession
         string tokenHash,
         string? userAgent,
         string? ipAddress,
+        bool isPersistent,
         DateTimeOffset now,
         TimeSpan lifetime)
     {
@@ -343,6 +354,7 @@ public sealed class RefreshSession
             tokenHash,
             Truncate(userAgent, 512),
             Truncate(ipAddress, 64),
+            isPersistent,
             now,
             now + lifetime);
     }
@@ -387,6 +399,59 @@ public sealed class RefreshSession
         var trimmed = value.Trim();
         return trimmed.Length > maxLength ? trimmed[..maxLength] : trimmed;
     }
+}
+
+/// <summary>
+/// A short-lived, single-use handoff between a server-brokered OAuth callback (which runs as a
+/// full-page browser redirect and cannot itself return JSON tokens to the SPA) and the SPA's
+/// follow-up exchange call that actually mints a normal, refreshable Orbit session. Only
+/// <see cref="CodeHash"/> - never the plaintext code - is stored, mirroring <c>RefreshSession.TokenHash</c>.
+/// </summary>
+public sealed class GoogleSignInHandoff
+{
+    private GoogleSignInHandoff()
+    {
+    }
+
+    private GoogleSignInHandoff(
+        Guid id,
+        string codeHash,
+        Guid userId,
+        Guid tenantId,
+        DateTimeOffset now,
+        DateTimeOffset expiresAt)
+    {
+        Id = id;
+        CodeHash = codeHash;
+        UserId = userId;
+        TenantId = tenantId;
+        CreatedAt = now;
+        ExpiresAt = expiresAt;
+    }
+
+    public Guid Id { get; private set; }
+    public string CodeHash { get; private set; } = string.Empty;
+    public Guid UserId { get; private set; }
+    public Guid TenantId { get; private set; }
+    public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset ExpiresAt { get; private set; }
+
+    public static GoogleSignInHandoff Create(string codeHash, Guid userId, Guid tenantId, DateTimeOffset now)
+    {
+        if (userId == Guid.Empty || tenantId == Guid.Empty)
+        {
+            throw new DomainException("User id and tenant id are required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(codeHash))
+        {
+            throw new DomainException("A code hash is required.");
+        }
+
+        return new GoogleSignInHandoff(Guid.CreateVersion7(), codeHash, userId, tenantId, now, now.AddSeconds(60));
+    }
+
+    public bool IsUsable(DateTimeOffset now) => ExpiresAt > now;
 }
 
 public enum PasswordResetTokenStatus

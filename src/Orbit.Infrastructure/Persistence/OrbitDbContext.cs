@@ -29,6 +29,7 @@ public sealed class OrbitDbContext(
     public DbSet<LocalCredential> LocalCredentials => Set<LocalCredential>();
     public DbSet<SiteRoleAssignment> SiteRoleAssignments => Set<SiteRoleAssignment>();
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
+    public DbSet<GoogleSignInHandoff> GoogleSignInHandoffs => Set<GoogleSignInHandoff>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<OrganizationMembership> OrganizationMemberships => Set<OrganizationMembership>();

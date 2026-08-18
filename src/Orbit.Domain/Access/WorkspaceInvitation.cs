@@ -20,6 +20,7 @@ public sealed class WorkspaceInvitation
         Guid tenantId,
         string normalizedEmail,
         TenantRole role,
+        MembershipTier tier,
         Guid? teamId,
         string tokenHash,
         Guid invitedByMembershipId,
@@ -30,6 +31,7 @@ public sealed class WorkspaceInvitation
         TenantId = tenantId;
         NormalizedEmail = normalizedEmail;
         Role = role;
+        Tier = tier;
         TeamId = teamId;
         TokenHash = tokenHash;
         InvitedByMembershipId = invitedByMembershipId;
@@ -44,6 +46,7 @@ public sealed class WorkspaceInvitation
     public Guid TenantId { get; private set; }
     public string NormalizedEmail { get; private set; } = string.Empty;
     public TenantRole Role { get; private set; }
+    public MembershipTier Tier { get; private set; }
     public Guid? TeamId { get; private set; }
     public string TokenHash { get; private set; } = string.Empty;
     public Guid InvitedByMembershipId { get; private set; }
@@ -63,14 +66,16 @@ public sealed class WorkspaceInvitation
         string tokenHash,
         Guid invitedByMembershipId,
         DateTimeOffset now,
-        TimeSpan lifetime)
+        TimeSpan lifetime,
+        MembershipTier tier = MembershipTier.Standard)
     {
-        Validate(tenantId, normalizedEmail, role, tokenHash, invitedByMembershipId, lifetime);
+        Validate(tenantId, normalizedEmail, role, tier, tokenHash, invitedByMembershipId, lifetime);
         return new WorkspaceInvitation(
             Guid.CreateVersion7(),
             tenantId,
             normalizedEmail,
             role,
+            tier,
             teamId,
             tokenHash,
             invitedByMembershipId,
@@ -87,10 +92,12 @@ public sealed class WorkspaceInvitation
         string tokenHash,
         Guid invitedByMembershipId,
         DateTimeOffset now,
-        TimeSpan lifetime)
+        TimeSpan lifetime,
+        MembershipTier tier = MembershipTier.Standard)
     {
-        Validate(TenantId, NormalizedEmail, role, tokenHash, invitedByMembershipId, lifetime);
+        Validate(TenantId, NormalizedEmail, role, tier, tokenHash, invitedByMembershipId, lifetime);
         Role = role;
+        Tier = tier;
         TeamId = teamId;
         TokenHash = tokenHash;
         InvitedByMembershipId = invitedByMembershipId;
@@ -132,6 +139,7 @@ public sealed class WorkspaceInvitation
         Guid tenantId,
         string normalizedEmail,
         TenantRole role,
+        MembershipTier tier,
         string tokenHash,
         Guid invitedByMembershipId,
         TimeSpan lifetime)
@@ -149,6 +157,11 @@ public sealed class WorkspaceInvitation
         if (role == TenantRole.Owner)
         {
             throw new DomainException("Workspace ownership cannot be granted by invitation.");
+        }
+
+        if (tier == MembershipTier.Guest && role != TenantRole.Member)
+        {
+            throw new DomainException("A guest invitation can only grant the Member role.");
         }
 
         if (lifetime <= TimeSpan.Zero)

@@ -182,7 +182,7 @@ export function RichTextEditor({
         </select>
         <select
           aria-label="Font size"
-          value={editor.getAttributes('textStyle').fontSize || '10px'}
+          value={editor.getAttributes('textStyle').fontSize || '14px'}
           onChange={(event) => {
             const size = event.target.value
             setTimeout(() => {
@@ -226,6 +226,17 @@ export function RichTextEditor({
             if (url === '') {
               editor.chain().focus().extendMarkRange('link').unsetLink().run()
               return
+            }
+            // SEC-07: Block javascript: and data: URIs — they execute when the link is clicked
+            // and cannot be sanitised away once stored in the rich-text body.
+            try {
+              const parsed = new URL(url)
+              if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+                alert('Only http:// and https:// links are allowed.')
+                return
+              }
+            } catch {
+              // URL() throws on relative URLs — allow them (treated as relative page links).
             }
             editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
           }}

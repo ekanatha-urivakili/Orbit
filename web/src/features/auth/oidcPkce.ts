@@ -151,8 +151,18 @@ export async function completeOidcCallback(): Promise<OidcCallbackResult | null>
   }
 
   const tokens = (await response.json()) as { access_token: string; id_token?: string }
-  const pendingInvitation: PendingInvitation | null = storedInvitation
-    ? (JSON.parse(storedInvitation) as PendingInvitation)
-    : null
+
+  // SEC-08: Guard against corrupted or tampered sessionStorage — JSON.parse throws on
+  // invalid JSON and would leave the callback in an undefined state without this guard.
+  let pendingInvitation: PendingInvitation | null = null
+  if (storedInvitation) {
+    try {
+      pendingInvitation = JSON.parse(storedInvitation) as PendingInvitation
+    } catch {
+      // Treat a corrupt invitation blob as absent — the user will see a normal error
+      // from the accept-invitation handler rather than an unhandled crash.
+    }
+  }
+
   return { mode, accessToken: tokens.access_token, idToken: tokens.id_token ?? null, pendingInvitation }
 }

@@ -46,6 +46,40 @@ public static class SettingsEndpoints
         .WithName("UpdateWorkspaceSettings")
         .WithTags("Settings");
 
+        group.MapPost("/workspaces/current/settings/logo/presign", async (
+            PresignWorkspaceLogoUploadRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await sender.Send(
+                new PresignWorkspaceLogoUploadCommand(request.FileName, request.ContentType, request.SizeBytes),
+                cancellationToken);
+            return Results.Ok(result);
+        })
+        .WithName("PresignWorkspaceLogoUpload")
+        .WithTags("Settings");
+
+        group.MapPut("/workspaces/current/settings/logo", async (
+            ConfirmWorkspaceLogoUploadRequest request,
+            HttpRequest httpRequest,
+            HttpResponse response,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryParseVersion(httpRequest.Headers.IfMatch, allowZero: true, out var version))
+            {
+                return PreconditionRequired();
+            }
+
+            var setting = await sender.Send(
+                new ConfirmWorkspaceLogoUploadCommand(request.ObjectKey, version),
+                cancellationToken);
+            response.Headers.ETag = $"\"{setting.Version}\"";
+            return Results.Ok(setting);
+        })
+        .WithName("ConfirmWorkspaceLogoUpload")
+        .WithTags("Settings");
+
         group.MapGet("/workspaces/current/typography-settings", async (
             HttpResponse response,
             ISender sender,
@@ -154,6 +188,10 @@ public static class SettingsEndpoints
         string DefaultLocale,
         string DefaultTimeZone,
         bool AllowMemberProjectCreation);
+
+    public sealed record PresignWorkspaceLogoUploadRequest(string FileName, string ContentType, long SizeBytes);
+
+    public sealed record ConfirmWorkspaceLogoUploadRequest(string ObjectKey);
 
     public sealed record UpdateProjectSettingRequest(
         WorkItemType DefaultWorkItemType,

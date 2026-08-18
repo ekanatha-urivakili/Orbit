@@ -163,6 +163,9 @@ public sealed class WorkspaceSetting
     public string DefaultLocale { get; private set; } = string.Empty;
     public string DefaultTimeZone { get; private set; } = string.Empty;
     public bool AllowMemberProjectCreation { get; private set; }
+
+    /// <summary>Object-storage key for the workspace's uploaded logo, or null for the platform default.</summary>
+    public string? LogoObjectKey { get; private set; }
     public long Version { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
@@ -197,6 +200,21 @@ public sealed class WorkspaceSetting
         AllowMemberProjectCreation = allowMemberProjectCreation;
         Version++;
         UpdatedAt = now;
+    }
+
+    /// <summary>Returns the previous object key (to delete from storage), if any, so it isn't orphaned.</summary>
+    public string? SetLogo(string? logoObjectKey, DateTimeOffset now)
+    {
+        if (logoObjectKey?.Length > 1024)
+        {
+            throw new DomainException("Logo object key is too long.");
+        }
+
+        var previous = LogoObjectKey;
+        LogoObjectKey = string.IsNullOrWhiteSpace(logoObjectKey) ? null : logoObjectKey;
+        Version++;
+        UpdatedAt = now;
+        return previous;
     }
 }
 

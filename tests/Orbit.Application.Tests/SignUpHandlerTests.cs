@@ -82,6 +82,8 @@ public sealed class SignUpHandlerTests
     {
         public TimeSpan RefreshTokenLifetime => TimeSpan.FromDays(30);
 
+        public TimeSpan PersistentRefreshTokenLifetime => TimeSpan.FromDays(30);
+
         public string LocalIssuer => "urn:orbit:local";
 
         public AccessToken IssueUserToken(Guid userId, Guid tenantId, Guid sessionId, DateTimeOffset now) =>
@@ -122,6 +124,24 @@ public sealed class SignUpHandlerTests
             OrganizationMembership = organizationMembership;
             OwnerMembership = ownerMembership;
             RefreshSession = refreshSession;
+            return Task.CompletedTask;
+        }
+
+        public Task ProvisionExternalAccountAsync(
+            UserAccount account,
+            ExternalIdentity identity,
+            Organization organization,
+            Workspace workspace,
+            OrganizationMembership organizationMembership,
+            TenantMembership ownerMembership,
+            GoogleSignInHandoff handoff,
+            CancellationToken cancellationToken)
+        {
+            Account = account;
+            Organization = organization;
+            Workspace = workspace;
+            OrganizationMembership = organizationMembership;
+            OwnerMembership = ownerMembership;
             return Task.CompletedTask;
         }
     }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useId, useMemo, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useId, useMemo, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, Search, Check, X } from 'lucide-react'
 
@@ -99,7 +99,7 @@ export function SearchableSelect<T extends string = string>({
   }, [options, searchQuery])
 
   // Calculate menu position
-  const updatePosition = () => {
+  const updatePosition = useCallback(() => {
     if (!triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
     const spaceBelow = window.innerHeight - rect.bottom
@@ -113,7 +113,7 @@ export function SearchableSelect<T extends string = string>({
       width: Math.max(rect.width, size === 'xl' ? 320 : 220),
       openUpward,
     })
-  }
+  }, [size])
 
   // Toggle open
   const toggleOpen = () => {
@@ -129,19 +129,22 @@ export function SearchableSelect<T extends string = string>({
   }
 
   // Close menu
-  const closeMenu = () => {
+  const closeMenu = useCallback(() => {
     setIsOpen(false)
     setSearchQuery('')
     setActiveIndex(-1)
-  }
+  }, [])
 
   // Select item
-  const handleSelect = (option: SelectOption<T>) => {
-    if (option.disabled) return
-    onChange?.(option.value)
-    closeMenu()
-    triggerRef.current?.focus()
-  }
+  const handleSelect = useCallback(
+    (option: SelectOption<T>) => {
+      if (option.disabled) return
+      onChange?.(option.value)
+      closeMenu()
+      triggerRef.current?.focus()
+    },
+    [onChange, closeMenu],
+  )
 
   // Handle clear
   const handleClear = (e: React.MouseEvent) => {
@@ -159,7 +162,7 @@ export function SearchableSelect<T extends string = string>({
       }, 50)
       return () => clearTimeout(timer)
     }
-  }, [isOpen])
+  }, [isOpen, updatePosition])
 
   // Handle click outside and window resize/scroll
   useEffect(() => {
@@ -231,7 +234,7 @@ export function SearchableSelect<T extends string = string>({
       window.removeEventListener('scroll', handleScrollOrResize, true)
       window.removeEventListener('resize', handleScrollOrResize)
     }
-  }, [isOpen, filteredOptions, activeIndex])
+  }, [isOpen, filteredOptions, activeIndex, closeMenu, handleSelect, updatePosition])
 
   // Scroll active option into view
   useEffect(() => {

@@ -15,6 +15,19 @@ public enum TenantRole
     Member
 }
 
+/// <summary>
+/// A guest never gets the tenant-wide project-access shortcut regardless of
+/// <see cref="TenantMembership.Role"/> - they see only projects with an explicit
+/// <see cref="ProjectRoleAssignment"/> or <see cref="ProjectGroupRoleAssignment"/>. Kept orthogonal
+/// to <see cref="TenantRole"/> (rather than a 4th role value) so existing role-based checks that
+/// don't care about guest status don't need to change.
+/// </summary>
+public enum MembershipTier
+{
+    Standard,
+    Guest
+}
+
 public enum ProjectRole
 {
     Administrator,
@@ -44,6 +57,7 @@ public sealed class TenantMembership
         string? subject,
         PrincipalType principalType,
         TenantRole role,
+        MembershipTier tier,
         DateTimeOffset createdAt)
     {
         Id = id;
@@ -53,6 +67,7 @@ public sealed class TenantMembership
         Subject = subject;
         PrincipalType = principalType;
         Role = role;
+        Tier = tier;
         IsActive = true;
         CreatedAt = createdAt;
     }
@@ -64,6 +79,7 @@ public sealed class TenantMembership
     public string? Subject { get; private set; }
     public PrincipalType PrincipalType { get; private set; }
     public TenantRole Role { get; private set; }
+    public MembershipTier Tier { get; private set; }
     public bool IsActive { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -73,7 +89,8 @@ public sealed class TenantMembership
         string subject,
         PrincipalType principalType,
         TenantRole role,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        MembershipTier tier = MembershipTier.Standard)
     {
         if (tenantId == Guid.Empty)
         {
@@ -92,6 +109,7 @@ public sealed class TenantMembership
             throw new DomainException("Identity subject must contain 1 to 255 characters.");
         }
 
+        ValidateTier(role, tier);
         return new TenantMembership(
             Guid.CreateVersion7(),
             tenantId,
@@ -100,6 +118,7 @@ public sealed class TenantMembership
             normalizedSubject,
             principalType,
             role,
+            tier,
             now);
     }
 
@@ -107,13 +126,15 @@ public sealed class TenantMembership
         Guid tenantId,
         Guid userId,
         TenantRole role,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        MembershipTier tier = MembershipTier.Standard)
     {
         if (tenantId == Guid.Empty || userId == Guid.Empty)
         {
             throw new DomainException("Tenant and user ids are required.");
         }
 
+        ValidateTier(role, tier);
         return new TenantMembership(
             Guid.CreateVersion7(),
             tenantId,
@@ -122,6 +143,7 @@ public sealed class TenantMembership
             null,
             PrincipalType.User,
             role,
+            tier,
             now);
     }
 
@@ -132,7 +154,21 @@ public sealed class TenantMembership
             throw new DomainException("An inactive membership cannot change role.");
         }
 
+        ValidateTier(role, Tier);
         Role = role;
+    }
+
+    /// <summary>A guest can only ever hold the baseline Member role - promoting one to
+    /// Owner/Administrator would hand out tenant-wide access, defeating the point of the tier.</summary>
+    public void ChangeTier(MembershipTier tier)
+    {
+        if (!IsActive)
+        {
+            throw new DomainException("An inactive membership cannot change tier.");
+        }
+
+        ValidateTier(Role, tier);
+        Tier = tier;
     }
 
     public void Deactivate()
@@ -142,8 +178,17 @@ public sealed class TenantMembership
 
     public void Reactivate(TenantRole role)
     {
+        ValidateTier(role, Tier);
         Role = role;
         IsActive = true;
+    }
+
+    private static void ValidateTier(TenantRole role, MembershipTier tier)
+    {
+        if (tier == MembershipTier.Guest && role != TenantRole.Member)
+        {
+            throw new DomainException("A guest membership can only hold the Member role.");
+        }
     }
 }
 

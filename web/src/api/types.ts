@@ -242,8 +242,15 @@ export interface WorkspaceSetting {
   defaultLocale: string
   defaultTimeZone: string
   allowMemberProjectCreation: boolean
+  logoUrl: string | null
   canAdminister: boolean
   version: number
+}
+
+export interface PresignedWorkspaceLogoUpload {
+  uploadUrl: string
+  objectKey: string
+  expiresAt: string
 }
 
 export interface ProjectSetting {
@@ -275,6 +282,7 @@ export interface TypographySetting {
 export type PrincipalType = 'User' | 'ServiceAccount'
 export type TenantRole = 'Owner' | 'Administrator' | 'Member'
 export type ProjectRole = 'Administrator' | 'Member' | 'Viewer'
+export type MembershipTier = 'Standard' | 'Guest'
 
 export interface TenantMembership {
   id: string
@@ -283,6 +291,7 @@ export interface TenantMembership {
   subject: string | null
   principalType: PrincipalType
   role: TenantRole
+  tier: MembershipTier
   isActive: boolean
   createdAt: string
   displayName: string | null
@@ -324,6 +333,7 @@ export interface WorkspaceInvitation {
   id: string
   email: string
   role: TenantRole
+  tier: MembershipTier
   teamId: string | null
   status: WorkspaceInvitationStatus
   expiresAt: string

@@ -55,6 +55,7 @@ public sealed record WorkspaceSettingDto(
     string DefaultLocale,
     string DefaultTimeZone,
     bool AllowMemberProjectCreation,
+    string? LogoUrl,
     bool CanAdminister,
     long Version);
 
@@ -326,7 +327,8 @@ public sealed record GetWorkspaceSettingQuery : IQuery<WorkspaceSettingDto>;
 public sealed class GetWorkspaceSettingHandler(
     ITenantContext tenant,
     ICurrentPrincipal principal,
-    ISettingsRepository settings) : IRequestHandler<GetWorkspaceSettingQuery, WorkspaceSettingDto>
+    ISettingsRepository settings,
+    IObjectStorageService storage) : IRequestHandler<GetWorkspaceSettingQuery, WorkspaceSettingDto>
 {
     public async Task<WorkspaceSettingDto> Handle(GetWorkspaceSettingQuery request, CancellationToken cancellationToken)
     {
@@ -340,6 +342,7 @@ public sealed class GetWorkspaceSettingHandler(
             setting?.DefaultLocale ?? "en-GB",
             setting?.DefaultTimeZone ?? "Europe/London",
             setting?.AllowMemberProjectCreation ?? false,
+            WorkspaceLogo.ResolveUrl(setting?.LogoObjectKey, storage),
             principal.TenantRole is TenantRole.Owner or TenantRole.Administrator,
             setting?.Version ?? 0);
     }
@@ -356,6 +359,7 @@ public sealed class UpdateWorkspaceSettingHandler(
     ITenantContext tenant,
     ICurrentPrincipal principal,
     ISettingsRepository settings,
+    IObjectStorageService storage,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UpdateWorkspaceSettingCommand, WorkspaceSettingDto>
 {
@@ -396,6 +400,136 @@ public sealed class UpdateWorkspaceSettingHandler(
             setting.DefaultLocale,
             setting.DefaultTimeZone,
             setting.AllowMemberProjectCreation,
+            WorkspaceLogo.ResolveUrl(setting.LogoObjectKey, storage),
+            true,
+            setting.Version);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace logo upload
+// ---------------------------------------------------------------------------
+
+internal static class WorkspaceLogo
+{
+    public static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+    };
+
+    public const long MaxSizeBytes = 2 * 1024 * 1024;
+
+    public static string? ResolveUrl(string? objectKey, IObjectStorageService storage) =>
+        string.IsNullOrWhiteSpace(objectKey)
+            ? null
+            : storage.CreatePresignedDisplayUrl(objectKey, TimeSpan.FromMinutes(15));
+}
+
+public sealed record PresignedWorkspaceLogoUploadDto(string UploadUrl, string ObjectKey, DateTimeOffset ExpiresAt);
+
+public sealed record PresignWorkspaceLogoUploadCommand(
+    string FileName,
+    string ContentType,
+    long SizeBytes) : ICommand<PresignedWorkspaceLogoUploadDto>;
+
+public sealed class PresignWorkspaceLogoUploadValidator : AbstractValidator<PresignWorkspaceLogoUploadCommand>
+{
+    public PresignWorkspaceLogoUploadValidator()
+    {
+        RuleFor(command => command.FileName).NotEmpty().MaximumLength(255);
+        RuleFor(command => command.ContentType)
+            .Must(contentType => WorkspaceLogo.AllowedContentTypes.Contains(contentType))
+            .WithMessage("This file type is not allowed for a workspace logo.");
+        RuleFor(command => command.SizeBytes).InclusiveBetween(1, WorkspaceLogo.MaxSizeBytes);
+    }
+}
+
+public sealed class PresignWorkspaceLogoUploadHandler(
+    ITenantContext tenant,
+    ICurrentPrincipal principal,
+    IObjectStorageService storage) : IRequestHandler<PresignWorkspaceLogoUploadCommand, PresignedWorkspaceLogoUploadDto>
+{
+    public Task<PresignedWorkspaceLogoUploadDto> Handle(
+        PresignWorkspaceLogoUploadCommand request,
+        CancellationToken cancellationToken)
+    {
+        if (principal.TenantRole is not (TenantRole.Owner or TenantRole.Administrator))
+        {
+            throw new AccessDeniedException("Workspace administration permission is required.");
+        }
+
+        var objectKey = $"{tenant.TenantId:N}/branding/{Guid.NewGuid():N}-{SanitizeFileName(request.FileName)}";
+        var upload = storage.CreatePresignedUpload(objectKey, request.ContentType, TimeSpan.FromMinutes(15));
+        return Task.FromResult(new PresignedWorkspaceLogoUploadDto(upload.UploadUrl, upload.ObjectKey, upload.ExpiresAt));
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        var safeChars = fileName.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_').ToArray();
+        return new string(safeChars);
+    }
+}
+
+public sealed record ConfirmWorkspaceLogoUploadCommand(string ObjectKey, long ExpectedVersion) : ICommand<WorkspaceSettingDto>;
+
+public sealed class ConfirmWorkspaceLogoUploadValidator : AbstractValidator<ConfirmWorkspaceLogoUploadCommand>
+{
+    public ConfirmWorkspaceLogoUploadValidator() =>
+        RuleFor(command => command.ObjectKey).NotEmpty().MaximumLength(1024);
+}
+
+public sealed class ConfirmWorkspaceLogoUploadHandler(
+    ITenantContext tenant,
+    ICurrentPrincipal principal,
+    ISettingsRepository settings,
+    IObjectStorageService storage,
+    IUnitOfWork unitOfWork,
+    TimeProvider timeProvider) : IRequestHandler<ConfirmWorkspaceLogoUploadCommand, WorkspaceSettingDto>
+{
+    public async Task<WorkspaceSettingDto> Handle(
+        ConfirmWorkspaceLogoUploadCommand request,
+        CancellationToken cancellationToken)
+    {
+        if (principal.TenantRole is not (TenantRole.Owner or TenantRole.Administrator))
+        {
+            throw new AccessDeniedException("Workspace administration permission is required.");
+        }
+
+        var expectedPrefix = $"{tenant.TenantId:N}/branding/";
+        if (!request.ObjectKey.StartsWith(expectedPrefix, StringComparison.Ordinal))
+        {
+            throw new ValidationException("The object key does not belong to this workspace.");
+        }
+
+        var workspace = await settings.GetWorkspaceAsync(tenant.TenantId, cancellationToken)
+            ?? throw new NotFoundException("Workspace was not found.");
+        var setting = await settings.GetWorkspaceSettingAsync(tenant.TenantId, cancellationToken);
+        SettingsConcurrency.EnsureVersion(
+            setting is not null,
+            setting?.Version ?? 0,
+            request.ExpectedVersion,
+            "The workspace settings changed after they were loaded.");
+        if (setting is null)
+        {
+            setting = WorkspaceSetting.Create(tenant.TenantId, timeProvider.GetUtcNow());
+            await settings.AddWorkspaceSettingAsync(setting, cancellationToken);
+        }
+
+        var previousObjectKey = setting.SetLogo(request.ObjectKey, timeProvider.GetUtcNow());
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(previousObjectKey))
+        {
+            await storage.DeleteAsync(previousObjectKey, cancellationToken);
+        }
+
+        return new WorkspaceSettingDto(
+            workspace.Id,
+            workspace.Name,
+            setting.Description,
+            setting.DefaultLocale,
+            setting.DefaultTimeZone,
+            setting.AllowMemberProjectCreation,
+            WorkspaceLogo.ResolveUrl(setting.LogoObjectKey, storage),
             true,
             setting.Version);
     }

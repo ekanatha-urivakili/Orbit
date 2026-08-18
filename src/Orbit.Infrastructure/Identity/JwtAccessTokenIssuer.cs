@@ -12,6 +12,9 @@ internal sealed class JwtAccessTokenIssuer(IOptions<LocalTokenOptions> options) 
 
     public TimeSpan RefreshTokenLifetime => TimeSpan.FromDays(Math.Max(1, options.Value.RefreshTokenLifetimeDays));
 
+    public TimeSpan PersistentRefreshTokenLifetime =>
+        TimeSpan.FromDays(Math.Max(1, options.Value.RememberMeRefreshTokenLifetimeDays));
+
     public string LocalIssuer => options.Value.Issuer;
 
     public AccessToken IssueUserToken(Guid userId, Guid tenantId, Guid sessionId, DateTimeOffset now)

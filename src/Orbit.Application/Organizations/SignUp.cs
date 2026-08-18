@@ -83,6 +83,7 @@ public sealed class SignUpHandler(
             RefreshTokenCodec.Hash(refreshToken),
             request.UserAgent,
             request.IpAddress,
+            isPersistent: false,
             now,
             tokenIssuer.RefreshTokenLifetime);
 

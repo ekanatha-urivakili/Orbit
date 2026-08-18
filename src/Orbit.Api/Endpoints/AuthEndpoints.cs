@@ -19,6 +19,7 @@ public static class AuthEndpoints
                     request.Email,
                     request.Password,
                     request.WorkspaceId,
+                    request.RememberMe,
                     ClientContext.UserAgent(httpContext),
                     ClientContext.IpAddress(httpContext)),
                 cancellationToken);
@@ -111,7 +112,7 @@ public static class AuthEndpoints
         return group;
     }
 
-    public sealed record LoginRequest(string Email, string Password, Guid? WorkspaceId);
+    public sealed record LoginRequest(string Email, string Password, Guid? WorkspaceId, bool RememberMe = false);
 
     public sealed record RefreshRequest(string RefreshToken, Guid? WorkspaceId);
 

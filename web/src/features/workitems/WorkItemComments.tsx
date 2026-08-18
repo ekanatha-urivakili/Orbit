@@ -70,11 +70,10 @@ export function WorkItemComments({
     },
   })
 
-  const isAuthor = (comment: { authorMembershipId: string; authorDisplayName?: string }) => {
-    if (currentMember) {
-      return comment.authorMembershipId === currentMember.id
-    }
-    return Boolean(profile && comment.authorDisplayName === profile.displayName)
+  // BP-01: Use membershipId exclusively for authorship checks — display names are not
+  // unique, so a name-string comparison could surface edit/delete to the wrong user.
+  const isAuthor = (comment: { authorMembershipId: string }) => {
+    return currentMember !== undefined && comment.authorMembershipId === currentMember.id
   }
 
   const tabs: { id: ActivityTab; label: string }[] = [
@@ -209,61 +208,83 @@ export function WorkItemComments({
             )}
           </div>
 
-          {/* New comment composer */}
+          {/* New comment composer (Matching Screenshot 1) */}
           <div className="flex gap-3 items-start">
             <div className="flex-shrink-0 pt-1">
               {profile?.avatarUrl ? (
                 <img src={profile.avatarUrl} alt={profile.displayName} className="w-8 h-8 rounded-full bg-gray-100 object-cover" />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center font-bold text-xs uppercase">
-                  {profile?.displayName?.charAt(0) ?? '?'}
+                <div className="w-8 h-8 rounded-full bg-[#ffab00] text-white flex items-center justify-center font-bold text-xs">
+                  {profile?.displayName ? profile.displayName.charAt(0).toUpperCase() : 'EU'}
                 </div>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="comment-suggestions">
-                {commentSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    className="comment-suggestion-chip"
-                    onClick={() => setNewCommentBody(isRichTextEmpty(newCommentBody) ? `<p>${suggestion}</p>` : `${newCommentBody}<p>${suggestion}</p>`)}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-              <div
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault()
-                    if (!isRichTextEmpty(newCommentBody) && !addMutation.isPending) {
-                      addMutation.mutate(newCommentBody)
+              <div className="rounded-lg border border-[#dfe1e6] bg-white shadow-sm overflow-hidden focus-within:border-[#829bf7] focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                <div
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault()
+                      if (!isRichTextEmpty(newCommentBody) && !addMutation.isPending) {
+                        addMutation.mutate(newCommentBody)
+                      }
                     }
-                  }
-                }}
-              >
-                <RichTextEditor
-                  value={newCommentBody}
-                  onChange={setNewCommentBody}
-                  placeholder="Add a comment... (use @ to mention)"
-                  minHeight={80}
-                  workItemId={workItemId}
-                  onAttachmentUploaded={() => queryClient.invalidateQueries({ queryKey: ['work-item-attachments', workItemId] })}
-                />
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <div className="flex items-center text-xs text-gray-400 font-medium">
-                  <CornerDownRight size={12} className="mr-1" /> Ctrl+Enter to send
-                </div>
-                <button
-                  type="button"
-                  onClick={() => addMutation.mutate(newCommentBody)}
-                  disabled={isRichTextEmpty(newCommentBody) || addMutation.isPending}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-3 py-1.5 rounded disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+                  }}
                 >
-                  {addMutation.isPending ? 'Posting...' : 'Comment'}
-                </button>
+                  <RichTextEditor
+                    value={newCommentBody}
+                    onChange={setNewCommentBody}
+                    placeholder="Add a comment..."
+                    minHeight={70}
+                    workItemId={workItemId}
+                    onAttachmentUploaded={() => queryClient.invalidateQueries({ queryKey: ['work-item-attachments', workItemId] })}
+                  />
+                </div>
+
+                {/* Suggestion Chips nested INSIDE the composer box */}
+                <div className="px-3 py-2 border-t border-gray-100 bg-[#fafbfc] flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto">
+                    {commentSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="px-2.5 py-1 rounded-full bg-white hover:bg-[#f0f4ff] text-[#42526e] hover:text-[#0052cc] border border-[#dfe1e6] hover:border-[#b3d4ff] text-xs font-medium cursor-pointer transition-colors whitespace-nowrap shadow-2xs"
+                        onClick={() =>
+                          setNewCommentBody(
+                            isRichTextEmpty(newCommentBody)
+                              ? `<p>${suggestion}</p>`
+                              : `${newCommentBody}<p>${suggestion}</p>`
+                          )
+                        }
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => addMutation.mutate(newCommentBody)}
+                    disabled={isRichTextEmpty(newCommentBody) || addMutation.isPending}
+                    className="bg-[#0052cc] hover:bg-[#0065ff] text-white font-semibold text-xs px-3.5 py-1.5 rounded-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors ml-auto"
+                  >
+                    {addMutation.isPending ? 'Posting...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Outside Pro-tip beneath the box */}
+              <div className="mt-1.5 flex items-center justify-between text-xs text-[#6b778c]">
+                <span>
+                  <span className="font-semibold text-gray-700">Pro tip:</span> press{' '}
+                  <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded font-mono text-[10px] font-bold text-gray-700">
+                    M
+                  </kbd>{' '}
+                  to comment
+                </span>
+                <span className="text-[11px] text-gray-400 font-medium flex items-center gap-1">
+                  <CornerDownRight size={11} /> Ctrl+Enter to send
+                </span>
               </div>
               {addMutation.isError && <p className="text-red-600 text-xs mt-1">{addMutation.error.message}</p>}
             </div>

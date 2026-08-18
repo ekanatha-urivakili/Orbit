@@ -62,6 +62,10 @@ public static class DependencyInjection
         services.Configure<LocalTokenOptions>(configuration.GetSection(LocalTokenOptions.SectionName));
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddSingleton<IExternalIdentityTokenValidator, ExternalIdentityTokenValidator>();
+        services.Configure<GoogleOAuthOptions>(configuration.GetSection(GoogleOAuthOptions.SectionName));
+        services.AddHttpClient<IGoogleOAuthClient, GoogleOAuthClient>();
+        services.AddSingleton<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
+        services.AddSingleton<IOAuthStateCodec, OAuthStateCodec>();
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<OrbitDbContext>());
         services.AddScoped<RuntimeDatabaseSecurityValidator>();
         services.AddSingleton(TimeProvider.System);

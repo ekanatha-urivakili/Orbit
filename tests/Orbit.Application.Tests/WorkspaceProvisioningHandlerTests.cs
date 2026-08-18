@@ -138,6 +138,7 @@ public sealed class WorkspaceProvisioningHandlerTests
         public Guid MembershipId => Guid.NewGuid();
         public PrincipalType PrincipalType => PrincipalType.User;
         public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
         public bool IsDevelopmentBypass => false;
     }
 }

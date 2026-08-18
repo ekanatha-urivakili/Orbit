@@ -186,6 +186,11 @@ public sealed class TenantMembershipLifecycleHandlerTests
 
         public Task<IReadOnlyList<TenantMembership>> ListAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>(memberships);
+
+        public Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TenantMembership>>(
+                memberships.Where(m => membershipIds.Contains(m.Id)).ToList());
     }
 
     private sealed class SettingsRepositoryStub(Workspace workspace) : ISettingsRepository

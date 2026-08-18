@@ -89,6 +89,7 @@ public sealed record LoginCommand(
     string Email,
     string Password,
     Guid? WorkspaceId,
+    bool RememberMe,
     string? UserAgent,
     string? IpAddress) : ICommand<AuthSessionDto>;
 
@@ -141,14 +142,18 @@ public sealed class LoginHandler(
 
         var now = timeProvider.GetUtcNow();
         var refreshToken = RefreshTokenCodec.GenerateToken();
+        var lifetime = request.RememberMe
+            ? tokenIssuer.PersistentRefreshTokenLifetime
+            : tokenIssuer.RefreshTokenLifetime;
         var session = RefreshSession.CreateInitial(
             account.Id,
             membership.TenantId,
             RefreshTokenCodec.Hash(refreshToken),
             request.UserAgent,
             request.IpAddress,
+            request.RememberMe,
             now,
-            tokenIssuer.RefreshTokenLifetime);
+            lifetime);
         await repository.AddRefreshSessionAsync(session, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -233,13 +238,16 @@ public sealed class RefreshSessionHandler(
             ?? throw new NotFoundException("User account was not found.");
 
         var refreshToken = RefreshTokenCodec.GenerateToken();
+        var lifetime = session.IsPersistent
+            ? tokenIssuer.PersistentRefreshTokenLifetime
+            : tokenIssuer.RefreshTokenLifetime;
         var rotated = session.CreateRotated(
             membership.TenantId,
             RefreshTokenCodec.Hash(refreshToken),
             request.UserAgent,
             request.IpAddress,
             now,
-            tokenIssuer.RefreshTokenLifetime);
+            lifetime);
         session.MarkRotated(rotated.Id, now);
         await repository.AddRefreshSessionAsync(rotated, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);

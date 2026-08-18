@@ -9,6 +9,7 @@ import { LoginView } from './features/auth/LoginView'
 import { RegisterView } from './features/auth/RegisterView'
 
 import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus } from './api/types'
+import { getStoredLogoUrl, setStoredLogoUrl } from './lib/branding'
 
 import './App.css'
 
@@ -135,6 +136,30 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // "Sign in with Google" is a server-brokered redirect (Program.cs's /auth/google/start ->
+  // Google -> /auth/google/callback), so it lands back on the app root the same way the OIDC
+  // callback above does, carrying a one-time handoff code rather than tokens directly.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const handoffCode = url.searchParams.get('googleAuth')
+    const googleError = url.searchParams.get('googleAuthError')
+    if (!handoffCode && !googleError) return
+
+    url.searchParams.delete('googleAuth')
+    url.searchParams.delete('googleAuthError')
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
+
+    if (googleError) {
+      setOidcError(googleError)
+      return
+    }
+
+    auth.exchangeGoogleHandoff(handoffCode!)
+      .then(() => queryClient.resetQueries())
+      .catch((exchangeError: Error) => setOidcError(exchangeError.message))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const bootstrapQuery = useQuery({ queryKey: ['bootstrap-status'], queryFn: orbitApi.getBootstrapStatus })
   const projectsQuery = useQuery({
     queryKey: ['projects'],
@@ -159,6 +184,16 @@ function App() {
     enabled: bootstrapQuery.data?.initializationRequired === false,
     staleTime: Infinity,
   })
+  const workspaceSettingsQuery = useQuery({
+    queryKey: ['workspace-settings'],
+    queryFn: orbitApi.getWorkspaceSettings,
+    enabled: bootstrapQuery.data?.initializationRequired === false,
+  })
+  useEffect(() => {
+    if (workspaceSettingsQuery.data?.logoUrl !== undefined) {
+      setStoredLogoUrl(workspaceSettingsQuery.data.logoUrl)
+    }
+  }, [workspaceSettingsQuery.data?.logoUrl])
   useEffect(() => {
     if (typographyQuery.data) {
       applyTypographySetting(typographyQuery.data)
@@ -329,8 +364,10 @@ function App() {
     },
   })
 
-  if (resetToken) return <ResetPasswordView token={resetToken} />
-  if (invitation) return <AcceptInvitationView token={invitation.token} tenantId={invitation.tenantId} />
+  const currentLogoUrl = workspaceSettingsQuery.data?.logoUrl ?? getStoredLogoUrl()
+
+  if (resetToken) return <ResetPasswordView token={resetToken} logoUrl={currentLogoUrl} />
+  if (invitation) return <AcceptInvitationView token={invitation.token} tenantId={invitation.tenantId} logoUrl={currentLogoUrl} />
 
   if (bootstrapQuery.isPending || choicesQuery.isPending) return <LoadingScreen />
   if (bootstrapQuery.isError || choicesQuery.isError) {
@@ -342,13 +379,14 @@ function App() {
   if (!authSession && registerRequested) {
     return (
       <RegisterView
+        logoUrl={currentLogoUrl}
         onSuccess={() => void queryClient.resetQueries()}
         onBack={() => setRegisterRequested(false)}
       />
     )
   }
 
-  if (!authSession) return <LoginView onRegister={() => setRegisterRequested(true)} />
+  if (!authSession) return <LoginView logoUrl={currentLogoUrl} onRegister={() => setRegisterRequested(true)} />
 
   if (projectsQuery.isPending) return <LoadingScreen />
   if (projectsQuery.isError) return <ErrorScreen message={projectsQuery.error.message} />
@@ -358,6 +396,7 @@ function App() {
       <Header
         online={online}
         profile={profileQuery.data}
+        logoUrl={workspaceSettingsQuery.data?.logoUrl}
         onCreateClick={selectedProject ? () => setCreateOpen(true) : undefined}
         onHomeClick={() => setActiveView('home')}
         onOpenSettings={(section) => { setSettingsSection(section); setActiveView('settings') }}
@@ -404,7 +443,7 @@ function App() {
           }}
         />
         
-        <main className="region-middle flex-1 lg:ml-[240px] min-h-[calc(100vh-56px)] bg-white relative">
+        <main className="region-middle flex-1 lg:ml-[240px] min-h-[calc(100vh-48px)] bg-white relative">
           {projects.length === 0 ? <ProjectOnboarding /> : <>
           {activeView === 'home' && <HomeView profile={profileQuery.data} projects={projects} workItems={workItems} onCreate={() => setCreateOpen(true)} onOpenProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }} />}
           {activeView === 'settings' && selectedProject && (
@@ -419,7 +458,6 @@ function App() {
                 workItems={workItems}
                 profile={profileQuery.data}
                 members={members}
-                types={(itemTypesQuery.data ?? []).filter((itemType) => itemType.enabled)}
                 priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
                 onBack={() => { setActiveView('project'); setEditingWorkItemId(null) }}
                 onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
@@ -440,7 +478,18 @@ function App() {
                 Showing {workItems.length} of {workItemsQuery.data?.totalCount} work items — narrow with a filter to see the rest.
               </div>
             )}
-            {activeTab === 'Summary' && <SummaryView workItems={workItems} profile={profileQuery.data} members={members} />}
+            {activeTab === 'Summary' && (
+              <SummaryView
+                workItems={workItems}
+                profile={profileQuery.data}
+                members={members}
+                onOpenWorkItem={(workItem) => {
+                  setEditingWorkItemId(workItem.id)
+                  setActiveView('workitem')
+                }}
+                onSwitchTab={(tab) => setActiveTab(tab)}
+              />
+            )}
 
             {activeTab === 'Backlog' && (
               <BacklogView

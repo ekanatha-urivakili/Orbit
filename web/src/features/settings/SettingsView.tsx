@@ -5,6 +5,7 @@ import { orbitApi } from '../../api/client'
 import * as auth from '../../api/auth'
 import { useIsAuthenticated } from '../../hooks/useIsAuthenticated'
 import { LoginForm } from '../auth/LoginView'
+import { setStoredLogoUrl } from '../../lib/branding'
 import { getOidcConfig, startOidcLogin } from '../auth/oidcPkce'
 import { Field, Hint, SubmitRow } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
@@ -65,11 +66,11 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
   const customFieldsQuery = useQuery({ queryKey: ['custom-fields'], queryFn: orbitApi.listCustomFields })
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-[#f7f8fa]">
-      <div className="border-b border-gray-200 bg-white px-6 py-5 lg:px-10">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+    <div className="min-h-[calc(100vh-48px)] bg-[#f7f8fa] w-full">
+      <div className="border-b border-gray-200 bg-white px-6 py-4 lg:px-8">
+        <div className="w-full flex items-center justify-between gap-4">
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">Orbit administration</p>
+            <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Orbit administration</p>
             <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
           </div>
           <button onClick={onClose} className="rounded-md p-2 text-gray-500 hover:bg-gray-100" aria-label="Close settings">
@@ -78,7 +79,7 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 md:grid-cols-[240px_minmax(0,1fr)] lg:px-8">
+      <div className="w-full grid gap-6 px-6 py-6 md:grid-cols-[240px_minmax(0,1fr)] lg:px-8">
         <nav aria-label="Settings sections" className="h-fit rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
           {sections.map(({ id, label, icon: Icon }) => (
             <button
@@ -219,6 +220,51 @@ function NotificationForm({ preference }: { preference: NotificationPreference }
   )
 }
 
+function WorkspaceLogoField({ setting }: { setting: WorkspaceSetting }) {
+  const client = useQueryClient()
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useMutation({
+    mutationFn: async (file: File) => {
+      const presigned = await orbitApi.presignWorkspaceLogoUpload(file.name, file.type, file.size)
+      await orbitApi.uploadWorkspaceLogoFile(presigned.uploadUrl, file)
+      return orbitApi.confirmWorkspaceLogoUpload(presigned.objectKey, setting.version)
+    },
+    onSuccess: (updated) => {
+      setError(null)
+      setStoredLogoUrl(updated.logoUrl)
+      client.setQueryData(['workspace-settings'], updated)
+    },
+    onError: (uploadError: Error) => setError(uploadError.message),
+  })
+
+  return (
+    <Field variant="panel" label="Workspace logo">
+      <div className="flex items-center gap-3">
+        {setting.logoUrl
+          ? <img src={setting.logoUrl} alt="Workspace logo" className="h-10 w-10 rounded object-contain" />
+          : <div className="flex h-10 w-10 items-center justify-center rounded bg-[#0052cc] text-sm font-bold text-white">O</div>}
+        {setting.canAdminister && (
+          <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            {mutation.isPending ? 'Uploading…' : 'Upload logo'}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              className="hidden"
+              disabled={mutation.isPending}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) mutation.mutate(file)
+                event.target.value = ''
+              }}
+            />
+          </label>
+        )}
+      </div>
+      {error && <p className="mt-1 text-sm text-red-700">{error}</p>}
+    </Field>
+  )
+}
+
 function WorkspaceForm({ setting }: { setting: WorkspaceSetting }) {
   const client = useQueryClient()
   const [draft, setDraft] = useState(setting)
@@ -230,15 +276,18 @@ function WorkspaceForm({ setting }: { setting: WorkspaceSetting }) {
 
   return (
     <Panel title={setting.workspaceName} description="Workspace-wide defaults and member capabilities.">
-      <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
-        <Field variant="panel" label="Description"><textarea value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value || null })} rows={4} maxLength={1000} disabled={!setting.canAdminister} /></Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field variant="panel" label="Default locale"><input value={draft.defaultLocale} onChange={(event) => patch({ defaultLocale: event.target.value })} disabled={!setting.canAdminister} /></Field>
-          <Field variant="panel" label="Default time zone"><input value={draft.defaultTimeZone} onChange={(event) => patch({ defaultTimeZone: event.target.value })} disabled={!setting.canAdminister} /></Field>
-        </div>
-        <Toggle label="Allow members to create projects" checked={draft.allowMemberProjectCreation} onChange={(checked) => patch({ allowMemberProjectCreation: checked })} disabled={!setting.canAdminister} />
-        {setting.canAdminister ? <SubmitRow mutation={mutation} /> : <Hint variant="panel">You need workspace administrator permission to edit these settings.</Hint>}
-      </form>
+      <div className="space-y-4">
+        <WorkspaceLogoField setting={setting} />
+        <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
+          <Field variant="panel" label="Description"><textarea value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value || null })} rows={4} maxLength={1000} disabled={!setting.canAdminister} /></Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field variant="panel" label="Default locale"><input value={draft.defaultLocale} onChange={(event) => patch({ defaultLocale: event.target.value })} disabled={!setting.canAdminister} /></Field>
+            <Field variant="panel" label="Default time zone"><input value={draft.defaultTimeZone} onChange={(event) => patch({ defaultTimeZone: event.target.value })} disabled={!setting.canAdminister} /></Field>
+          </div>
+          <Toggle label="Allow members to create projects" checked={draft.allowMemberProjectCreation} onChange={(checked) => patch({ allowMemberProjectCreation: checked })} disabled={!setting.canAdminister} />
+          {setting.canAdminister ? <SubmitRow mutation={mutation} /> : <Hint variant="panel">You need workspace administrator permission to edit these settings.</Hint>}
+        </form>
+      </div>
     </Panel>
   )
 }
@@ -551,15 +600,18 @@ function MembersPanel({ project }: { project: Project }) {
   const [invitationEmail, setInvitationEmail] = useState('')
   const [invitationRole, setInvitationRole] = useState<TenantRole>('Member')
   const [invitationTeamId, setInvitationTeamId] = useState('')
+  const [invitationIsGuest, setInvitationIsGuest] = useState(false)
   const inviteMutation = useMutation({
     mutationFn: () => orbitApi.createInvitation({
       email: invitationEmail,
-      role: invitationRole,
+      role: invitationIsGuest ? 'Member' : invitationRole,
       teamId: invitationTeamId || null,
+      tier: invitationIsGuest ? 'Guest' : 'Standard',
     }),
     onSuccess: () => {
       setInvitationEmail('')
       setInvitationTeamId('')
+      setInvitationIsGuest(false)
       client.invalidateQueries({ queryKey: ['invitations'] })
     },
   })
@@ -603,10 +655,11 @@ function MembersPanel({ project }: { project: Project }) {
             </Field>
             <Field variant="panel" label="Workspace role">
               <SearchableSelect
-                value={invitationRole}
+                value={invitationIsGuest ? 'Member' : invitationRole}
                 onChange={(val) => setInvitationRole(val as TenantRole)}
                 options={['Member', 'Administrator']}
                 searchable={false}
+                disabled={invitationIsGuest}
               />
             </Field>
             <Field variant="panel" label="Team (optional)">
@@ -622,6 +675,15 @@ function MembersPanel({ project }: { project: Project }) {
               />
             </Field>
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={invitationIsGuest}
+              onChange={(event) => setInvitationIsGuest(event.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Invite as guest — Member role only, sees just the projects they're explicitly added to
+          </label>
           <SubmitRow mutation={inviteMutation} />
         </form>
         <div className="mt-5 grid gap-4 sm:grid-cols-3">
@@ -687,6 +749,11 @@ function MembersPanel({ project }: { project: Project }) {
                   <tr key={membership.id}>
                     <td className="px-4 py-2 text-gray-900">
                       {membership.userId ? 'Local account' : `${membership.issuer} / ${membership.subject}`}
+                      {membership.tier === 'Guest' && (
+                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          Guest
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-gray-600">{membership.principalType}</td>
                     <td className="px-4 py-2">

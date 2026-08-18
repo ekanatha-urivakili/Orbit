@@ -139,7 +139,7 @@ export function BacklogView({
   }
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-6 md:p-8 w-full">
       {error && <div className="error-banner mb-4">{error}</div>}
       <div className="flex items-center gap-4 mb-6">
         <div className="relative">

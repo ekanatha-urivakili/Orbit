@@ -114,6 +114,15 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(options =>
 {
+    // SEC-03: Emit 429 Too Many Requests with a Retry-After hint so clients
+    // can implement proper back-off instead of hammering a 503.
+    options.OnRejected = async (rejectionContext, cancellationToken) =>
+    {
+        rejectionContext.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        rejectionContext.HttpContext.Response.Headers.RetryAfter = "60";
+        await rejectionContext.HttpContext.Response.WriteAsync(
+            "Too many requests. Please try again later.", cancellationToken);
+    };
     options.AddFixedWindowLimiter("bootstrap", limiter =>
     {
         limiter.PermitLimit = 5;
@@ -121,6 +130,8 @@ builder.Services.AddRateLimiter(options =>
         limiter.QueueLimit = 0;
         limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
     });
+    // PERF-03: Fall back to a shared "unknown" partition only when no remote IP
+    // is resolvable (should be rare with the ForwardedHeaders fix above).
     options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions
@@ -144,7 +155,17 @@ var app = builder.Build();
 
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    // Only trust the immediately-upstream proxy (loopback + RFC-1918 ranges).
+    // Leaving KnownIPNetworks unconstrained allows a spoofed X-Forwarded-For header
+    // to bypass IP-keyed rate limiting (SEC-02). Uses System.Net.IPNetwork (.NET 10).
+    KnownIPNetworks =
+    {
+        new System.Net.IPNetwork(System.Net.IPAddress.Parse("127.0.0.0"), 8),
+        new System.Net.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8),
+        new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12),
+        new System.Net.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16),
+    },
 });
 
 if (app.Configuration.GetValue("DatabaseSecurity:EnforceRuntimeRole", app.Environment.IsProduction()))
@@ -166,6 +187,12 @@ app.Use(async (context, next) =>
     context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
     context.Response.Headers.Append("X-Frame-Options", "DENY");
     context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+    // SEC-01: Content-Security-Policy. The API returns JSON; script execution and
+    // framing should be completely denied. Adjust 'connect-src' when you add CDN
+    // or WebSocket endpoints.
+    context.Response.Headers.Append(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none'");
     await next();
 });
 
@@ -189,6 +216,7 @@ app.MapGet("/health/ready", HealthEndpoints.ReadyAsync)
 app.MapGroup("/api/v1").MapBootstrapEndpoints();
 app.MapGroup("/api/v1").MapRegistrationEndpoints();
 app.MapGroup("/api/v1").MapAuthEndpoints();
+app.MapGroup("/api/v1").MapGoogleOAuthEndpoints();
 app.MapGroup("/api/v1").MapInvitationAcceptanceEndpoints();
 
 var api = app.MapGroup("/api/v1");

@@ -27,7 +27,7 @@ public sealed class AuthorizationContextCacheTests
         var cache = NewCache();
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var context = new CachedAuthorizationContext(Guid.NewGuid(), userId, PrincipalType.User, TenantRole.Administrator);
+        var context = new CachedAuthorizationContext(Guid.NewGuid(), userId, PrincipalType.User, TenantRole.Administrator, MembershipTier.Standard);
 
         await cache.SetAsync(tenantId, userId, epoch: 1, context, CancellationToken.None);
         var result = await cache.GetAsync(tenantId, userId, epoch: 1, CancellationToken.None);
@@ -41,7 +41,7 @@ public sealed class AuthorizationContextCacheTests
         var cache = NewCache();
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var context = new CachedAuthorizationContext(Guid.NewGuid(), userId, PrincipalType.User, TenantRole.Member);
+        var context = new CachedAuthorizationContext(Guid.NewGuid(), userId, PrincipalType.User, TenantRole.Member, MembershipTier.Standard);
 
         await cache.SetAsync(tenantId, userId, epoch: 1, context, CancellationToken.None);
         var result = await cache.GetAsync(tenantId, userId, epoch: 2, CancellationToken.None);

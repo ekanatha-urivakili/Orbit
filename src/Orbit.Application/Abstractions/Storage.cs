@@ -11,7 +11,11 @@ public interface IObjectStorageService
 {
     PresignedUpload CreatePresignedUpload(string objectKey, string contentType, TimeSpan expiresIn);
 
+    /// <summary>Forces <c>Content-Disposition: attachment</c> - for attachments the user explicitly downloads.</summary>
     string CreatePresignedDownloadUrl(string objectKey, TimeSpan expiresIn);
+
+    /// <summary>No disposition override - for assets rendered inline (e.g. an <c>&lt;img&gt;</c> src) rather than downloaded.</summary>
+    string CreatePresignedDisplayUrl(string objectKey, TimeSpan expiresIn);
 
     Task DeleteAsync(string objectKey, CancellationToken cancellationToken);
 }

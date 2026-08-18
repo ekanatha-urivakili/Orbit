@@ -26,6 +26,7 @@ public interface ICurrentPrincipal
     Guid MembershipId { get; }
     PrincipalType PrincipalType { get; }
     TenantRole TenantRole { get; }
+    MembershipTier MembershipTier { get; }
     bool IsDevelopmentBypass { get; }
 }
 
@@ -47,6 +48,14 @@ public interface ITenantMembershipRepository
         CancellationToken cancellationToken);
     Task<TenantMembership?> GetOwnerAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<IReadOnlyList<TenantMembership>> ListAsync(Guid tenantId, CancellationToken cancellationToken);
+    /// <summary>
+    /// Returns only the memberships whose IDs are in <paramref name="membershipIds"/>.
+    /// Used to avoid loading every tenant member when only a small subset is needed.
+    /// </summary>
+    Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> membershipIds,
+        CancellationToken cancellationToken);
 }
 
 public interface ISettingsRepository
@@ -113,9 +122,47 @@ public interface IExternalIdentityTokenValidator
     Task<VerifiedExternalIdentity> ValidateAsync(string token, CancellationToken cancellationToken);
 }
 
+public sealed record VerifiedGoogleIdentity(string Subject, string? Email, bool EmailVerified, string? Name);
+
+/// <summary>
+/// Verifies a Google-issued ID token's signature/issuer/audience (separate from
+/// <see cref="IExternalIdentityTokenValidator"/>, which validates against a single
+/// installation-configured "Authentication:Authority" - Google is always available regardless of
+/// whether that generic external-authority setting is configured).
+/// </summary>
+public interface IGoogleIdTokenValidator
+{
+    Task<VerifiedGoogleIdentity> ValidateAsync(string idToken, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Drives the server-side (confidential-client) leg of "Sign in with Google": building the
+/// authorize-redirect URL and exchanging an authorization code for an ID token via Google's token
+/// endpoint using the configured client secret.
+/// </summary>
+public interface IGoogleOAuthClient
+{
+    string BuildAuthorizeUrl(string state);
+    Task<string> ExchangeCodeForIdTokenAsync(string code, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Signs/verifies the OAuth <c>state</c> parameter as a compact, storage-free token (mode + nonce +
+/// expiry), since the callback runs before any session or database row identifies the in-flight
+/// request.
+/// </summary>
+public interface IOAuthStateCodec
+{
+    string Encode(string mode, DateTimeOffset now, TimeSpan lifetime);
+    bool TryDecode(string state, DateTimeOffset now, out string mode);
+}
+
 public interface IAccessTokenIssuer
 {
     TimeSpan RefreshTokenLifetime { get; }
+
+    /// <summary>Refresh-token lifetime for a "remember me" login (<see cref="RefreshSession.IsPersistent"/>).</summary>
+    TimeSpan PersistentRefreshTokenLifetime { get; }
 
     /// <summary>
     /// The issuer this instance signs tokens as - the value a service-account membership's
@@ -158,6 +205,13 @@ public interface IAuthenticationRepository
     Task RevokeActivePasswordResetTokensForUserAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken);
     Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken);
     Task AddServiceAccountCredentialAsync(ServiceAccountCredential credential, CancellationToken cancellationToken);
+    Task AddSignInHandoffAsync(GoogleSignInHandoff handoff, CancellationToken cancellationToken);
+
+    /// <summary>Looks up and deletes a handoff row atomically - it is single-use by construction.</summary>
+    Task<GoogleSignInHandoff?> ConsumeSignInHandoffAsync(
+        string codeHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Looks up the currently-active credential for a client id (there may also be older, revoked
@@ -252,6 +306,23 @@ public interface ISignUpRepository
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
         RefreshSession refreshSession,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Provisions a new organization/workspace for a user identified purely by an external identity
+    /// (no password, so no <see cref="LocalCredential"/>) - the "Sign in with Google" register path.
+    /// A <see cref="GoogleSignInHandoff"/> is created in the same transaction rather than a
+    /// <see cref="RefreshSession"/> directly, since the OAuth callback that calls this runs as a
+    /// full-page browser redirect and cannot itself hand tokens back to the SPA.
+    /// </summary>
+    Task ProvisionExternalAccountAsync(
+        UserAccount account,
+        ExternalIdentity identity,
+        Organization organization,
+        Workspace workspace,
+        OrganizationMembership organizationMembership,
+        TenantMembership ownerMembership,
+        GoogleSignInHandoff handoff,
         CancellationToken cancellationToken);
 }
 
