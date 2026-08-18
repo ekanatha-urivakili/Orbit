@@ -5,6 +5,8 @@ using Orbit.Application.Common;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Messaging;
+using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.WorkItems;
 
@@ -23,9 +25,12 @@ public sealed class ChangeWorkItemStatusValidator : AbstractValidator<ChangeWork
 
 public sealed class ChangeWorkItemStatusHandler(
     ITenantContext tenantContext,
+    ICurrentPrincipal principal,
     IWorkItemRepository workItems,
     ISprintMembershipRepository sprintMemberships,
     ISprintScopeFactRepository sprintScopeFacts,
+    ISettingsRepository settings,
+    IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : IRequestHandler<ChangeWorkItemStatusCommand, WorkItemDto>
@@ -69,7 +74,63 @@ public sealed class ChangeWorkItemStatusHandler(
             }
         }
 
+        if (previousStatus != request.Status)
+        {
+            await NotifyOwnersAsync(workItem, previousStatus, request.Status, now, cancellationToken);
+        }
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);
+    }
+
+    /// <summary>
+    /// Fires the §10.5 "status transition" notification: the work item's owner fields
+    /// (Assignee/Developer/ProductOwner) are the recipient set, gated by each recipient's
+    /// <see cref="Domain.Settings.NotificationPreference"/> the same way as the comment-mention
+    /// trigger (a never-touched preference defaults to EmailEnabled = true, SelfNotify = false).
+    /// </summary>
+    private async Task NotifyOwnersAsync(
+        WorkItem workItem,
+        WorkItemStatus previousStatus,
+        WorkItemStatus newStatus,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        Guid?[] owners = [workItem.AssigneeUserId, workItem.DeveloperUserId, workItem.ProductOwnerUserId];
+        var recipientIds = owners.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToArray();
+        if (recipientIds.Length == 0)
+        {
+            return;
+        }
+
+        var accounts = (await settings.GetUserAccountsAsync(recipientIds, cancellationToken))
+            .ToDictionary(a => a.Id);
+
+        foreach (var userId in recipientIds)
+        {
+            if (!accounts.TryGetValue(userId, out var account))
+            {
+                continue;
+            }
+
+            var preference = await settings.GetNotificationPreferenceAsync(userId, cancellationToken);
+            var emailEnabled = preference?.EmailEnabled ?? true;
+            var selfNotify = preference?.SelfNotify ?? false;
+            if (!emailEnabled || (userId == principal.UserId && !selfNotify))
+            {
+                continue;
+            }
+
+            var email = OutboxEmailMessage.Create(
+                account.NormalizedEmail,
+                $"{workItem.Key} moved to {newStatus}",
+                $"""
+                <p>Hi {System.Net.WebUtility.HtmlEncode(account.DisplayName)},</p>
+                <p><strong>{System.Net.WebUtility.HtmlEncode(workItem.Key)}: {System.Net.WebUtility.HtmlEncode(workItem.Summary)}</strong>
+                moved from {previousStatus} to {newStatus}.</p>
+                """,
+                now);
+            await outbox.AddAsync(email, cancellationToken);
+        }
     }
 }
