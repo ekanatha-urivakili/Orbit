@@ -810,25 +810,18 @@ export function RichTextEditor({
               return
             }
             const trimmed = url.trim()
-            if (
-              trimmed.toLowerCase().startsWith('javascript:') ||
-              trimmed.toLowerCase().startsWith('vbscript:') ||
-              trimmed.toLowerCase().startsWith('data:')
-            ) {
-              alert('Javascript and data URLs are not allowed.')
-              return
-            }
+            let parsed: URL
             try {
-              const parsed = new URL(trimmed, window.location.origin)
-              if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'mailto:') {
-                alert('Only http://, https://, and mailto: links are allowed.')
-                return
-              }
+              parsed = new URL(trimmed, window.location.origin)
             } catch {
               alert('Invalid URL.')
               return
             }
-            editor.chain().focus().extendMarkRange('link').setLink({ href: trimmed }).run()
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'mailto:') {
+              alert('Only http://, https://, and mailto: links are allowed.')
+              return
+            }
+            editor.chain().focus().extendMarkRange('link').setLink({ href: parsed.toString() }).run()
           }}
         >
           <Link2 size={15} />

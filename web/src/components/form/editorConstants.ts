@@ -1,3 +1,5 @@
+import DOMPurify from 'dompurify'
+
 // Jira's authentic 21-swatch color palette (3 rows x 7 cols)
 export const JIRA_COLOR_PALETTE = [
   // Row 1: Deep / Dark shades
@@ -38,5 +40,5 @@ export const TEXT_STYLES = [
 ]
 
 export function isRichTextEmpty(html: string): boolean {
-  return html.replace(/<[^>]*>/g, '').trim().length === 0
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: [] }).trim().length === 0
 }

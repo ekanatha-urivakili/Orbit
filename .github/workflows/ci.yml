@@ -81,6 +81,27 @@ jobs:
       - name: Test backend (application)
         run: dotnet test tests/Orbit.Application.Tests/Orbit.Application.Tests.csproj --configuration Release --no-build --no-restore --collect:"XPlat Code Coverage"
 
+      # GitHub Actions service containers can't override a command, but the pinned MinIO image
+      # needs "server /data" args (see deploy/podman/compose.yaml, which this mirrors) — so it's
+      # started directly via `docker run` instead of the `services:` block above.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=orbit -e MINIO_ROOT_PASSWORD=orbit_local_secret \
+            docker.io/minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1 \
+            server /data --console-address :9001
+          for attempt in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live >/dev/null; then
+              echo "MinIO is ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MinIO did not become ready in time." >&2
+          docker logs minio
+          exit 1
+
       - name: Test backend (integration)
         run: dotnet test tests/Orbit.IntegrationTests/Orbit.IntegrationTests.csproj --configuration Release --no-build --no-restore --collect:"XPlat Code Coverage"
         env:
