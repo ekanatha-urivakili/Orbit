@@ -72,11 +72,19 @@ internal static class WorkItemHistoryRecorder
 // List history
 // ---------------------------------------------------------------------------
 
-public sealed record ListWorkItemHistoryQuery(Guid WorkItemId) : IQuery<IReadOnlyList<WorkItemHistoryEntryDto>>;
+public sealed record ListWorkItemHistoryQuery(
+    Guid WorkItemId,
+    int Skip = 0,
+    int Take = Paging.DefaultTake) : IQuery<PagedResult<WorkItemHistoryEntryDto>>;
 
 public sealed class ListWorkItemHistoryValidator : AbstractValidator<ListWorkItemHistoryQuery>
 {
-    public ListWorkItemHistoryValidator() => RuleFor(query => query.WorkItemId).NotEmpty();
+    public ListWorkItemHistoryValidator()
+    {
+        RuleFor(query => query.WorkItemId).NotEmpty();
+        RuleFor(query => query.Skip).GreaterThanOrEqualTo(0);
+        RuleFor(query => query.Take).InclusiveBetween(1, Paging.MaxTake);
+    }
 }
 
 public sealed class ListWorkItemHistoryHandler(
@@ -84,9 +92,9 @@ public sealed class ListWorkItemHistoryHandler(
     IWorkItemRepository workItems,
     IWorkItemHistoryRepository history,
     ITenantMembershipRepository memberships,
-    ISettingsRepository settings) : IRequestHandler<ListWorkItemHistoryQuery, IReadOnlyList<WorkItemHistoryEntryDto>>
+    ISettingsRepository settings) : IRequestHandler<ListWorkItemHistoryQuery, PagedResult<WorkItemHistoryEntryDto>>
 {
-    public async Task<IReadOnlyList<WorkItemHistoryEntryDto>> Handle(
+    public async Task<PagedResult<WorkItemHistoryEntryDto>> Handle(
         ListWorkItemHistoryQuery request,
         CancellationToken cancellationToken)
     {
@@ -97,10 +105,13 @@ public sealed class ListWorkItemHistoryHandler(
                 cancellationToken)
             ?? throw new NotFoundException("Work item was not found.");
 
-        var entries = await history.ListByWorkItemAsync(
+        var page = await history.ListByWorkItemAsync(
             tenantContext.TenantId,
             request.WorkItemId,
+            request.Skip,
+            request.Take,
             cancellationToken);
+        var entries = page.Items;
 
         var referencedMemberIds = entries
             .Select(entry => entry.ChangedByMembershipId)
@@ -119,7 +130,7 @@ public sealed class ListWorkItemHistoryHandler(
         var accounts = (await settings.GetUserAccountsAsync(userIds, cancellationToken))
             .ToDictionary(a => a.Id);
 
-        return entries.Select(entry =>
+        var dtos = entries.Select(entry =>
         {
             Guid? changedByUserId = null;
             string? displayName = null;
@@ -138,5 +149,7 @@ public sealed class ListWorkItemHistoryHandler(
 
             return WorkItemHistoryEntryDto.From(entry, changedByUserId, displayName);
         }).ToArray();
+
+        return new PagedResult<WorkItemHistoryEntryDto>(dtos, page.TotalCount);
     }
 }

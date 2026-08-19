@@ -53,7 +53,7 @@ export function WorkItemComments({
   const comments = commentsQuery.data ?? []
   const attachments = attachmentsQuery.data ?? []
   // API returns ascending; show newest first, like the comment feed.
-  const history = [...(historyQuery.data ?? [])].reverse()
+  const history = [...(historyQuery.data?.items ?? [])].reverse()
 
   const addMutation = useMutation({
     mutationFn: (body: string) => orbitApi.addWorkItemComment(workItemId, body),

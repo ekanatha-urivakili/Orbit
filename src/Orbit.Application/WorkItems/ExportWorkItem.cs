@@ -72,10 +72,17 @@ public sealed class ExportWorkItemHandler(
         return string.Join(',', headers) + "\r\n" + string.Join(',', values) + "\r\n";
     }
 
-    private static string EscapeCsv(string value) =>
-        value.Contains(',') || value.Contains('"') || value.Contains('\n')
+    private static string EscapeCsv(string value)
+    {
+        if (value.Length > 0 && value[0] is '=' or '+' or '-' or '@')
+        {
+            value = $"'{value}";
+        }
+
+        return value.Contains(',') || value.Contains('"') || value.Contains('\n')
             ? $"\"{value.Replace("\"", "\"\"")}\""
             : value;
+    }
 
     private static XDocument BuildXml(WorkItemDto dto) =>
         new(

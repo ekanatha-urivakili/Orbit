@@ -69,27 +69,36 @@ public sealed class AddWorklogHandler(
     }
 }
 
-public sealed record ListWorklogsQuery(Guid WorkItemId) : IQuery<IReadOnlyList<WorkItemWorklogDto>>;
+public sealed record ListWorklogsQuery(
+    Guid WorkItemId,
+    int Skip = 0,
+    int Take = Paging.DefaultTake) : IQuery<PagedResult<WorkItemWorklogDto>>;
 
 public sealed class ListWorklogsValidator : AbstractValidator<ListWorklogsQuery>
 {
-    public ListWorklogsValidator() => RuleFor(query => query.WorkItemId).NotEmpty();
+    public ListWorklogsValidator()
+    {
+        RuleFor(query => query.WorkItemId).NotEmpty();
+        RuleFor(query => query.Skip).GreaterThanOrEqualTo(0);
+        RuleFor(query => query.Take).InclusiveBetween(1, Paging.MaxTake);
+    }
 }
 
 public sealed class ListWorklogsHandler(
     ITenantContext tenantContext,
     IWorkItemRepository workItems,
-    IWorkItemWorklogRepository worklogs) : IRequestHandler<ListWorklogsQuery, IReadOnlyList<WorkItemWorklogDto>>
+    IWorkItemWorklogRepository worklogs) : IRequestHandler<ListWorklogsQuery, PagedResult<WorkItemWorklogDto>>
 {
-    public async Task<IReadOnlyList<WorkItemWorklogDto>> Handle(
+    public async Task<PagedResult<WorkItemWorklogDto>> Handle(
         ListWorklogsQuery request, CancellationToken cancellationToken)
     {
         _ = await workItems.GetAsync(
                 tenantContext.TenantId, request.WorkItemId, ProjectPermission.View, cancellationToken)
             ?? throw new NotFoundException("Work item was not found.");
 
-        var current = await worklogs.ListByWorkItemAsync(tenantContext.TenantId, request.WorkItemId, cancellationToken);
-        return current.Select(WorkItemWorklogDto.From).ToArray();
+        var page = await worklogs.ListByWorkItemAsync(
+            tenantContext.TenantId, request.WorkItemId, request.Skip, request.Take, cancellationToken);
+        return new PagedResult<WorkItemWorklogDto>(page.Items.Select(WorkItemWorklogDto.From).ToArray(), page.TotalCount);
     }
 }
 

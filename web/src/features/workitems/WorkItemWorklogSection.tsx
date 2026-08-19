@@ -25,7 +25,7 @@ export function WorkItemWorklogSection({
     queryKey: ['work-item-worklogs', workItemId],
     queryFn: () => orbitApi.listWorklogs(workItemId),
   })
-  const worklogs = worklogsQuery.data ?? []
+  const worklogs = worklogsQuery.data?.items ?? []
   const membersById = new Map(members.map((member) => [member.id, member]))
 
   const deleteMutation = useMutation({

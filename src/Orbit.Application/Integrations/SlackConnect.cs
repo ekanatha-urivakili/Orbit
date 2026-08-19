@@ -192,7 +192,7 @@ public sealed class PostWorkItemToSlackHandler(
     public async Task<Unit> Handle(PostWorkItemToSlackCommand request, CancellationToken cancellationToken)
     {
         var workItem = await workItems.GetAsync(
-            tenantContext.TenantId, request.WorkItemId, ProjectPermission.View, cancellationToken)
+            tenantContext.TenantId, request.WorkItemId, ProjectPermission.TransitionWorkItem, cancellationToken)
             ?? throw new NotFoundException("Work item was not found.");
 
         var connection = await connections.GetByProjectAsync(tenantContext.TenantId, workItem.ProjectId, cancellationToken)

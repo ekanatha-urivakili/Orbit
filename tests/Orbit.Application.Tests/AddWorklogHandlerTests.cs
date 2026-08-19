@@ -105,10 +105,12 @@ public sealed class AddWorklogHandlerTests
         public Task<WorkItemWorklog?> GetAsync(Guid tenantId, Guid worklogId, CancellationToken cancellationToken) =>
             Task.FromResult(Items.SingleOrDefault(worklog => worklog.TenantId == tenantId && worklog.Id == worklogId));
 
-        public Task<IReadOnlyList<WorkItemWorklog>> ListByWorkItemAsync(
-            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<WorkItemWorklog>>(
-                Items.Where(worklog => worklog.TenantId == tenantId && worklog.WorkItemId == workItemId).ToArray());
+        public Task<PagedResult<WorkItemWorklog>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken)
+        {
+            var matches = Items.Where(worklog => worklog.TenantId == tenantId && worklog.WorkItemId == workItemId).ToArray();
+            return Task.FromResult(new PagedResult<WorkItemWorklog>(matches, matches.Length));
+        }
 
         public Task RemoveAsync(WorkItemWorklog worklog, CancellationToken cancellationToken)
         {

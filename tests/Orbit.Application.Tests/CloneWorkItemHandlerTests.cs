@@ -59,9 +59,9 @@ public sealed class CloneWorkItemHandlerTests
             Entries.Add(entry);
             return Task.CompletedTask;
         }
-        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
-            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>(Entries);
+        public Task<PagedResult<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<WorkItemHistoryEntry>(Entries, Entries.Count));
     }
 
     private sealed class ProjectRepositoryStub(Project project) : IProjectRepository

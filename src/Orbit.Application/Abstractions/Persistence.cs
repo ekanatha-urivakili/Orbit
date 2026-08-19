@@ -594,12 +594,14 @@ public interface IWorkItemHistoryRepository
     Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Returns all history entries for a work item ordered by <c>ChangedAt ASC</c> then <c>Id</c>.
+    /// Returns a page of history entries for a work item ordered by <c>ChangedAt ASC</c> then <c>Id</c>.
     /// The caller must have verified work-item visibility.
     /// </summary>
-    Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
+    Task<PagedResult<WorkItemHistoryEntry>> ListByWorkItemAsync(
         Guid tenantId,
         Guid workItemId,
+        int skip,
+        int take,
         CancellationToken cancellationToken);
 }
 
@@ -661,8 +663,8 @@ public interface IWorkItemWorklogRepository
 
     Task<WorkItemWorklog?> GetAsync(Guid tenantId, Guid worklogId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<WorkItemWorklog>> ListByWorkItemAsync(
-        Guid tenantId, Guid workItemId, CancellationToken cancellationToken);
+    Task<PagedResult<WorkItemWorklog>> ListByWorkItemAsync(
+        Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken);
 
     Task RemoveAsync(WorkItemWorklog worklog, CancellationToken cancellationToken);
 }

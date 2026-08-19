@@ -385,8 +385,8 @@ public sealed class ChangeWorkItemStatusHandlerTests
             return Task.CompletedTask;
         }
 
-        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
-            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>([]);
+        public Task<PagedResult<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<WorkItemHistoryEntry>([], 0));
     }
 }

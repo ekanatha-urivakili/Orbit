@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.RateLimiting;
 using Orbit.Application.Integrations;
 using Orbit.Application.WorkItems;
 using Orbit.Domain.Choices;
@@ -290,10 +291,15 @@ public static class WorkItemEndpoints
 
         group.MapGet("/work-items/{workItemId:guid}/history", async (
             Guid workItemId,
+            int? skip,
+            int? take,
             ISender sender,
             CancellationToken cancellationToken) =>
         {
-            var result = await sender.Send(new ListWorkItemHistoryQuery(workItemId), cancellationToken);
+            var query = take.HasValue
+                ? new ListWorkItemHistoryQuery(workItemId, skip ?? 0, take.Value)
+                : new ListWorkItemHistoryQuery(workItemId, skip ?? 0);
+            var result = await sender.Send(query, cancellationToken);
             return Results.Ok(result);
         })
             .WithName("ListWorkItemHistory")
@@ -415,7 +421,8 @@ public static class WorkItemEndpoints
             return Results.NoContent();
         })
             .WithName("PostWorkItemToSlack")
-            .WithTags("Work items");
+            .WithTags("Work items")
+            .RequireRateLimiting("slack-share");
 
         // ------------------------------------------------------------------
         // Flag / Cover
@@ -503,9 +510,16 @@ public static class WorkItemEndpoints
 
         group.MapGet("/work-items/{workItemId:guid}/worklogs", async (
             Guid workItemId,
+            int? skip,
+            int? take,
             ISender sender,
             CancellationToken cancellationToken) =>
-            Results.Ok(await sender.Send(new ListWorklogsQuery(workItemId), cancellationToken)))
+        {
+            var query = take.HasValue
+                ? new ListWorklogsQuery(workItemId, skip ?? 0, take.Value)
+                : new ListWorklogsQuery(workItemId, skip ?? 0);
+            return Results.Ok(await sender.Send(query, cancellationToken));
+        })
             .WithName("ListWorklogs")
             .WithTags("Work items");
 
