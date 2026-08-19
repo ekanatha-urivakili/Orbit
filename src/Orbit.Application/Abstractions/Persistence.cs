@@ -534,6 +534,11 @@ public interface IWorkItemRepository
         IReadOnlyCollection<Guid> workItemIds,
         ProjectPermission permission,
         CancellationToken cancellationToken);
+
+    /// <summary>True when at least one work item has <paramref name="parentWorkItemId"/> as its parent.</summary>
+    Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken);
+
+    Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken);
 }
 
 public interface IWorkItemLinkRepository
@@ -584,6 +589,22 @@ public interface IWorkItemCommentRepository
         CancellationToken cancellationToken);
 }
 
+public interface IWorkItemHistoryRepository
+{
+    Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns a page of history entries for a work item ordered by <c>ChangedAt ASC</c> then <c>Id</c>.
+    /// The caller must have verified work-item visibility.
+    /// </summary>
+    Task<PagedResult<WorkItemHistoryEntry>> ListByWorkItemAsync(
+        Guid tenantId,
+        Guid workItemId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
+}
+
 public interface IAttachmentRepository
 {
     Task AddAsync(Attachment attachment, CancellationToken cancellationToken);
@@ -621,6 +642,31 @@ public interface IWorkItemWatcherRepository
         Guid tenantId, Guid workItemId, CancellationToken cancellationToken);
 
     Task RemoveAsync(WorkItemWatcher watcher, CancellationToken cancellationToken);
+}
+
+public interface IWorkItemVoteRepository
+{
+    Task AddAsync(WorkItemVote vote, CancellationToken cancellationToken);
+
+    Task<WorkItemVote?> GetAsync(
+        Guid tenantId, Guid workItemId, Guid userId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<WorkItemVote>> ListByWorkItemAsync(
+        Guid tenantId, Guid workItemId, CancellationToken cancellationToken);
+
+    Task RemoveAsync(WorkItemVote vote, CancellationToken cancellationToken);
+}
+
+public interface IWorkItemWorklogRepository
+{
+    Task AddAsync(WorkItemWorklog worklog, CancellationToken cancellationToken);
+
+    Task<WorkItemWorklog?> GetAsync(Guid tenantId, Guid worklogId, CancellationToken cancellationToken);
+
+    Task<PagedResult<WorkItemWorklog>> ListByWorkItemAsync(
+        Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken);
+
+    Task RemoveAsync(WorkItemWorklog worklog, CancellationToken cancellationToken);
 }
 
 public interface ITenantOwnerLock

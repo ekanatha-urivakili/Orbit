@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { orbitApi } from './api/client'
 import * as auth from './api/auth'
@@ -19,6 +19,7 @@ import { Header } from './components/layout/Header'
 import { Sidebar } from './components/layout/Sidebar'
 import { SubNavigation, type TabType } from './components/layout/SubNavigation'
 import { LoadingScreen, ErrorScreen } from './components/layout/FeedbackScreens'
+import { CommandPalette } from './components/CommandPalette'
 
 // Feature Components
 import { BoardView } from './features/board/BoardView'
@@ -50,6 +51,60 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('project')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [oidcError, setOidcError] = useState<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('orbit_sidebar_width')
+    return saved ? Math.max(180, Math.min(480, Number(saved))) : 240
+  })
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('orbit_sidebar_collapsed') === 'true'
+  })
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+
+  const toggleSidebarCollapse = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current
+      localStorage.setItem('orbit_sidebar_collapsed', String(next))
+      return next
+    })
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === '[') {
+        event.preventDefault()
+        toggleSidebarCollapse()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  const handleStartResizeSidebar = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sidebarWidth
+    setIsResizingSidebar(true)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX
+      const newWidth = Math.max(180, Math.min(480, startWidth + delta))
+      setSidebarWidth(newWidth)
+      localStorage.setItem('orbit_sidebar_width', String(newWidth))
+    }
+
+    const handlePointerUp = () => {
+      setIsResizingSidebar(false)
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp)
+  }
 
   const [registerRequested, setRegisterRequested] = useState(() => {
     const url = new URL(window.location.href)
@@ -93,6 +148,25 @@ function App() {
   }, [])
 
   useEffect(() => auth.subscribe(() => setAuthSession(auth.getCurrentSession())), [])
+
+  // Slack's OAuth redirect lands here (Slack__RedirectUri points at this fixed frontend path).
+  // The connecting ticket's path was stashed in sessionStorage before the redirect away, since
+  // there's no client-side router to restore it automatically.
+  useEffect(() => {
+    if (window.location.pathname !== '/slack/callback') return
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+    const returnPath = sessionStorage.getItem('slack-connect-return-path') ?? '/'
+    sessionStorage.removeItem('slack-connect-return-path')
+    if (code && state) {
+      orbitApi.completeSlackOAuth(code, state).finally(() => {
+        window.location.href = returnPath
+      })
+    } else {
+      window.location.href = returnPath
+    }
+  }, [])
 
   // Runs once on every load, including immediately after an OIDC redirect back to the app root -
   // there is no client-side router to restore the view the user started from, so the callback is
@@ -167,7 +241,7 @@ function App() {
     queryFn: () => orbitApi.listProjects(),
     enabled: bootstrapQuery.data?.initializationRequired === false,
   })
-  const projects = projectsQuery.data?.items ?? []
+  const projects = useMemo(() => projectsQuery.data?.items ?? [], [projectsQuery.data?.items])
   const choicesQuery = useQuery({ queryKey: ['choices'], queryFn: orbitApi.getChoices, staleTime: Infinity })
   const itemTypesQuery = useQuery({
     queryKey: ['work-item-types'],
@@ -205,7 +279,7 @@ function App() {
     queryFn: orbitApi.listMemberships,
     enabled: bootstrapQuery.data?.initializationRequired === false,
   })
-  const members = membersQuery.data ?? []
+  const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data])
   const accountWorkspacesQuery = useQuery({
     queryKey: ['account-workspaces'],
     queryFn: orbitApi.listAccountWorkspaces,
@@ -310,7 +384,7 @@ function App() {
     queryFn: () => orbitApi.listWorkItems(selectedProjectId ?? ''),
     enabled: Boolean(selectedProjectId),
   })
-  const workItems = workItemsQuery.data?.items ?? []
+  const workItems = useMemo(() => workItemsQuery.data?.items ?? [], [workItemsQuery.data?.items])
   const workItemsTruncated = (workItemsQuery.data?.totalCount ?? 0) > workItems.length
 
   useEffect(() => {
@@ -485,6 +559,15 @@ function App() {
 
   return (
     <div className="min-h-screen bg-white">
+      <CommandPalette
+        projects={projects}
+        workItems={workItems}
+        hasSelectedProject={Boolean(selectedProject)}
+        onNavigateToProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }}
+        onOpenWorkItem={handleOpenWorkItem}
+        onNavigateTab={(tab) => { setActiveTab(tab); setActiveView('project') }}
+        onOpenSettings={() => { setSettingsSection('profile'); setActiveView('settings') }}
+      />
       <Header
         online={online}
         profile={profileQuery.data}
@@ -512,7 +595,7 @@ function App() {
         />
       )}
 
-      <div className="flex">
+      <div className="flex relative">
         <Sidebar
           mobileMenuOpen={mobileMenuOpen}
           setMobileMenuOpen={setMobileMenuOpen}
@@ -529,9 +612,21 @@ function App() {
             setActiveView('settings')
           }}
           workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name}
+          width={sidebarWidth}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapse}
+          onStartResize={handleStartResizeSidebar}
+          isResizing={isResizingSidebar}
         />
         
-        <main className="region-middle flex-1 lg:ml-[240px] min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden">
+        <main
+          style={{
+            marginLeft: sidebarCollapsed ? '0px' : `${sidebarWidth}px`,
+          }}
+          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden transition-[margin-left] duration-150 ease-out ${
+            isResizingSidebar ? '!transition-none' : ''
+          }`}
+        >
           {projects.length === 0 ? <ProjectOnboarding /> : <>
           {activeView === 'home' && (
             <HomeView
@@ -564,6 +659,7 @@ function App() {
                 onNavigateHome={handleNavigateHome}
                 onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
                 onOpenWorkItem={handleOpenWorkItem}
+                onManageWorkTypes={() => { setSettingsSection('item-types'); setActiveView('settings') }}
                 sprints={sprints}
               />
             ) : null

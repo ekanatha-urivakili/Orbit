@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { RichTextEditor, isRichTextEmpty, JIRA_COLOR_PALETTE, TEXT_STYLES } from './RichTextEditor'
-import { RichTextView, linkifyTicketKeys } from './RichTextView'
+import { RichTextEditor } from './RichTextEditor'
+import { isRichTextEmpty, JIRA_COLOR_PALETTE, TEXT_STYLES } from './editorConstants'
+import { RichTextView } from './RichTextView'
+import { linkifyTicketKeys } from './linkifyTicketKeys'
 
 describe('RichTextEditor utilities & constants', () => {
   it('identifies empty html correctly', () => {

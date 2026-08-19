@@ -23,6 +23,8 @@ public sealed record CreateWorkItemCommand(
     Guid? ProductOwnerUserId = null,
     string? SprintName = null,
     string? IdentifiedOn = null,
+    DateOnly? StartDate = null,
+    Guid? TeamId = null,
     decimal? StoryPoints = null,
     string[]? Labels = null,
     string[]? Countries = null,
@@ -56,8 +58,10 @@ public sealed class CreateWorkItemHandler(
     IWorkItemTypeRepository workItemTypes,
     IWorkItemRepository workItems,
     ITenantMembershipRepository tenantMemberships,
+    ITeamRepository teams,
     ISettingsRepository settings,
     IOutboxRepository outbox,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : IRequestHandler<CreateWorkItemCommand, WorkItemDto>
@@ -84,6 +88,12 @@ public sealed class CreateWorkItemHandler(
         var parent = await WorkItemRelations.GetRelatedItemAsync(
             workItems, tenantContext.TenantId, request.ParentId, project.Id, "Parent", cancellationToken);
         WorkItemRelations.ValidateParentType(request.Type, parent);
+        if (request.TeamId is { } teamId
+            && await teams.GetAsync(tenantContext.TenantId, teamId, cancellationToken) is null)
+        {
+            throw new ValidationException("The selected team was not found.");
+        }
+
         var sequence = project.AllocateItemSequence(now);
         var workItem = WorkItem.Create(
             tenantContext.TenantId,
@@ -105,6 +115,8 @@ public sealed class CreateWorkItemHandler(
             request.ProductOwnerUserId,
             request.SprintName,
             request.IdentifiedOn,
+            request.StartDate,
+            request.TeamId,
             request.StoryPoints,
             request.Labels,
             request.Countries,
@@ -117,6 +129,12 @@ public sealed class CreateWorkItemHandler(
         }
 
         await workItems.AddAsync(workItem, cancellationToken);
+
+        await history.AddAsync(
+            WorkItemHistoryEntry.Create(
+                tenantContext.TenantId, workItem.Id, principal.MembershipId, "Ticket", null, "Created", now),
+            cancellationToken);
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);
     }

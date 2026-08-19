@@ -4,6 +4,7 @@ using Orbit.Application.WorkItems;
 using Orbit.Domain.Access;
 using Orbit.Domain.Choices;
 using Orbit.Domain.Configuration;
+using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Messaging;
 using Orbit.Domain.Projects;
@@ -30,8 +31,10 @@ public sealed class CreateWorkItemHandlerTests
             new WorkItemTypeRepositoryStub(tenantId),
             workItems,
             new TenantMembershipRepositoryStub(),
+            new TeamRepositoryStub(),
             new SettingsRepositoryStub(),
             new OutboxRepositoryStub(),
+            new WorkItemHistoryRepositoryStub(),
             unitOfWork,
             TimeProvider.System);
 
@@ -56,8 +59,10 @@ public sealed class CreateWorkItemHandlerTests
             new WorkItemTypeRepositoryStub(tenantId, WorkItemType.Story),
             new WorkItemRepositoryStub(),
             new TenantMembershipRepositoryStub(),
+            new TeamRepositoryStub(),
             new SettingsRepositoryStub(),
             new OutboxRepositoryStub(),
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -83,8 +88,10 @@ public sealed class CreateWorkItemHandlerTests
             new WorkItemTypeRepositoryStub(tenantId),
             new WorkItemRepositoryStub(),
             new TenantMembershipRepositoryStub(tenantId, assigneeUserId),
+            new TeamRepositoryStub(),
             new SettingsRepositoryStub([assigneeAccount]),
             outbox,
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -111,8 +118,10 @@ public sealed class CreateWorkItemHandlerTests
             new WorkItemTypeRepositoryStub(tenantId),
             new WorkItemRepositoryStub(),
             new TenantMembershipRepositoryStub(),
+            new TeamRepositoryStub(),
             new SettingsRepositoryStub(),
             new OutboxRepositoryStub(),
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -184,6 +193,9 @@ public sealed class CreateWorkItemHandlerTests
             ProjectPermission permission,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WorkItem>>([]);
+        public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+        public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class WorkItemTypeRepositoryStub : IWorkItemTypeRepository
@@ -267,6 +279,17 @@ public sealed class CreateWorkItemHandlerTests
                 : []);
     }
 
+    private sealed class TeamRepositoryStub(params Team[] teams) : ITeamRepository
+    {
+        public Task AddAsync(Team team, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<Team?> GetAsync(Guid tenantId, Guid teamId, CancellationToken cancellationToken) =>
+            Task.FromResult(teams.SingleOrDefault(team => team.Id == teamId && team.TenantId == tenantId));
+
+        public Task<IReadOnlyList<Team>> ListAsync(Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Team>>(teams.Where(team => team.TenantId == tenantId).ToArray());
+    }
+
     private sealed class SettingsRepositoryStub(params UserAccount[] accounts) : ISettingsRepository
     {
         public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
@@ -327,5 +350,20 @@ public sealed class CreateWorkItemHandlerTests
             Messages.Add(message);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class WorkItemHistoryRepositoryStub : IWorkItemHistoryRepository
+    {
+        public List<WorkItemHistoryEntry> Added { get; } = [];
+
+        public Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken)
+        {
+            Added.Add(entry);
+            return Task.CompletedTask;
+        }
+
+        public Task<PagedResult<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<WorkItemHistoryEntry>([], 0));
     }
 }

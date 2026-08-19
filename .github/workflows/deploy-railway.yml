@@ -1,6 +1,30 @@
 name: Deploy to Railway
 
+# UNVERIFIED, TWO-MODE WORKFLOW — see CI-CD-PLAN.md Phase 4.
+#
+# `deploy_mode: source` is the original, working path: Railway builds each service from the
+# repository itself via `railway up`. This is the default and is unchanged from before.
+#
+# `deploy_mode: image` deploys the exact SHA-tagged images and migration bundle that
+# .github/workflows/ci.yml built and scanned (see its release-manifest job). It requires, as a
+# one-time prerequisite done in the Railway dashboard (not automatable from here):
+#   1. Convert the orbit-api, orbit-worker, and orbit-web Railway services from
+#      "Deploy from GitHub repo" to "Deploy from Docker Image" source.
+#   2. Grant each service pull access to ghcr.io/<owner>/orbit-{api,worker,web} (a GHCR
+#      read-only token, or make the packages public if that's acceptable).
+#   3. Confirm the exact mechanism Railway currently offers for updating a Docker-Image
+#      service's image reference from CI — this workflow assumes Railway's public GraphQL API
+#      exposes a `serviceInstanceUpdate` mutation accepting `source.image`, which is the shape
+#      described in Railway's own docs/Terraform provider at the time this was written, but it
+#      has not been exercised against a real Railway project. Confirm the mutation name and
+#      input shape against Railway's current API reference before relying on `deploy_mode: image`,
+#      and adjust the "Update service image" step below if it has changed.
+# Do not switch the default away from `source` until `image` mode has been proven end-to-end
+# against staging.
+
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
@@ -9,18 +33,59 @@ on:
         default: staging
         type: choice
         options: [staging, production]
+      deploy_mode:
+        description: How to deploy (see workflow header)
+        required: true
+        default: source
+        type: choice
+        options: [source, image]
+      release_commit_sha:
+        description: >-
+          Commit SHA to deploy in image mode (must have a release-manifest-<sha> artifact from
+          a prior CI run). Ignored in source mode.
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: railway-${{ inputs.environment }}
+  group: railway-${{ inputs.environment || 'staging' }}
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  resolve:
+    name: Resolve deploy parameters
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    outputs:
+      environment: ${{ steps.params.outputs.environment }}
+      deploy_mode: ${{ steps.params.outputs.deploy_mode }}
+      release_sha: ${{ steps.params.outputs.release_sha }}
+    steps:
+      - name: Determine environment, mode, and commit
+        id: params
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "deploy_mode=image" >> "$GITHUB_OUTPUT"
+            echo "release_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+            echo "deploy_mode=${{ inputs.deploy_mode }}" >> "$GITHUB_OUTPUT"
+            release_sha="${{ inputs.release_commit_sha }}"
+            if [[ "${{ inputs.deploy_mode }}" == "image" && -z "$release_sha" ]]; then
+              echo "release_commit_sha is required when deploy_mode is image" >&2
+              exit 1
+            fi
+            echo "release_sha=${release_sha}" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-source:
+    name: Deploy (source)
+    needs: resolve
+    if: needs.resolve.outputs.deploy_mode == 'source'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -34,10 +99,9 @@ jobs:
         run: npm install --global @railway/cli@5.37.3
 
       - name: Restore migration tooling
-        run: dotnet restore Orbit.slnx --locked-mode
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+        run: |
+          dotnet restore Orbit.slnx --locked-mode
+          dotnet tool restore
 
       - name: Apply expand-only migrations
         run: railway run --service orbit-api dotnet ef database update --project src/Orbit.Infrastructure --startup-project src/Orbit.Infrastructure
@@ -58,3 +122,130 @@ jobs:
         run: railway up --ci --service orbit-web
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  deploy-image:
+    name: Deploy (image)
+    needs: resolve
+    if: needs.resolve.outputs.deploy_mode == 'image'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Find CI run for release commit
+        id: find_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_id=$(gh run list --workflow ci.yml --commit "${{ needs.resolve.outputs.release_sha }}" \
+            --json databaseId,status,conclusion --jq '[.[] | select(.conclusion == "success")][0].databaseId')
+          if [[ -z "$run_id" || "$run_id" == "null" ]]; then
+            echo "No successful CI run found for commit ${{ needs.resolve.outputs.release_sha }}" >&2
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download release manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: release-manifest-${{ needs.resolve.outputs.release_sha }}
+          run-id: ${{ steps.find_run.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read manifest
+        id: manifest
+        run: |
+          echo "api_image=$(jq -r '.images.api' release-manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "worker_image=$(jq -r '.images.worker' release-manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "web_image=$(jq -r --arg env "${{ needs.resolve.outputs.environment }}" '.images.web[$env]' release-manifest.json)" >> "$GITHUB_OUTPUT"
+          cat release-manifest.json
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          global-json-file: global.json
+
+      - name: Apply migration bundle
+        run: |
+          RAILWAY_PSQL_ADMIN="${{ secrets.RAILWAY_POSTGRES_ADMIN_URL }}"
+          if [[ -z "$RAILWAY_PSQL_ADMIN" ]]; then
+            echo "RAILWAY_POSTGRES_ADMIN_URL secret is required in image mode (schema-owner connection string)" >&2
+            exit 1
+          fi
+          psql "$RAILWAY_PSQL_ADMIN" -v ON_ERROR_STOP=1 -f migration-bundle.sql
+        env:
+          RAILWAY_POSTGRES_ADMIN_URL: ${{ secrets.RAILWAY_POSTGRES_ADMIN_URL }}
+
+      # UNVERIFIED — confirm this mutation shape against Railway's current public GraphQL API
+      # before relying on it; see the workflow header. RAILWAY_API_TOKEN is a separate,
+      # account-level API token (distinct from the project-scoped RAILWAY_TOKEN used by the
+      # CLI in source mode) with permission to call Railway's public API.
+      - name: Update service images
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+        run: |
+          update_service_image() {
+            local service_id="$1" image="$2"
+            curl -sS -X POST https://backboard.railway.com/graphql/v2 \
+              -H "Authorization: Bearer ${RAILWAY_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg sid "$service_id" --arg eid "$RAILWAY_ENVIRONMENT_ID" --arg img "$image" \
+                '{query: "mutation($sid: String!, $eid: String!, $img: String!) { serviceInstanceUpdate(serviceId: $sid, environmentId: $eid, input: { source: { image: $img } }) }", variables: {sid: $sid, eid: $eid, img: $img}}')" \
+              | tee /tmp/railway-response.json
+            if jq -e '.errors' /tmp/railway-response.json >/dev/null 2>&1; then
+              echo "Railway API returned an error updating $service_id" >&2
+              exit 1
+            fi
+          }
+          update_service_image "${{ vars.RAILWAY_API_SERVICE_ID }}" "${{ steps.manifest.outputs.api_image }}"
+          update_service_image "${{ vars.RAILWAY_WORKER_SERVICE_ID }}" "${{ steps.manifest.outputs.worker_image }}"
+          update_service_image "${{ vars.RAILWAY_WEB_SERVICE_ID }}" "${{ steps.manifest.outputs.web_image }}"
+
+      - name: Wait for deployments to settle
+        run: sleep 60
+
+  smoke-test:
+    name: Post-deploy smoke test
+    needs: [resolve, deploy-source, deploy-image]
+    if: always() && (needs.deploy-source.result == 'success' || needs.deploy-image.result == 'success')
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - name: Wait for API readiness
+        run: |
+          api_base="${{ vars.API_BASE_URL }}"
+          if [[ -z "$api_base" ]]; then
+            echo "API_BASE_URL environment variable is not set for ${{ needs.resolve.outputs.environment }}; skipping smoke test." >&2
+            exit 1
+          fi
+          for attempt in $(seq 1 20); do
+            if curl -sf "${api_base%/}/health/ready"; then
+              echo "API is ready."
+              exit 0
+            fi
+            echo "Attempt $attempt: API not ready yet, retrying in 10s..."
+            sleep 10
+          done
+          echo "API did not become ready in time." >&2
+          exit 1
+
+      - name: Wait for web liveness
+        run: |
+          web_base="${{ vars.WEB_BASE_URL }}"
+          if [[ -z "$web_base" ]]; then
+            echo "WEB_BASE_URL environment variable is not set for ${{ needs.resolve.outputs.environment }}; skipping." >&2
+            exit 1
+          fi
+          for attempt in $(seq 1 20); do
+            if curl -sf "${web_base%/}/health/live"; then
+              echo "Web is live."
+              exit 0
+            fi
+            echo "Attempt $attempt: web not live yet, retrying in 10s..."
+            sleep 10
+          done
+          echo "Web did not become live in time." >&2
+          exit 1

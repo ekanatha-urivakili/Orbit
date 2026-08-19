@@ -30,7 +30,13 @@ export function WorkItemCard({
     <article
       className={`work-card${dragging ? ' work-card-dragging' : ''}`}
       draggable={Boolean(onDragStart)}
-      onDragStart={onDragStart}
+      onDragStart={(event) => {
+        if (event.dataTransfer) {
+          event.dataTransfer.setData('text/plain', item.id)
+          event.dataTransfer.effectAllowed = 'move'
+        }
+        onDragStart?.(event)
+      }}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
       onDrop={onDrop}

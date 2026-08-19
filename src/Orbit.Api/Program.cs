@@ -141,6 +141,17 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst
         }));
+    // Slack webhook posts are external-service side effects (message sends); throttle
+    // per authenticated user to prevent channel spam from a compromised/misused token.
+    options.AddPolicy("slack-share", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst("sub")?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+        }));
 });
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -236,6 +247,7 @@ api.MapTeamEndpoints();
 api.MapGroupEndpoints();
 api.MapProjectEndpoints();
 api.MapWorkItemEndpoints();
+api.MapSlackEndpoints();
 api.MapBoardEndpoints();
 api.MapSprintEndpoints();
 

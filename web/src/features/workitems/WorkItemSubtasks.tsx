@@ -12,15 +12,15 @@ export function WorkItemSubtasks({
   workItems,
   project,
   members,
-  onOpenWorkItem,
   onStatusChange,
+  onOpenWorkItem,
 }: {
   parent: WorkItem
   workItems: WorkItem[]
   project: Project
   members: TenantMembership[]
-  onOpenWorkItem: (workItem: WorkItem) => void
   onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
+  onOpenWorkItem: (workItem: WorkItem) => void
 }) {
   const queryClient = useQueryClient()
   const [collapsed, setCollapsed] = useState(false)
@@ -145,8 +145,8 @@ export function WorkItemSubtasks({
                     <td>
                       <button
                         type="button"
-                        className="subtasks-row-link"
                         onClick={() => onOpenWorkItem(subtask)}
+                        className="subtasks-row-link"
                       >
                         <WorkItemTypeIcon type={subtask.type} size={15} />
                         <span className="subtasks-row-key">{subtask.key}</span>

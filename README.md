@@ -58,12 +58,13 @@ The PWA can also be reached over HTTPS at `https://www.orbit-local.com`, proxied
    mkcert -install
    ```
 
-2. Generate a certificate for the local domain (kept outside the repo):
+2. Generate a certificate for the local domain (kept outside the repo), and copy the bundled offline page next to it so nginx can serve it without proxying to a downed dev server:
 
    ```bash
    mkdir -p ~/.local/orbit-nginx-certs
    cd ~/.local/orbit-nginx-certs
    mkcert -cert-file orbit-local.com.crt -key-file orbit-local.com.key www.orbit-local.com orbit-local.com
+   cp /path/to/Orbit/deploy/local/offline.html ~/.local/orbit-nginx-certs/offline.html
    ```
 
 3. Point the hostname at localhost:
@@ -89,6 +90,12 @@ The PWA can also be reached over HTTPS at `https://www.orbit-local.com`, proxied
        ssl_certificate_key /Users/<you>/.local/orbit-nginx-certs/orbit-local.com.key;
        ssl_protocols TLSv1.2 TLSv1.3;
 
+       # Served directly (no proxy_pass) so it still renders when the dev server is down.
+       location = /offline.html {
+           root /Users/<you>/.local/orbit-nginx-certs;
+           internal;
+       }
+
        location / {
            proxy_pass http://localhost:5800/;
            proxy_http_version 1.1;
@@ -98,9 +105,13 @@ The PWA can also be reached over HTTPS at `https://www.orbit-local.com`, proxied
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_intercept_errors on;
+           error_page 502 503 504 = /offline.html;
        }
    }
    ```
+
+   With this in place, stopping `./scripts/start-dev.sh` (or the dev server not being up yet) shows the branded "Orbit is starting up" page instead of nginx's raw 502, and it polls in the background and reloads itself automatically once `localhost:5800` responds again.
 
 5. Start nginx (binding ports 80/443 requires root) and the dev stack:
 
@@ -198,6 +209,33 @@ curl -X PUT http://localhost:5014/api/v1/workspaces/current/settings/logo \
   --data '{"objectKey":"'"$OBJECT_KEY"'"}'
 ```
 
+## Sharing and Slack integration (optional)
+
+Every work item has a stable, copyable URL at `/browse/<PROJECTKEY-NUMBER>` (e.g. `/browse/ORB-42`) —
+this is what the ticket detail page's copy-link button and the "Share work item" email panel send.
+Tenancy isn't encoded in the URL (Orbit resolves the tenant from the viewer's session, not the link
+itself — see "Architecture boundaries" below), so a recipient needs an active session in the same
+workspace to open it.
+
+"Connect Slack channel" and "Share in Slack" (from a work item's Actions/Share menus) post to a Slack
+channel via an [Incoming Webhook](https://api.slack.com/messaging/webhooks) obtained through Slack
+OAuth — one connection per project. This requires a Slack app with OAuth redirect
+`{web origin}/slack/callback` and the `incoming-webhook` scope; configure its credentials via
+environment variables (bound to `Slack:*` in configuration):
+
+```bash
+Slack__ClientId=...
+Slack__ClientSecret=...
+Slack__SigningSecret=...
+Slack__RedirectUri=https://your-web-origin/slack/callback
+```
+
+Without these set, "Connect Slack channel" fails with a clear "Slack is not configured" error rather
+than silently doing nothing. The connected webhook URL is encrypted at rest via ASP.NET Core Data
+Protection; in a multi-instance deployment, configure a shared Data Protection key ring (e.g. persisted
+to blob storage or Redis) so connections remain decryptable across restarts and instances — the default
+local key ring is single-machine only.
+
 ## Verify
 
 ```bash
@@ -222,3 +260,14 @@ PostgreSQL row-level security is defense in depth. Every tenant-scoped API reque
 ## Deployment
 
 OCI builds are defined by `Dockerfile.api`, `Dockerfile.worker`, and `Dockerfile.web`. Railway service configuration and environment requirements are documented in [deploy/railway/README.md](deploy/railway/README.md).
+
+## CI/CD
+
+`.github/workflows/ci.yml` is the required check on every PR and `main` push: backend build/test
+against real Postgres/Valkey, an EF migration-range safety scan, frontend lint/test/build, an E2E
+smoke test, and (on `main`/version tags) building, scanning, and publishing SHA-tagged container
+images plus a release manifest to GHCR. `.github/workflows/codeql.yml` runs CodeQL on PRs, `main`,
+and weekly. `.github/workflows/deploy-railway.yml` deploys to Railway — automatically to staging
+on merge to `main`, and via manual dispatch (with approval) for production. See
+[CI-CD-PLAN.md](CI-CD-PLAN.md) for the full design, phased rollout, and what's still pending
+(the Railway image-source migration and required-check enforcement timing).

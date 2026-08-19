@@ -31,6 +31,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new SprintScopeFactRepositoryStub(),
             settings,
             outbox,
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -62,6 +63,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new SprintScopeFactRepositoryStub(),
             settings,
             outbox,
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -88,6 +90,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new SprintScopeFactRepositoryStub(),
             settings,
             outbox,
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -96,6 +99,65 @@ public sealed class ChangeWorkItemStatusHandlerTests
             CancellationToken.None);
 
         Assert.Empty(outbox.Messages);
+    }
+
+    [Fact]
+    public async Task Handle_TransitioningStatus_RecordsHistoryEntry()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
+        var workItem = CreateWorkItem(tenantId, assigneeAccount.Id);
+        var settings = new SettingsRepositoryStub([assigneeAccount], preferences: []);
+        var history = new WorkItemHistoryRepositoryStub();
+        var handler = new ChangeWorkItemStatusHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(authorUserId),
+            new WorkItemRepositoryStub(workItem),
+            new SprintMembershipRepositoryStub(),
+            new SprintScopeFactRepositoryStub(),
+            settings,
+            new OutboxRepositoryStub(),
+            history,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new ChangeWorkItemStatusCommand(workItem.Id, WorkItemStatus.InProgress, workItem.Version),
+            CancellationToken.None);
+
+        var entry = Assert.Single(history.Added);
+        Assert.Equal("Status", entry.FieldName);
+        Assert.Equal("Backlog", entry.OldValue);
+        Assert.Equal("InProgress", entry.NewValue);
+    }
+
+    [Fact]
+    public async Task Handle_StatusUnchanged_DoesNotRecordHistory()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
+        var workItem = CreateWorkItem(tenantId, assigneeAccount.Id);
+        var settings = new SettingsRepositoryStub([assigneeAccount], preferences: []);
+        var history = new WorkItemHistoryRepositoryStub();
+        var handler = new ChangeWorkItemStatusHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(authorUserId),
+            new WorkItemRepositoryStub(workItem),
+            new SprintMembershipRepositoryStub(),
+            new SprintScopeFactRepositoryStub(),
+            settings,
+            new OutboxRepositoryStub(),
+            history,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new ChangeWorkItemStatusCommand(workItem.Id, workItem.Status, workItem.Version),
+            CancellationToken.None);
+
+        Assert.Empty(history.Added);
     }
 
     [Fact]
@@ -115,6 +177,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new SprintScopeFactRepositoryStub(),
             settings,
             outbox,
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -143,6 +206,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new SprintScopeFactRepositoryStub(),
             settings,
             outbox,
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -168,6 +232,8 @@ public sealed class ChangeWorkItemStatusHandlerTests
             productOwnerUserId: null,
             sprintName: null,
             identifiedOn: null,
+            startDate: null,
+            teamId: null,
             storyPoints: null,
             labels: null,
             countries: null,
@@ -211,6 +277,9 @@ public sealed class ChangeWorkItemStatusHandlerTests
             ProjectPermission permission,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WorkItem>>([]);
+        public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+        public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class SprintMembershipRepositoryStub : ISprintMembershipRepository
@@ -304,5 +373,20 @@ public sealed class ChangeWorkItemStatusHandlerTests
     private sealed class UnitOfWorkStub : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken) => Task.FromResult(1);
+    }
+
+    private sealed class WorkItemHistoryRepositoryStub : IWorkItemHistoryRepository
+    {
+        public List<WorkItemHistoryEntry> Added { get; } = [];
+
+        public Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken)
+        {
+            Added.Add(entry);
+            return Task.CompletedTask;
+        }
+
+        public Task<PagedResult<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<WorkItemHistoryEntry>([], 0));
     }
 }

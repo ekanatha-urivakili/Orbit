@@ -40,6 +40,8 @@ export interface WorkItem {
   productOwnerUserId: string | null
   sprintName: string | null
   identifiedOn: string | null
+  startDate: string | null
+  teamId: string | null
   storyPoints: number | null
   labels: string[]
   countries: string[]
@@ -48,10 +50,31 @@ export interface WorkItem {
   status: WorkItemStatus
   priority: Priority
   rank: number
+  isFlagged: boolean
+  coverAttachmentId: string | null
+  isArchived: boolean
+  archivedAt: string | null
   version: number
   createdAt: string
   updatedAt: string
 }
+
+export interface WorkItemVotes {
+  hasVoted: boolean
+  count: number
+}
+
+export interface WorkItemWorklog {
+  id: string
+  workItemId: string
+  authorMembershipId: string
+  minutesSpent: number
+  workDate: string
+  description: string | null
+  createdAt: string
+}
+
+export type WorkItemExportFormat = 'Csv' | 'Xml' | 'Json'
 
 export interface WorkItemLink {
   id: string
@@ -78,6 +101,16 @@ export interface WorkItemComment {
   createdAt: string
   updatedAt: string
   lastEditedAt: string | null
+}
+
+export interface WorkItemHistoryEntry {
+  id: string
+  fieldName: string
+  oldValue: string | null
+  newValue: string | null
+  changedByUserId: string | null
+  changedByDisplayName: string
+  changedAt: string
 }
 
 export interface WorkItemAttachment {
@@ -152,6 +185,8 @@ export interface CreateWorkItemInput {
   productOwnerUserId?: string | null
   sprintName?: string | null
   identifiedOn?: string | null
+  startDate?: string | null
+  teamId?: string | null
   storyPoints?: number | null
   labels?: string[]
   countries?: string[]
@@ -171,6 +206,8 @@ export interface UpdateWorkItemInput {
   productOwnerUserId?: string | null
   sprintName?: string | null
   identifiedOn?: string | null
+  startDate?: string | null
+  teamId?: string | null
   storyPoints?: number | null
   labels?: string[]
   countries?: string[]

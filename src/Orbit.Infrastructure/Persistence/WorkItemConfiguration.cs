@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Orbit.Domain.Directory;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Configuration;
 using Orbit.Domain.WorkItems;
@@ -43,6 +44,8 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
         builder.Property(workItem => workItem.ProductOwnerUserId).HasColumnName("product_owner_user_id");
         builder.Property(workItem => workItem.SprintName).HasColumnName("sprint_name").HasMaxLength(255);
         builder.Property(workItem => workItem.IdentifiedOn).HasColumnName("identified_on").HasMaxLength(255);
+        builder.Property(workItem => workItem.StartDate).HasColumnName("start_date").HasColumnType("date");
+        builder.Property(workItem => workItem.TeamId).HasColumnName("team_id");
         builder.Property(workItem => workItem.StoryPoints).HasColumnName("story_points").HasPrecision(10, 2);
         builder.Property(workItem => workItem.Labels).HasColumnName("labels").HasColumnType("text[]");
         builder.Property(workItem => workItem.Countries).HasColumnName("countries").HasColumnType("text[]");
@@ -55,6 +58,7 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
         builder.Property(workItem => workItem.CreatedAt).HasColumnName("created_at");
         builder.Property(workItem => workItem.UpdatedAt).HasColumnName("updated_at");
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.Key }).IsUnique();
+        builder.HasIndex(workItem => new { workItem.TenantId, workItem.ProjectId, workItem.Rank });
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.ProjectId, workItem.Status, workItem.Rank });
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.ParentId });
         builder.HasOne<WorkItem>()
@@ -71,6 +75,11 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
             .WithMany()
             .HasForeignKey(workItem => new { workItem.TenantId, Id = workItem.Type })
             .HasPrincipalKey(definition => new { definition.TenantId, definition.Id })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Team>()
+            .WithMany()
+            .HasForeignKey(workItem => new { workItem.TenantId, workItem.TeamId })
+            .HasPrincipalKey(team => new { team.TenantId, team.Id })
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

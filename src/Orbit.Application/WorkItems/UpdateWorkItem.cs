@@ -5,6 +5,7 @@ using Orbit.Application.Common;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
+using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.WorkItems;
 
@@ -22,6 +23,8 @@ public sealed record UpdateWorkItemCommand(
     Guid? ProductOwnerUserId,
     string? SprintName,
     string? IdentifiedOn,
+    DateOnly? StartDate,
+    Guid? TeamId,
     decimal? StoryPoints,
     string[]? Labels,
     string[]? Countries,
@@ -52,8 +55,10 @@ public sealed class UpdateWorkItemHandler(
     ISprintMembershipRepository sprintMemberships,
     ISprintScopeFactRepository sprintScopeFacts,
     ITenantMembershipRepository tenantMemberships,
+    ITeamRepository teams,
     ISettingsRepository settings,
     IOutboxRepository outbox,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UpdateWorkItemCommand, WorkItemDto>
 {
@@ -74,10 +79,30 @@ public sealed class UpdateWorkItemHandler(
         var parent = await WorkItemRelations.GetRelatedItemAsync(
             workItems, tenantContext.TenantId, request.ParentId, workItem.ProjectId, "Parent", cancellationToken);
         WorkItemRelations.ValidateParentType(workItem.Type, parent);
+        if (request.TeamId is { } teamId
+            && await teams.GetAsync(tenantContext.TenantId, teamId, cancellationToken) is null)
+        {
+            throw new ValidationException("The selected team was not found.");
+        }
 
         var previousStoryPoints = workItem.StoryPoints;
         var previousStatus = workItem.Status;
         var previousAssigneeUserId = workItem.AssigneeUserId;
+        var previousSummary = workItem.Summary;
+        var previousDescription = workItem.Description;
+        var previousPriority = workItem.Priority;
+        var previousParentId = workItem.ParentId;
+        var previousEpicName = workItem.EpicName;
+        var previousAcceptanceCriteria = workItem.AcceptanceCriteria;
+        var previousStepsToConduct = workItem.StepsToConduct;
+        var previousDeveloperUserId = workItem.DeveloperUserId;
+        var previousProductOwnerUserId = workItem.ProductOwnerUserId;
+        var previousSprintName = workItem.SprintName;
+        var previousIdentifiedOn = workItem.IdentifiedOn;
+        var previousStartDate = workItem.StartDate;
+        var previousTeamId = workItem.TeamId;
+        var previousLabels = workItem.Labels;
+        var previousCountries = workItem.Countries;
         var now = timeProvider.GetUtcNow();
         workItem.Update(
             request.Summary,
@@ -92,6 +117,8 @@ public sealed class UpdateWorkItemHandler(
             request.ProductOwnerUserId,
             request.SprintName,
             request.IdentifiedOn,
+            request.StartDate,
+            request.TeamId,
             request.StoryPoints,
             request.Labels,
             request.Countries,
@@ -121,7 +148,101 @@ public sealed class UpdateWorkItemHandler(
                 principal, settings, outbox, workItem, assigneeUserId, now, cancellationToken);
         }
 
+        await RecordHistoryAsync(
+            workItem,
+            previousSummary, previousDescription, previousPriority, previousParentId, parent,
+            previousEpicName, previousAcceptanceCriteria, previousStepsToConduct,
+            previousAssigneeUserId, previousDeveloperUserId, previousProductOwnerUserId,
+            previousSprintName, previousIdentifiedOn, previousStartDate, previousTeamId,
+            previousStoryPoints, previousLabels, previousCountries,
+            now, cancellationToken);
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);
+    }
+
+    private async Task RecordHistoryAsync(
+        WorkItem workItem,
+        string previousSummary,
+        string? previousDescription,
+        Priority previousPriority,
+        Guid? previousParentId,
+        WorkItem? newParent,
+        string? previousEpicName,
+        string? previousAcceptanceCriteria,
+        string? previousStepsToConduct,
+        Guid? previousAssigneeUserId,
+        Guid? previousDeveloperUserId,
+        Guid? previousProductOwnerUserId,
+        string? previousSprintName,
+        string? previousIdentifiedOn,
+        DateOnly? previousStartDate,
+        Guid? previousTeamId,
+        decimal? previousStoryPoints,
+        string[] previousLabels,
+        string[] previousCountries,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        string? previousParentLabel = null;
+        string? newParentLabel = null;
+        if (previousParentId != workItem.ParentId)
+        {
+            if (previousParentId.HasValue)
+            {
+                var previousParent = await workItems.GetAsync(
+                    tenantContext.TenantId, previousParentId.Value, ProjectPermission.View, cancellationToken);
+                previousParentLabel = previousParent is null ? null : $"{previousParent.Key}: {previousParent.Summary}";
+            }
+
+            newParentLabel = newParent is null ? null : $"{newParent.Key}: {newParent.Summary}";
+        }
+
+        var ownerUserIds = new[]
+        {
+            previousAssigneeUserId, workItem.AssigneeUserId,
+            previousDeveloperUserId, workItem.DeveloperUserId,
+            previousProductOwnerUserId, workItem.ProductOwnerUserId,
+        }.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToArray();
+
+        var ownerAccounts = ownerUserIds.Length > 0
+            ? (await settings.GetUserAccountsAsync(ownerUserIds, cancellationToken)).ToDictionary(a => a.Id)
+            : [];
+
+        string? OwnerLabel(Guid? userId) =>
+            userId.HasValue && ownerAccounts.TryGetValue(userId.Value, out var account) ? account.DisplayName : null;
+
+        async Task<string?> TeamLabelAsync(Guid? teamId) =>
+            teamId is { } id
+                ? (await teams.GetAsync(tenantContext.TenantId, id, cancellationToken))?.Name
+                : null;
+
+        string? previousTeamLabel = null;
+        string? newTeamLabel = null;
+        if (previousTeamId != workItem.TeamId)
+        {
+            previousTeamLabel = await TeamLabelAsync(previousTeamId);
+            newTeamLabel = await TeamLabelAsync(workItem.TeamId);
+        }
+
+        await WorkItemHistoryRecorder.RecordAsync(
+            history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
+            ("Summary", previousSummary, workItem.Summary),
+            ("Description", previousDescription, workItem.Description),
+            ("Priority", previousPriority.ToString(), workItem.Priority.ToString()),
+            ("Parent", previousParentLabel, newParentLabel),
+            ("Epic", previousEpicName, workItem.EpicName),
+            ("Acceptance criteria", previousAcceptanceCriteria, workItem.AcceptanceCriteria),
+            ("Steps to conduct", previousStepsToConduct, workItem.StepsToConduct),
+            ("Assignee", OwnerLabel(previousAssigneeUserId), OwnerLabel(workItem.AssigneeUserId)),
+            ("Developer", OwnerLabel(previousDeveloperUserId), OwnerLabel(workItem.DeveloperUserId)),
+            ("Product owner", OwnerLabel(previousProductOwnerUserId), OwnerLabel(workItem.ProductOwnerUserId)),
+            ("Sprint", previousSprintName, workItem.SprintName),
+            ("Identified on", previousIdentifiedOn, workItem.IdentifiedOn),
+            ("Start date", previousStartDate?.ToString("yyyy-MM-dd"), workItem.StartDate?.ToString("yyyy-MM-dd")),
+            ("Team", previousTeamLabel, newTeamLabel),
+            ("Story points", previousStoryPoints?.ToString(), workItem.StoryPoints?.ToString()),
+            ("Labels", string.Join(", ", previousLabels), string.Join(", ", workItem.Labels)),
+            ("Countries", string.Join(", ", previousCountries), string.Join(", ", workItem.Countries)));
     }
 }

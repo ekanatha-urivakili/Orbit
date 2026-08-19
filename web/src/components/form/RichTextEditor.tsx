@@ -12,7 +12,10 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TaskList } from '@tiptap/extension-task-list'
 import { TaskItem } from '@tiptap/extension-task-item'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { MentionChip } from './mentionExtension'
+import { TicketLinkChip } from './ticketLinkExtension'
+import type { TenantMembership, WorkItem } from '../../api/types'
 import {
   Bold,
   Italic,
@@ -46,45 +49,7 @@ import { FileAttachment } from './fileAttachmentExtension'
 import { resolveAttachmentUrls } from './resolveAttachmentUrls'
 import { orbitApi } from '../../api/client'
 import type { WorkItemAttachment } from '../../api/types'
-
-// Jira's authentic 21-swatch color palette (3 rows x 7 cols)
-export const JIRA_COLOR_PALETTE = [
-  // Row 1: Deep / Dark shades
-  { label: 'Dark Slate', hex: '#172B4D' },
-  { label: 'Navy Blue', hex: '#0052CC' },
-  { label: 'Teal Forest', hex: '#00875A' },
-  { label: 'Deep Cyan', hex: '#00A3BF' },
-  { label: 'Amber Orange', hex: '#FF8B00' },
-  { label: 'Coral Red', hex: '#DE350B' },
-  { label: 'Royal Purple', hex: '#5243AA' },
-  // Row 2: Vibrant / Medium shades
-  { label: 'Slate Grey', hex: '#42526E' },
-  { label: 'Bright Blue', hex: '#0065FF' },
-  { label: 'Mint Green', hex: '#36B37E' },
-  { label: 'Sky Cyan', hex: '#00B8D9' },
-  { label: 'Golden Yellow', hex: '#FFAB00' },
-  { label: 'Flame Red', hex: '#FF5630' },
-  { label: 'Amethyst Purple', hex: '#6554C0' },
-  // Row 3: Pastel / Light shades
-  { label: 'Light Grey', hex: '#DFE1E6' },
-  { label: 'Pastel Blue', hex: '#B3D4FF' },
-  { label: 'Pastel Green', hex: '#ABF5D1' },
-  { label: 'Pastel Cyan', hex: '#B3F5FF' },
-  { label: 'Pastel Yellow', hex: '#FFE380' },
-  { label: 'Pastel Coral', hex: '#FFBDAD' },
-  { label: 'Pastel Lavender', hex: '#EAE6FF' },
-]
-
-export const TEXT_STYLES = [
-  { id: 'p', label: 'Normal text', shortcut: '⌘⌥0', tag: 'T', size: '14px', weight: '400' },
-  { id: 'small', label: 'Small text', shortcut: '⌘⌥7', tag: 'Ts', size: '12px', weight: '400' },
-  { id: 'h1', label: 'Heading 1', shortcut: '⌘⌥1', tag: 'H₁', size: '18px', weight: '700', level: 1 },
-  { id: 'h2', label: 'Heading 2', shortcut: '⌘⌥2', tag: 'H₂', size: '16px', weight: '650', level: 2 },
-  { id: 'h3', label: 'Heading 3', shortcut: '⌘⌥3', tag: 'H₃', size: '15px', weight: '650', level: 3 },
-  { id: 'h4', label: 'Heading 4', shortcut: '⌘⌥4', tag: 'H₄', size: '14px', weight: '600', level: 4 },
-  { id: 'h5', label: 'Heading 5', shortcut: '⌘⌥5', tag: 'H₅', size: '13px', weight: '600', level: 5 },
-  { id: 'h6', label: 'Heading 6', shortcut: '⌘⌥6', tag: 'H₆', size: '12px', weight: '600', level: 6 },
-]
+import { JIRA_COLOR_PALETTE, TEXT_STYLES } from './editorConstants'
 
 const EMOJI_CATEGORIES: { name: string; emojis: string[] }[] = [
   {
@@ -100,10 +65,6 @@ const EMOJI_CATEGORIES: { name: string; emojis: string[] }[] = [
     emojis: ['✅', '❌', '⚠️', '⚡', '⭐', '🌟', '💥', '💯', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '📌', '📍', '📎', '📝', '📋', '📁', '📂', '🔒', '🔓', '🔑', '🏷️', '📦', '🔔', '🔕', '💬', '💭', '⏱️', '⏳', '📊', '📈', '📉', '🛠️', '⚙️', '🔗'],
   },
 ]
-
-export function isRichTextEmpty(html: string): boolean {
-  return html.replace(/<[^>]*>/g, '').trim().length === 0
-}
 
 async function uploadWorkItemAttachment(workItemId: string, file: File) {
   const presigned = await orbitApi.presignWorkItemAttachmentUpload(workItemId, file.name, file.type, file.size)
@@ -125,6 +86,8 @@ export function RichTextEditor({
   workItemId,
   attachments,
   onAttachmentUploaded,
+  members = [],
+  workItems = [],
 }: {
   value: string
   onChange: (html: string) => void
@@ -134,6 +97,8 @@ export function RichTextEditor({
   workItemId?: string
   attachments?: WorkItemAttachment[]
   onAttachmentUploaded?: () => void
+  members?: TenantMembership[]
+  workItems?: WorkItem[]
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -148,6 +113,15 @@ export function RichTextEditor({
   const [emojiMenuOpen, setEmojiMenuOpen] = useState(false)
   const [emojiSearch, setEmojiSearch] = useState('')
 
+  // ── @mention state ────────────────────────────────────────────────────────
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const mentionDropdownRef = useRef<HTMLDivElement>(null)
+
+  // ── Ticket-link suggestion state ──────────────────────────────────────────
+  const [ticketSuggestion, setTicketSuggestion] = useState<WorkItem | null>(null)
+
   const editorContainerRef = useRef<HTMLDivElement>(null)
 
   const closeAllPopovers = () => {
@@ -157,6 +131,19 @@ export function RichTextEditor({
     setTableOptionsOpen(false)
     setEmojiMenuOpen(false)
   }
+
+  // Filtered member list for mention dropdown
+  const mentionResults = members
+    .filter((m) => m.displayName && m.userId)
+    .filter((m) =>
+      mentionQuery.length === 0
+        ? true
+        : (m.displayName ?? '').toLowerCase().includes(mentionQuery.toLowerCase())
+    )
+    .slice(0, 8)
+
+  // ── Ticket-link: detect pattern as user types ─────────────────────────────
+  const TICKET_RE = /\b([A-Z]+-\d+)$/
 
   const editor = useEditor({
     extensions: [
@@ -174,6 +161,8 @@ export function RichTextEditor({
       FontSize,
       AttachmentImage,
       FileAttachment,
+      MentionChip,
+      TicketLinkChip,
       Table.configure({
         resizable: true,
         HTMLAttributes: {
@@ -194,11 +183,138 @@ export function RichTextEditor({
     ],
     content: resolveAttachmentUrls(value, attachments),
     editable: !disabled,
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+    onUpdate: ({ editor }) => {
+      onChange(editor.getHTML())
+
+      // After every keystroke, check if cursor text ends with a ticket key
+      const { from } = editor.state.selection
+      const textBefore = editor.state.doc.textBetween(
+        Math.max(0, from - 30),
+        from,
+        ' '
+      )
+      const ticketMatch = textBefore.match(TICKET_RE)
+      if (ticketMatch) {
+        const key = ticketMatch[1].toUpperCase()
+        const found = workItems.find(
+          (w) => w.key.toUpperCase() === key
+        )
+        setTicketSuggestion(found ?? null)
+      } else {
+        setTicketSuggestion(null)
+      }
+
+      // Also track @mention query
+      const atMatch = textBefore.match(/@([\w\s]*)$/)
+      if (atMatch) {
+        setMentionQuery(atMatch[1])
+        setMentionOpen(true)
+        setMentionIndex(0)
+      } else {
+        setMentionOpen(false)
+        setMentionQuery('')
+      }
+    },
     editorProps: {
       attributes: { class: 'rich-text-content' },
+      handleKeyDown: (_view, event) => {
+        // Close mention / ticket on Escape
+        if (event.key === 'Escape') {
+          setMentionOpen(false)
+          setTicketSuggestion(null)
+          return false
+        }
+        return false
+      },
     },
   })
+
+  // ── Stable ref so callbacks always have the live editor ──────────────────
+  const editorRef = useRef(editor)
+  useEffect(() => { editorRef.current = editor }, [editor])
+
+  // ── Accept the highlighted mention (defined AFTER useEditor) ─────────────
+  const commitMention = useCallback(
+    (member: TenantMembership) => {
+      const ed = editorRef.current
+      if (!ed) return
+      const queryLen = mentionQuery.length + 1 // +1 for the '@' character
+      ed.chain()
+        .focus()
+        .deleteRange({
+          from: ed.state.selection.from - queryLen,
+          to: ed.state.selection.from,
+        })
+        .insertMention({ memberId: member.userId ?? '', label: member.displayName ?? '' })
+        .run()
+      setMentionOpen(false)
+      setMentionQuery('')
+      setMentionIndex(0)
+    },
+    [mentionQuery]
+  )
+
+  // ── Accept the ticket suggestion (defined AFTER useEditor) ───────────────
+  const commitTicket = useCallback(
+    (ticket: WorkItem) => {
+      const ed = editorRef.current
+      if (!ed) return
+      const keyLen = ticket.key.length
+      ed.chain()
+        .focus()
+        .deleteRange({
+          from: ed.state.selection.from - keyLen,
+          to: ed.state.selection.from,
+        })
+        .insertTicketLink({
+          ticketKey: ticket.key,
+          ticketId: ticket.id,
+          summary: ticket.summary,
+          status: ticket.status,
+        })
+        .run()
+      setTicketSuggestion(null)
+    },
+    []
+  )
+
+  // ── Keyboard handler for mention dropdown ─────────────────────────────────
+  useEffect(() => {
+    if (!mentionOpen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionIndex((i) => Math.min(i + 1, mentionResults.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionIndex((i) => Math.max(i - 1, 0))
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        const selected = mentionResults[mentionIndex]
+        if (selected) commitMention(selected)
+      } else if (e.key === 'Escape') {
+        setMentionOpen(false)
+      }
+    }
+    document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
+  }, [mentionOpen, mentionResults, mentionIndex, commitMention])
+
+  // ── Keyboard handler for ticket suggestion (Space / Enter) ───────────────
+  useEffect(() => {
+    if (!ticketSuggestion) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === ' ' || e.key === 'Enter') {
+        if (mentionOpen) return // let mention dropdown win
+        e.preventDefault()
+        commitTicket(ticketSuggestion)
+      } else if (e.key === 'Escape') {
+        setTicketSuggestion(null)
+      }
+    }
+    document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
+  }, [ticketSuggestion, mentionOpen, commitTicket])
 
   useEffect(() => {
     if (!editor) return
@@ -320,7 +436,7 @@ export function RichTextEditor({
   })).filter((c) => c.emojis.length > 0)
 
   return (
-    <div className="rich-text-editor jira-rich-editor" ref={editorContainerRef}>
+    <div className="rich-text-editor jira-rich-editor" ref={editorContainerRef} style={{ position: 'relative' }}>
       {/* Jira Top Toolbar */}
       <div className="rich-text-toolbar jira-editor-toolbar" role="toolbar" aria-label="Text formatting">
         {/* 1. Text styles dropdown */}
@@ -693,16 +809,19 @@ export function RichTextEditor({
               editor.chain().focus().extendMarkRange('link').unsetLink().run()
               return
             }
+            const trimmed = url.trim()
+            let parsed: URL
             try {
-              const parsed = new URL(url)
-              if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-                alert('Only http:// and https:// links are allowed.')
-                return
-              }
+              parsed = new URL(trimmed, window.location.origin)
             } catch {
-              // Relative URL allowed
+              alert('Invalid URL.')
+              return
             }
-            editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'mailto:') {
+              alert('Only http://, https://, and mailto: links are allowed.')
+              return
+            }
+            editor.chain().focus().extendMarkRange('link').setLink({ href: parsed.toString() }).run()
           }}
         >
           <Link2 size={15} />
@@ -967,6 +1086,52 @@ export function RichTextEditor({
         style={{ minHeight }}
         onClick={closeAllPopovers}
       />
+
+      {/* ── @mention dropdown ───────────────────────────────────────────── */}
+      {mentionOpen && mentionResults.length > 0 && (
+        <div
+          ref={mentionDropdownRef}
+          className="mention-dropdown"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {mentionResults.map((member, idx) => (
+            <button
+              key={member.userId ?? member.id}
+              type="button"
+              className={`mention-dropdown__item${idx === mentionIndex ? ' mention-dropdown__item--active' : ''}`}
+              onMouseEnter={() => setMentionIndex(idx)}
+              onClick={() => commitMention(member)}
+            >
+              {/* Avatar */}
+              {member.avatarUrl ? (
+                <img
+                  src={member.avatarUrl}
+                  alt={member.displayName ?? ''}
+                  className="mention-dropdown__avatar"
+                />
+              ) : (
+                <span className="mention-dropdown__avatar mention-dropdown__avatar--initials">
+                  {(member.displayName ?? '?').charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className="mention-dropdown__name">{member.displayName}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Ticket suggestion toast ──────────────────────────────────────── */}
+      {ticketSuggestion && !mentionOpen && (
+        <div className="ticket-suggestion">
+          <span className="ticket-suggestion__icon">🎫</span>
+          <span className="ticket-suggestion__key">{ticketSuggestion.key}</span>
+          <span className="ticket-suggestion__summary">{ticketSuggestion.summary}</span>
+          <kbd className="ticket-suggestion__hint">Space</kbd>
+          <span className="ticket-suggestion__hint-text">or</span>
+          <kbd className="ticket-suggestion__hint">↵</kbd>
+          <span className="ticket-suggestion__hint-text">to link</span>
+        </div>
+      )}
 
       {uploadError && <p className="form-error px-3 pb-2">{uploadError}</p>}
     </div>

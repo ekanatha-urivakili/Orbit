@@ -85,9 +85,14 @@ export function WorkItemLinkedItems({
             >
               <WorkItemTypeIcon type={link.type} size={15} />
               <span className="font-semibold text-gray-600 text-xs">{link.key}</span>
-              <span className="flex-1 text-[#172b4d] truncate hover:underline cursor-pointer">
+              <a
+                href={`/browse/${link.key}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 text-[#172b4d] truncate hover:underline"
+              >
                 {link.summary}
-              </span>
+              </a>
               <button
                 type="button"
                 className="p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"

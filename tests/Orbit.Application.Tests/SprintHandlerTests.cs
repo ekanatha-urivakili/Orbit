@@ -176,7 +176,7 @@ public sealed class SprintHandlerTests
         item.SetDetails(
             parentId: null, epicName: null, acceptanceCriteria: null, stepsToConduct: null,
             assigneeUserId: assigneeAccount.Id, developerUserId: null, productOwnerUserId: null,
-            sprintName: null, identifiedOn: null, storyPoints: null, labels: null, countries: null,
+            sprintName: null, identifiedOn: null, startDate: null, teamId: null, storyPoints: null, labels: null, countries: null,
             attachmentNames: null);
         var membership = SprintMembership.Create(tenantId, sprint.Id, item.Id, DateTimeOffset.UtcNow);
         var outbox = new OutboxRepositoryStub();
@@ -254,7 +254,7 @@ public sealed class SprintHandlerTests
         doneItem.SetDetails(
             parentId: null, epicName: null, acceptanceCriteria: null, stepsToConduct: null,
             assigneeUserId: assigneeAccount.Id, developerUserId: null, productOwnerUserId: null,
-            sprintName: null, identifiedOn: null, storyPoints: null, labels: null, countries: null,
+            sprintName: null, identifiedOn: null, startDate: null, teamId: null, storyPoints: null, labels: null, countries: null,
             attachmentNames: null);
         var doneMembership = SprintMembership.Create(tenantId, sprint.Id, doneItem.Id, DateTimeOffset.UtcNow);
         var outbox = new OutboxRepositoryStub();
@@ -634,6 +634,9 @@ public sealed class SprintHandlerTests
             CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<WorkItem>([], 0));
 
+        public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+        public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<IReadOnlyList<WorkItem>> ListByIdsAsync(
             Guid tenantId,
             IReadOnlyCollection<Guid> workItemIds,

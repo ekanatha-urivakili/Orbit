@@ -39,6 +39,7 @@ import type {
   WorkItemComment,
   WorkItemTypeDefinition,
   WorkItemStatus,
+  WorkItemType,
   CustomFieldDefinition,
   CustomFieldType,
 } from './types'
@@ -133,6 +134,12 @@ export const orbitApi = {
       headers: { 'If-Match': `"${workItem.version}"` },
       body: JSON.stringify({ beforeWorkItemId: neighbors.beforeId, afterWorkItemId: neighbors.afterId }),
     }),
+  changeWorkItemType: (workItem: WorkItem, type: WorkItemType) =>
+    request<WorkItem>(`/work-items/${workItem.id}/type`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${workItem.version}"` },
+      body: JSON.stringify({ type }),
+    }),
   listWorkItemLinks: (workItemId: string) =>
     request<WorkItemLink[]>(`/work-items/${encodeURIComponent(workItemId)}/links`),
   addWorkItemLink: (workItemId: string, input: { kind: WorkItemLinkKind; targetWorkItemId: string; inverse: boolean }) =>
@@ -187,6 +194,104 @@ export const orbitApi = {
     request<void>(`/work-items/${encodeURIComponent(workItemId)}/watchers/me`, { method: 'PUT' }),
   unwatchWorkItem: (workItemId: string) =>
     request<void>(`/work-items/${encodeURIComponent(workItemId)}/watchers/me`, { method: 'DELETE' }),
+  toggleWorkItemFlag: (workItem: WorkItem, flagged: boolean) =>
+    request<WorkItem>(`/work-items/${workItem.id}/flag`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${workItem.version}"` },
+      body: JSON.stringify({ flagged }),
+    }),
+  setWorkItemCover: (workItem: WorkItem, attachmentId: string | null) =>
+    request<WorkItem>(`/work-items/${workItem.id}/cover`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${workItem.version}"` },
+      body: JSON.stringify({ attachmentId }),
+    }),
+  getWorkItemVotes: (workItemId: string) =>
+    request<import('./types').WorkItemVotes>(`/work-items/${encodeURIComponent(workItemId)}/votes`),
+  addWorkItemVote: (workItemId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/votes/me`, { method: 'PUT' }),
+  removeWorkItemVote: (workItemId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/votes/me`, { method: 'DELETE' }),
+  listWorkItemHistory: (workItemId: string) =>
+    request<PagedResult<import('./types').WorkItemHistoryEntry>>(
+      `/work-items/${encodeURIComponent(workItemId)}/history`,
+    ),
+  listWorklogs: (workItemId: string) =>
+    request<PagedResult<import('./types').WorkItemWorklog>>(
+      `/work-items/${encodeURIComponent(workItemId)}/worklogs`,
+    ),
+  addWorklog: (workItemId: string, input: { minutesSpent: number; workDate: string; description: string | null }) =>
+    request<import('./types').WorkItemWorklog>(`/work-items/${encodeURIComponent(workItemId)}/worklogs`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  deleteWorklog: (workItemId: string, worklogId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/worklogs/${encodeURIComponent(worklogId)}`, {
+      method: 'DELETE',
+    }),
+  cloneWorkItem: (workItemId: string) =>
+    request<WorkItem>(`/work-items/${encodeURIComponent(workItemId)}/clone`, { method: 'POST' }),
+  moveWorkItem: (workItem: WorkItem, targetProjectId: string) =>
+    request<WorkItem>(`/work-items/${workItem.id}/move`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${workItem.version}"` },
+      body: JSON.stringify({ targetProjectId }),
+    }),
+  archiveWorkItem: (workItem: WorkItem) =>
+    request<WorkItem>(`/work-items/${workItem.id}/archive`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${workItem.version}"` },
+    }),
+  unarchiveWorkItem: (workItem: WorkItem) =>
+    request<WorkItem>(`/work-items/${workItem.id}/unarchive`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${workItem.version}"` },
+    }),
+  deleteWorkItem: (workItem: WorkItem) =>
+    request<void>(`/work-items/${workItem.id}`, {
+      method: 'DELETE',
+      headers: { 'If-Match': `"${workItem.version}"` },
+    }),
+  shareWorkItem: (workItemId: string, input: { membershipIds: string[]; teamIds: string[]; message: string | null }) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/share`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  postWorkItemToSlack: (workItemId: string, message: string | null) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/slack-share`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+  startSlackConnect: (projectId: string) =>
+    request<{ url: string }>('/integrations/slack/authorize-url', {
+      method: 'POST',
+      body: JSON.stringify({ projectId }),
+    }),
+  completeSlackOAuth: (code: string, state: string) =>
+    request<{ id: string; projectId: string; teamName: string; channelName: string; createdAt: string }>(
+      '/integrations/slack/complete',
+      { method: 'POST', body: JSON.stringify({ code, state }) },
+    ),
+  getSlackConnection: (projectId: string) =>
+    request<{ id: string; projectId: string; teamName: string; channelName: string; createdAt: string } | null>(
+      `/integrations/slack/connection?projectId=${encodeURIComponent(projectId)}`,
+    ),
+  disconnectSlack: (connectionId: string) =>
+    request<void>(`/integrations/slack/connections/${encodeURIComponent(connectionId)}`, { method: 'DELETE' }),
+  // Direct fetch (not the JSON `request` helper) — export returns a downloadable file, not JSON.
+  exportWorkItem: async (workItem: WorkItem, format: import('./types').WorkItemExportFormat) => {
+    const headers = new Headers({ 'X-Tenant-Id': getTenantId() })
+    await withAuthHeader(headers)
+    const response = await fetch(
+      `${apiUrl}/work-items/${workItem.id}/export?format=${format}`,
+      { headers },
+    )
+    if (!response.ok) {
+      const problem = (await response.json().catch(() => ({}))) as ProblemDetails
+      throw new Error(problem.detail ?? problem.title ?? `Export failed (${response.status})`)
+    }
+    return { blob: await response.blob(), fileName: `${workItem.key}.${format.toLowerCase()}` }
+  },
   // Direct PUT to the presigned object-storage URL — bypasses the Orbit API wrapper entirely,
   // since the file bytes go straight to MinIO/S3, not through the Orbit backend.
   uploadAttachmentFile: async (uploadUrl: string, file: File) => {

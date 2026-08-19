@@ -52,6 +52,20 @@ internal sealed class WorkItemRepository(
             .Where(workItem => workItemIds.Contains(workItem.Id))
             .ToArrayAsync(cancellationToken);
 
+    public Task<bool> HasChildrenAsync(
+        Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
+        dbContext.WorkItems
+            .AsNoTracking()
+            .AnyAsync(
+                workItem => workItem.TenantId == tenantId && workItem.ParentId == parentWorkItemId,
+                cancellationToken);
+
+    public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken)
+    {
+        dbContext.WorkItems.Remove(workItem);
+        return Task.CompletedTask;
+    }
+
     private IQueryable<WorkItem> PermittedWorkItems(Guid tenantId, ProjectPermission permission)
     {
         var permittedProjectIds = ProjectAccessQuery
