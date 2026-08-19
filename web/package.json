@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
-    "lint:docs": "cd .. && web/node_modules/.bin/markdownlint-cli2 README.md ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md",
+    "test:e2e": "playwright test",
+    "lint:docs": "cd .. && web/node_modules/.bin/markdownlint-cli2 README.md ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md CI-CD-PLAN.md",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
+    "@playwright/test": "^1.55.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

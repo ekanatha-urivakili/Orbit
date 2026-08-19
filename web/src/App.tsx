@@ -51,6 +51,60 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('project')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [oidcError, setOidcError] = useState<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('orbit_sidebar_width')
+    return saved ? Math.max(180, Math.min(480, Number(saved))) : 240
+  })
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('orbit_sidebar_collapsed') === 'true'
+  })
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+
+  const toggleSidebarCollapse = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current
+      localStorage.setItem('orbit_sidebar_collapsed', String(next))
+      return next
+    })
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === '[') {
+        event.preventDefault()
+        toggleSidebarCollapse()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  const handleStartResizeSidebar = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sidebarWidth
+    setIsResizingSidebar(true)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX
+      const newWidth = Math.max(180, Math.min(480, startWidth + delta))
+      setSidebarWidth(newWidth)
+      localStorage.setItem('orbit_sidebar_width', String(newWidth))
+    }
+
+    const handlePointerUp = () => {
+      setIsResizingSidebar(false)
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp)
+  }
 
   const [registerRequested, setRegisterRequested] = useState(() => {
     const url = new URL(window.location.href)
@@ -541,7 +595,7 @@ function App() {
         />
       )}
 
-      <div className="flex">
+      <div className="flex relative">
         <Sidebar
           mobileMenuOpen={mobileMenuOpen}
           setMobileMenuOpen={setMobileMenuOpen}
@@ -558,9 +612,21 @@ function App() {
             setActiveView('settings')
           }}
           workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name}
+          width={sidebarWidth}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapse}
+          onStartResize={handleStartResizeSidebar}
+          isResizing={isResizingSidebar}
         />
         
-        <main className="region-middle flex-1 lg:ml-[240px] min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden">
+        <main
+          style={{
+            marginLeft: sidebarCollapsed ? '0px' : `${sidebarWidth}px`,
+          }}
+          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden transition-[margin-left] duration-150 ease-out ${
+            isResizingSidebar ? '!transition-none' : ''
+          }`}
+        >
           {projects.length === 0 ? <ProjectOnboarding /> : <>
           {activeView === 'home' && (
             <HomeView

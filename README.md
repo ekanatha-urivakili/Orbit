@@ -260,3 +260,14 @@ PostgreSQL row-level security is defense in depth. Every tenant-scoped API reque
 ## Deployment
 
 OCI builds are defined by `Dockerfile.api`, `Dockerfile.worker`, and `Dockerfile.web`. Railway service configuration and environment requirements are documented in [deploy/railway/README.md](deploy/railway/README.md).
+
+## CI/CD
+
+`.github/workflows/ci.yml` is the required check on every PR and `main` push: backend build/test
+against real Postgres/Valkey, an EF migration-range safety scan, frontend lint/test/build, an E2E
+smoke test, and (on `main`/version tags) building, scanning, and publishing SHA-tagged container
+images plus a release manifest to GHCR. `.github/workflows/codeql.yml` runs CodeQL on PRs, `main`,
+and weekly. `.github/workflows/deploy-railway.yml` deploys to Railway — automatically to staging
+on merge to `main`, and via manual dispatch (with approval) for production. See
+[CI-CD-PLAN.md](CI-CD-PLAN.md) for the full design, phased rollout, and what's still pending
+(the Railway image-source migration and required-check enforcement timing).

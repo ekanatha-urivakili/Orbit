@@ -20,6 +20,7 @@ export function KanbanBoard({
   onOpen?: (workItem: WorkItem) => void
 }) {
   const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverColumnStatus, setDragOverColumnStatus] = useState<WorkItemStatus | null>(null)
   const orderedColumns = useMemo(() => [...columns].sort((a, b) => a.order - b.order), [columns])
   const grouped = useMemo(
     () => groupWorkItemsByStatus(orderedColumns.map((column) => column.status), workItems),
@@ -30,7 +31,22 @@ export function KanbanBoard({
 
   function drop(column: BoardColumn, columnItems: WorkItem[], dropIndex: number) {
     const dragged = draggedId && workItems.find((item) => item.id === draggedId)
-    if (!dragged || dragged.status !== column.status) return
+    setDragOverColumnStatus(null)
+    setDraggedId(null)
+    if (!dragged) return
+
+    if (dragged.status !== column.status) {
+      if (
+        column.wipLimit != null &&
+        column.wipLimitMode === 'Block' &&
+        columnItems.length >= column.wipLimit
+      ) {
+        return
+      }
+      onStatusChange(dragged, column.status)
+      return
+    }
+
     onReorder(dragged, neighborsForDrop(columnItems, dragged.id, dropIndex))
   }
 
@@ -40,8 +56,27 @@ export function KanbanBoard({
         const columnItems = grouped.get(column.status) ?? []
         const meta = statusMeta[column.status]
         const overLimit = column.wipLimit != null && columnItems.length > column.wipLimit
+        const isDragOver = dragOverColumnStatus === column.status
+        const isBlocked =
+          Boolean(draggedId) &&
+          dragOverColumnStatus === column.status &&
+          column.wipLimit != null &&
+          column.wipLimitMode === 'Block' &&
+          columnItems.length >= column.wipLimit &&
+          workItems.find((i) => i.id === draggedId)?.status !== column.status
+
         return (
-          <section className="kanban-column" key={column.status} aria-labelledby={`column-${column.status}`}>
+          <section
+            className={`kanban-column${isDragOver ? ' kanban-column--drag-over' : ''}${isBlocked ? ' kanban-column--drag-blocked' : ''}`}
+            key={column.status}
+            aria-labelledby={`column-${column.status}`}
+            onDragEnter={() => setDragOverColumnStatus(column.status)}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                setDragOverColumnStatus((current) => (current === column.status ? null : current))
+              }
+            }}
+          >
             <header>
               <span className={`status-dot ${meta.tone}`} />
               <h2 id={`column-${column.status}`}>{meta.label}</h2>
@@ -52,7 +87,12 @@ export function KanbanBoard({
             </header>
             <div
               className="card-list"
-              onDragOver={(event) => event.preventDefault()}
+              onDragOver={(event) => {
+                event.preventDefault()
+                if (event.dataTransfer) {
+                  event.dataTransfer.dropEffect = isBlocked ? 'none' : 'move'
+                }
+              }}
               onDrop={(event) => {
                 event.preventDefault()
                 drop(column, columnItems, columnItems.length)
@@ -68,8 +108,16 @@ export function KanbanBoard({
                   onOpen={onOpen}
                   dragging={item.id === draggedId}
                   onDragStart={() => setDraggedId(item.id)}
-                  onDragEnd={() => setDraggedId(null)}
-                  onDragOver={(event) => event.preventDefault()}
+                  onDragEnd={() => {
+                    setDraggedId(null)
+                    setDragOverColumnStatus(null)
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    if (event.dataTransfer) {
+                      event.dataTransfer.dropEffect = isBlocked ? 'none' : 'move'
+                    }
+                  }}
                   onDrop={(event) => {
                     event.preventDefault()
                     event.stopPropagation()

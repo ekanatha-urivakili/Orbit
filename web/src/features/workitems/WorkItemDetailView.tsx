@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronLeft,
+  ChevronRight,
   ChevronDown,
   Check,
   Settings,
@@ -159,6 +160,50 @@ export function WorkItemDetailView({
   const [shareOpen, setShareOpen] = useState(false)
   const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('orbit_right_sidebar_width')
+    return saved ? Math.max(260, Math.min(600, Number(saved))) : 360
+  })
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('orbit_right_sidebar_collapsed') === 'true'
+  })
+  const [isResizingRight, setIsResizingRight] = useState(false)
+
+  const toggleRightSidebarCollapse = () => {
+    setRightSidebarCollapsed((current) => {
+      const next = !current
+      localStorage.setItem('orbit_right_sidebar_collapsed', String(next))
+      return next
+    })
+  }
+
+  const handleStartResizeRight = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = rightSidebarWidth
+    setIsResizingRight(true)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = startX - moveEvent.clientX
+      const newWidth = Math.max(260, Math.min(600, startWidth + delta))
+      setRightSidebarWidth(newWidth)
+      localStorage.setItem('orbit_right_sidebar_width', String(newWidth))
+    }
+
+    const handlePointerUp = () => {
+      setIsResizingRight(false)
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp)
+  }
+
   useEffect(() => {
     return () => {
       if (successTimerRef.current) clearTimeout(successTimerRef.current)
@@ -314,273 +359,227 @@ export function WorkItemDetailView({
   }
 
   return (
-    <div className="work-item-detail">
-      {/* Breadcrumb row (Clickable navigation & Add Epic popup like Jira) */}
-      <div className="work-item-detail-breadcrumb flex items-center gap-2">
-        <button type="button" className="icon-button" onClick={onBack} aria-label="Back">
-          <ChevronLeft size={18} />
-        </button>
-        <button
-          type="button"
-          onClick={onNavigateHome ?? onBack}
-          className="hover:underline text-gray-600 dark:text-gray-400 font-medium cursor-pointer"
-        >
-          Spaces
-        </button>
-        <span className="work-item-detail-breadcrumb-sep">/</span>
-        <button
-          type="button"
-          onClick={onBack}
-          className="hover:underline text-gray-800 dark:text-gray-200 font-semibold flex items-center gap-1.5 cursor-pointer"
-        >
-          <span className="flex h-4 w-4 items-center justify-center rounded bg-blue-600 text-[10px] font-bold text-white">
-            {project?.key ? project.key.slice(0, 1) : 'P'}
-          </span>
-          {project?.name ?? 'Space'}
-        </button>
-        <span className="work-item-detail-breadcrumb-sep">/</span>
-
-        {/* Breadcrumb Add Epic / Epic badge (Matching Jira Screenshot 3) */}
-        {currentType !== 'Initiative' && currentType !== 'Epic' && (
-          <>
-            <div className="relative inline-flex items-center gap-0.5" ref={epicPopupRef}>
-              {parentEpic ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setEpicMenuOpen(!epicMenuOpen)}
-                    className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] transition-colors"
-                    title="Epic - Change epic"
-                  >
-                    <WorkItemTypeIcon type="Epic" size={13} />
-                    <ChevronDown size={11} className="text-gray-400" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenWorkItem(parentEpic)}
-                    className="truncate max-w-[140px] text-xs font-semibold text-purple-700 dark:text-purple-400 hover:underline"
-                    title={`${parentEpic.key}: ${parentEpic.summary}`}
-                  >
-                    {parentEpic.summary}
-                  </button>
-
-                  {epicMenuOpen && (
-                    <div className="absolute left-0 top-full mt-1.5 w-44 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl py-1.5 z-50 animate-in fade-in">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleSelectEpic(null)
-                          setEpicMenuOpen(false)
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
-                      >
-                        Unlink parent
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEpicMenuOpen(false)
-                          setEpicPopupOpen(true)
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
-                      >
-                        View all epics
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setEpicPopupOpen(!epicPopupOpen)}
-                  className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors"
-                  title="Add epic"
-                >
-                  <Edit size={12} className="text-gray-400" />
-                  <span>Add epic</span>
-                </button>
-              )}
-
-              {/* Epic Search / Selection floating popup ("View all epics") */}
-              {epicPopupOpen && (
-                <div className="absolute left-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl p-2.5 z-50 animate-in fade-in">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Select Epic
-                    </span>
-                    {parentEpic && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleSelectEpic(null)
-                          setEpicPopupOpen(false)
-                        }}
-                        className="text-[11px] text-red-600 hover:underline font-medium"
-                      >
-                        Remove epic
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="Search epics..."
-                    value={epicSearch}
-                    onChange={(e) => setEpicSearch(e.target.value)}
-                    className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 mb-2 focus:outline-none focus:border-blue-500 dark:bg-[#22272b] dark:text-white"
-                  />
-                  <div className="max-h-48 overflow-y-auto space-y-1">
-                    {filteredEpics.slice(0, 5).map((epic) => (
-                      <button
-                        key={epic.id}
-                        type="button"
-                        onClick={() => {
-                          handleSelectEpic(epic.id)
-                          setEpicPopupOpen(false)
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors ${
-                          details.parentId === epic.id
-                            ? 'bg-purple-100 dark:bg-purple-900/40 font-semibold text-purple-900 dark:text-purple-300'
-                            : 'text-gray-800 dark:text-gray-200'
-                        }`}
-                      >
-                        <WorkItemTypeIcon type="Epic" size={13} />
-                        <span className="font-semibold text-gray-600 dark:text-gray-400">{epic.key}</span>
-                        <span className="truncate flex-1">{epic.summary}</span>
-                        {details.parentId === epic.id && <Check size={13} className="text-purple-600 ml-auto" />}
-                      </button>
-                    ))}
-                    {filteredEpics.length === 0 && (
-                      <p className="text-xs text-gray-400 text-center py-2">No epics found</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            <span className="work-item-detail-breadcrumb-sep">/</span>
-          </>
-        )}
-
-        {/* Breadcrumb Interactive Type Icon */}
-        <div className="relative inline-flex items-center" ref={typeMenuRef}>
-          <button
-            type="button"
-            onClick={() => setTypeMenuOpen(!typeMenuOpen)}
-            className="flex items-center gap-1.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] font-semibold text-gray-700 dark:text-gray-200 text-xs transition-colors"
-            title={`${currentType} - Click to change work type`}
-          >
-            <WorkItemTypeIcon type={currentType} size={16} />
-            <span>{item.key}</span>
-            <ChevronDown size={12} className="text-gray-400" />
+    <form className="work-item-detail" onSubmit={submit}>
+      <div className="work-item-detail-main">
+        {/* Breadcrumb row (Clickable navigation & Add Epic popup like Jira) */}
+        <div className="work-item-detail-breadcrumb flex items-center gap-2">
+          <button type="button" className="icon-button" onClick={onBack} aria-label="Back">
+            <ChevronLeft size={18} />
           </button>
           <button
             type="button"
-            onClick={handleCopyLink}
-            className="relative flex items-center p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-400 transition-colors"
-            title={`${window.location.origin}/browse/${item.key}`}
-            aria-label="Copy link to this ticket"
+            onClick={onNavigateHome ?? onBack}
+            className="hover:underline text-gray-600 dark:text-gray-400 font-medium cursor-pointer"
           >
-            {linkCopied ? <Check size={13} className="text-green-600" /> : <LinkIcon size={13} />}
-            {linkCopied && (
-              <span className="absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-[11px] font-medium text-white shadow-lg animate-in fade-in">
-                Copied!
-              </span>
-            )}
+            Spaces
           </button>
-
-          {/* Type switcher floating menu (Matching Screenshot 2) */}
-          {typeMenuOpen && (
-            <div className="absolute left-0 top-full mt-1.5 w-52 bg-white border border-[#dfe1e6] shadow-2xl rounded-xl py-2 z-50 animate-in fade-in">
-              <div className="px-3.5 py-1 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                Change work type
-              </div>
-              <div className="my-1">
-                {availableWorkTypes.map(({ type: t, label }) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => handleChangeType(t)}
-                    className={`w-full text-left px-3.5 py-2 text-sm flex items-center gap-2.5 transition-colors ${
-                      currentType === t
-                        ? 'bg-[#deebff] text-[#0052cc] font-semibold'
-                        : 'hover:bg-[#f4f5f7] text-[#172b4d]'
-                    }`}
-                  >
-                    <WorkItemTypeIcon type={t} size={16} />
-                    <span>{label}</span>
-                    {currentType === t && <Check size={14} className="ml-auto text-[#0052cc]" />}
-                  </button>
-                ))}
-              </div>
-              {onManageWorkTypes && (
-                <>
-                  <div className="my-1 border-t border-gray-100" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTypeMenuOpen(false)
-                      onManageWorkTypes()
-                    }}
-                    className="w-full text-left px-3.5 py-1.5 text-xs text-gray-600 hover:bg-[#f4f5f7] flex items-center gap-2"
-                  >
-                    <Settings size={13} className="text-gray-400" /> Manage work types
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Watcher action toggle */}
-        <div className="ml-auto flex items-center gap-2">
+          <span className="work-item-detail-breadcrumb-sep">/</span>
           <button
             type="button"
-            onClick={() => watchMutation.mutate()}
-            disabled={watchMutation.isPending}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-              watchers.isWatching
-                ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-            }`}
-            title={watchers.isWatching ? 'Stop watching this work item' : 'Watch this work item for updates'}
+            onClick={onBack}
+            className="hover:underline text-gray-800 dark:text-gray-200 font-semibold flex items-center gap-1.5 cursor-pointer"
           >
-            {watchers.isWatching ? <EyeOff size={13} /> : <Eye size={13} />}
-            <span>{watchers.isWatching ? 'Watching' : 'Watch'}</span>
-            <span className="ml-0.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">
-              {watchers.count}
+            <span className="flex h-4 w-4 items-center justify-center rounded bg-blue-600 text-[10px] font-bold text-white">
+              {project?.key ? project.key.slice(0, 1) : 'P'}
             </span>
+            {project?.name ?? 'Space'}
           </button>
+          <span className="work-item-detail-breadcrumb-sep">/</span>
 
-          <div className="relative inline-flex items-center">
+          {/* Breadcrumb Add Epic / Epic badge (Matching Jira Screenshot 3) */}
+          {currentType !== 'Initiative' && currentType !== 'Epic' && (
+            <>
+              <div className="relative inline-flex items-center gap-0.5" ref={epicPopupRef}>
+                {parentEpic ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEpicMenuOpen(!epicMenuOpen)}
+                      className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] transition-colors"
+                      title="Epic - Change epic"
+                    >
+                      <WorkItemTypeIcon type="Epic" size={13} />
+                      <ChevronDown size={11} className="text-gray-400" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpenWorkItem(parentEpic)}
+                      className="truncate max-w-[140px] text-xs font-semibold text-purple-700 dark:text-purple-400 hover:underline"
+                      title={`${parentEpic.key}: ${parentEpic.summary}`}
+                    >
+                      {parentEpic.summary}
+                    </button>
+
+                    {epicMenuOpen && (
+                      <div className="absolute left-0 top-full mt-1.5 w-44 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl py-1.5 z-50 animate-in fade-in">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleSelectEpic(null)
+                            setEpicMenuOpen(false)
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
+                        >
+                          Unlink parent
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEpicMenuOpen(false)
+                            setEpicPopupOpen(true)
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
+                        >
+                          View all epics
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEpicPopupOpen(!epicPopupOpen)}
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors"
+                    title="Add epic"
+                  >
+                    <Edit size={12} className="text-gray-400" />
+                    <span>Add epic</span>
+                  </button>
+                )}
+
+                {/* Epic Search / Selection floating popup ("View all epics") */}
+                {epicPopupOpen && (
+                  <div className="absolute left-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl p-2.5 z-50 animate-in fade-in">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Select Epic
+                      </span>
+                      {parentEpic && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleSelectEpic(null)
+                            setEpicPopupOpen(false)
+                          }}
+                          className="text-[11px] text-red-600 hover:underline font-medium"
+                        >
+                          Remove epic
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Search epics..."
+                      value={epicSearch}
+                      onChange={(e) => setEpicSearch(e.target.value)}
+                      className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 mb-2 focus:outline-none focus:border-blue-500 dark:bg-[#22272b] dark:text-white"
+                    />
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {filteredEpics.slice(0, 5).map((epic) => (
+                        <button
+                          key={epic.id}
+                          type="button"
+                          onClick={() => {
+                            handleSelectEpic(epic.id)
+                            setEpicPopupOpen(false)
+                          }}
+                          className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors ${
+                            details.parentId === epic.id
+                              ? 'bg-purple-100 dark:bg-purple-900/40 font-semibold text-purple-900 dark:text-purple-300'
+                              : 'text-gray-800 dark:text-gray-200'
+                          }`}
+                        >
+                          <WorkItemTypeIcon type="Epic" size={13} />
+                          <span className="font-semibold text-gray-600 dark:text-gray-400">{epic.key}</span>
+                          <span className="truncate flex-1">{epic.summary}</span>
+                          {details.parentId === epic.id && <Check size={13} className="text-purple-600 ml-auto" />}
+                        </button>
+                      ))}
+                      {filteredEpics.length === 0 && (
+                        <p className="text-xs text-gray-400 text-center py-2">No epics found</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <span className="work-item-detail-breadcrumb-sep">/</span>
+            </>
+          )}
+
+          {/* Breadcrumb Interactive Type Icon */}
+          <div className="relative inline-flex items-center" ref={typeMenuRef}>
             <button
               type="button"
-              onClick={() => setShareOpen((open) => !open)}
-              className="flex items-center justify-center p-2 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-              title="Share"
-              aria-label="Share"
+              onClick={() => setTypeMenuOpen(!typeMenuOpen)}
+              className="flex items-center gap-1.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] font-semibold text-gray-700 dark:text-gray-200 text-xs transition-colors"
+              title={`${currentType} - Click to change work type`}
             >
-              <Share2 size={16} />
+              <WorkItemTypeIcon type={currentType} size={16} />
+              <span>{item.key}</span>
+              <ChevronDown size={12} className="text-gray-400" />
             </button>
-            {shareOpen && <WorkItemShareMenu item={item} onClose={() => setShareOpen(false)} />}
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="relative flex items-center p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-400 transition-colors"
+              title={`${window.location.origin}/browse/${item.key}`}
+              aria-label="Copy link to this ticket"
+            >
+              {linkCopied ? <Check size={13} className="text-green-600" /> : <LinkIcon size={13} />}
+              {linkCopied && (
+                <span className="absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-[11px] font-medium text-white shadow-lg animate-in fade-in">
+                  Copied!
+                </span>
+              )}
+            </button>
+
+            {/* Type switcher floating menu (Matching Screenshot 2) */}
+            {typeMenuOpen && (
+              <div className="absolute left-0 top-full mt-1.5 w-52 bg-white border border-[#dfe1e6] shadow-2xl rounded-xl py-2 z-50 animate-in fade-in">
+                <div className="px-3.5 py-1 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  Change work type
+                </div>
+                <div className="my-1">
+                  {availableWorkTypes.map(({ type: t, label }) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => handleChangeType(t)}
+                      className={`w-full text-left px-3.5 py-2 text-sm flex items-center gap-2.5 transition-colors ${
+                        currentType === t
+                          ? 'bg-[#deebff] text-[#0052cc] font-semibold'
+                          : 'hover:bg-[#f4f5f7] text-[#172b4d]'
+                      }`}
+                    >
+                      <WorkItemTypeIcon type={t} size={16} />
+                      <span>{label}</span>
+                      {currentType === t && <Check size={14} className="ml-auto text-[#0052cc]" />}
+                    </button>
+                  ))}
+                </div>
+                {onManageWorkTypes && (
+                  <>
+                    <div className="my-1 border-t border-gray-100" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTypeMenuOpen(false)
+                        onManageWorkTypes()
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-gray-600 hover:bg-[#f4f5f7] flex items-center gap-2"
+                    >
+                      <Settings size={13} className="text-gray-400" /> Manage work types
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-
-          <WorkItemActionsMenu
-            item={item}
-            onOpenWorkItem={onOpenWorkItem}
-            onFocusParentField={() => {
-              const field = document.getElementById('work-item-parent-field')
-              field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-              field?.querySelector<HTMLElement>('input, button')?.focus()
-            }}
-            onDeleted={onBack}
-          />
         </div>
-      </div>
 
-      <form className="work-item-detail-grid" onSubmit={submit}>
-        <div className="work-item-detail-main">
-          {/* Title Row with Type Switcher */}
-          <div className="work-item-detail-title-row relative flex items-center gap-2">
+        {/* Title Row with Type Switcher */}
+        <div className="work-item-detail-title-row relative flex items-center gap-2">
             <button
               type="button"
               onClick={() => setTypeMenuOpen(!typeMenuOpen)}
@@ -733,24 +732,97 @@ export function WorkItemDetailView({
           <WorkItemComments workItemId={item.id} profile={profile} members={members} workItems={workItems} />
         </div>
 
-        {/* Sidebar Details Panel (Pure White background) */}
-        <aside className="work-item-detail-sidebar">
-          <label className={`work-item-detail-status work-item-detail-status--${statusMeta[item.status].tone}`}>
-            <span className="sr-only">Status</span>
-            <select
-              value={item.status}
-              onChange={(event) =>
-                onStatusChange(item, event.target.value as WorkItemStatus)
-              }
-            >
-              {allStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {statusMeta[status].label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={14} aria-hidden="true" />
-          </label>
+        {/* Separation Resizer Bar (Between middle form and details panel, going all the way to the top header) */}
+        <div
+          className={`work-item-resizer hidden lg:flex ${isResizingRight ? 'is-resizing' : ''}`}
+          onPointerDown={handleStartResizeRight}
+          onDoubleClick={toggleRightSidebarCollapse}
+          title="Double click to collapse / expand details"
+        >
+          <div className="work-item-resizer-line" />
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              toggleRightSidebarCollapse()
+            }}
+            className="work-item-resizer-btn"
+            aria-label={rightSidebarCollapsed ? 'Expand details sidebar' : 'Collapse details sidebar'}
+            title={rightSidebarCollapsed ? 'Expand details sidebar' : 'Collapse details sidebar'}
+          >
+            {rightSidebarCollapsed ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+          </button>
+        </div>
+
+        {/* Sidebar Details Panel */}
+        <aside
+          style={{
+            width: rightSidebarCollapsed ? '0px' : `${rightSidebarWidth}px`,
+          }}
+          className={`work-item-detail-sidebar flex-shrink-0 transition-[width] duration-150 ease-out ${
+            isResizingRight ? '!transition-none' : ''
+          } ${rightSidebarCollapsed ? '!hidden' : ''}`}
+        >
+          {/* Top Status & Actions row (matching Jira Screenshot 1) */}
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <label className={`work-item-detail-status work-item-detail-status--${statusMeta[item.status].tone} !mb-0 flex-1`}>
+              <span className="sr-only">Status</span>
+              <select
+                value={item.status}
+                onChange={(event) =>
+                  onStatusChange(item, event.target.value as WorkItemStatus)
+                }
+              >
+                {allStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {statusMeta[status].label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => watchMutation.mutate()}
+                disabled={watchMutation.isPending}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                  watchers.isWatching
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-100'
+                    : 'bg-white dark:bg-[#1d2125] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#22272b]'
+                }`}
+                title={watchers.isWatching ? 'Stop watching this work item' : 'Watch this work item for updates'}
+              >
+                {watchers.isWatching ? <EyeOff size={13} /> : <Eye size={13} />}
+                <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300">{watchers.count}</span>
+              </button>
+
+              <div className="relative inline-flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setShareOpen((open) => !open)}
+                  className="flex items-center justify-center p-1.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#22272b] transition-colors"
+                  title="Share"
+                  aria-label="Share"
+                >
+                  <Share2 size={15} />
+                </button>
+                {shareOpen && <WorkItemShareMenu item={item} onClose={() => setShareOpen(false)} />}
+              </div>
+
+              <WorkItemActionsMenu
+                item={item}
+                onOpenWorkItem={onOpenWorkItem}
+                onFocusParentField={() => {
+                  const field = document.getElementById('work-item-parent-field')
+                  field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                  field?.querySelector<HTMLElement>('input, button')?.focus()
+                }}
+                onDeleted={onBack}
+              />
+            </div>
+          </div>
 
           <div className="work-item-detail-panel">
             <h3>Details</h3>
@@ -949,6 +1021,5 @@ export function WorkItemDetailView({
           </div>
         </aside>
       </form>
-    </div>
   )
 }
