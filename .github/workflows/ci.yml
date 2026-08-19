@@ -15,13 +15,13 @@ jobs:
       postgres:
         image: postgres:18-alpine
         env:
-          POSTGRES_DB: orbit_ci
+          POSTGRES_DB: orbit_test
           POSTGRES_USER: orbit
           POSTGRES_PASSWORD: orbit_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U orbit -d orbit_ci"
+          --health-cmd "pg_isready -U orbit -d orbit_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 15
@@ -63,10 +63,12 @@ jobs:
       - name: Apply schema to PostgreSQL
         run: dotnet ef database update --project src/Orbit.Infrastructure --startup-project src/Orbit.Infrastructure --no-build --configuration Release
         env:
-          ConnectionStrings__Postgres: Host=localhost;Port=5432;Database=orbit_ci;Username=orbit;Password=orbit_ci
+          ConnectionStrings__Postgres: Host=localhost;Port=5432;Database=orbit_test;Username=orbit;Password=orbit_ci
 
       - name: Test backend
         run: dotnet test Orbit.slnx --configuration Release --no-build --no-restore --collect:"XPlat Code Coverage"
+        env:
+          POSTGRES_PASSWORD: orbit_ci
 
       - name: Audit NuGet dependencies
         run: dotnet list Orbit.slnx package --vulnerable --include-transitive
