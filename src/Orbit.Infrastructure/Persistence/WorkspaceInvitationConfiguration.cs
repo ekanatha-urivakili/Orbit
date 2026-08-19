@@ -16,6 +16,12 @@ internal sealed class WorkspaceInvitationConfiguration : IEntityTypeConfiguratio
                 "ck_workspace_invitations_role",
                 "tenant_role IN ('Administrator', 'Member')");
             table.HasCheckConstraint(
+                "ck_workspace_invitations_tier",
+                "tier IN ('Standard', 'Guest')");
+            table.HasCheckConstraint(
+                "ck_workspace_invitations_guest_role",
+                "tier <> 'Guest' OR tenant_role = 'Member'");
+            table.HasCheckConstraint(
                 "ck_workspace_invitations_status",
                 "status IN ('Active', 'Accepted', 'Revoked')");
             table.HasCheckConstraint("ck_workspace_invitations_version", "version > 0");
@@ -28,6 +34,8 @@ internal sealed class WorkspaceInvitationConfiguration : IEntityTypeConfiguratio
             .HasColumnName("normalized_email").HasMaxLength(320).IsRequired();
         builder.Property(invitation => invitation.Role)
             .HasColumnName("tenant_role").HasConversion<string>().HasMaxLength(32);
+        builder.Property(invitation => invitation.Tier)
+            .HasColumnName("tier").HasConversion<string>().HasMaxLength(16);
         builder.Property(invitation => invitation.TeamId).HasColumnName("team_id");
         builder.Property(invitation => invitation.TokenHash)
             .HasColumnName("token_hash").HasMaxLength(64).IsRequired();

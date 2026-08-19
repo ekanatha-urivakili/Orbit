@@ -83,7 +83,7 @@ public sealed class PasswordResetHandlerTests
         var account = UserAccount.Create("user@example.test", "Test User", now);
         var credential = LocalCredential.Create(account.Id, "old-hash", "argon2id", 1, now);
         var session = RefreshSession.CreateInitial(
-            account.Id, Guid.NewGuid(), "session-hash", null, null, now, TimeSpan.FromDays(30));
+            account.Id, Guid.NewGuid(), "session-hash", null, null, false, now, TimeSpan.FromDays(30));
         var repository = new AuthRepositoryStub([account], [credential], sessions: [session]);
         var outbox = new OutboxRepositoryStub();
         var requestHandler = new RequestPasswordResetHandler(
@@ -174,6 +174,8 @@ public sealed class PasswordResetHandlerTests
         List<PasswordResetToken>? passwordResetTokens = null,
         List<RefreshSession>? sessions = null) : IAuthenticationRepository
     {
+        public List<GoogleSignInHandoff> SignInHandoffs { get; } = [];
+
         public List<PasswordResetToken> PasswordResetTokens { get; } = passwordResetTokens ?? [];
 
         private readonly List<RefreshSession> _sessions = sessions ?? [];
@@ -279,5 +281,21 @@ public sealed class PasswordResetHandlerTests
         public Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
             Guid tenantId, Guid membershipId, CancellationToken cancellationToken) =>
             Task.FromResult<TenantMembership?>(null);
+
+        public Task AddSignInHandoffAsync(GoogleSignInHandoff handoff, CancellationToken cancellationToken)
+        {
+            SignInHandoffs.Add(handoff);
+            return Task.CompletedTask;
+        }
+
+        public Task<GoogleSignInHandoff?> ConsumeSignInHandoffAsync(
+            string codeHash, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            var handoff = SignInHandoffs.SingleOrDefault(candidate => candidate.CodeHash == codeHash);
+            if (handoff is null) return Task.FromResult<GoogleSignInHandoff?>(null);
+            SignInHandoffs.Remove(handoff);
+            return Task.FromResult(handoff.IsUsable(now) ? handoff : null);
+        }
+
     }
 }

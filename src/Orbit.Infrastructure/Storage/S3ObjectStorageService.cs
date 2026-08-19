@@ -66,8 +66,29 @@ internal sealed class S3ObjectStorageService : IObjectStorageService, IDisposabl
             },
         });
 
-    public async Task DeleteAsync(string objectKey, CancellationToken cancellationToken) =>
-        await _client.DeleteObjectAsync(_bucketName, objectKey, cancellationToken);
+    public string CreatePresignedDisplayUrl(string objectKey, TimeSpan expiresIn) =>
+        _client.GetPreSignedURL(new GetPreSignedUrlRequest
+        {
+            BucketName = _bucketName,
+            Key = objectKey,
+            Verb = HttpVerb.GET,
+            Protocol = _protocol,
+            Expires = DateTime.UtcNow.Add(expiresIn),
+        });
+
+    public async Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _client.DeleteObjectAsync(_bucketName, objectKey, cancellationToken);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound
+            || string.Equals(ex.ErrorCode, "NoSuchKey", StringComparison.OrdinalIgnoreCase))
+        {
+            // PERF-04: Object was already removed from storage (manual cleanup, prior failure, etc.).
+            // Treat as a no-op so callers can still clean up the database record.
+        }
+    }
 
     public void Dispose() => _client.Dispose();
 }

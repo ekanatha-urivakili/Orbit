@@ -12,8 +12,11 @@ internal static class ProjectAccessQuery
         Guid tenantId,
         ProjectPermission permission)
     {
-        var tenantWideAccess = principal.IsDevelopmentBypass
-            || principal.TenantRole is TenantRole.Owner or TenantRole.Administrator;
+        // A guest never gets tenant-wide access, even if somehow granted Owner/Administrator (the
+        // domain model already rejects that combination at membership-creation time - this is
+        // defense in depth, not the only enforcement point).
+        var tenantWideAccess = principal.MembershipTier != MembershipTier.Guest
+            && (principal.IsDevelopmentBypass || principal.TenantRole is TenantRole.Owner or TenantRole.Administrator);
         var membershipId = principal.MembershipId;
         var allowedRoles = ProjectPermissionRoles.For(permission);
 

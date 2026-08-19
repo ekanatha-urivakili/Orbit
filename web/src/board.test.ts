@@ -18,8 +18,6 @@ const item: WorkItem = {
   sprintName: null,
   identifiedOn: null,
   storyPoints: null,
-  linkType: null,
-  linkedWorkItemId: null,
   labels: [],
   countries: [],
   attachmentNames: [],

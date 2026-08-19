@@ -1,5 +1,6 @@
 export type WorkItemType = 'Initiative' | 'Epic' | 'Task' | 'Story' | 'Spike' | 'Test' | 'Feature' | 'Request' | 'Bug' | 'Subtask'
-export type WorkItemLinkType = 'DependsOn' | 'Blocks' | 'RelatesTo'
+export type WorkItemLinkKind = 'Blocks' | 'RelatesTo' | 'Duplicates'
+export type WorkItemLinkDirection = 'Outgoing' | 'Incoming'
 
 export type WorkItemStatus =
   | 'Backlog'
@@ -40,8 +41,6 @@ export interface WorkItem {
   sprintName: string | null
   identifiedOn: string | null
   storyPoints: number | null
-  linkType: WorkItemLinkType | null
-  linkedWorkItemId: string | null
   labels: string[]
   countries: string[]
   attachmentNames: string[]
@@ -52,6 +51,17 @@ export interface WorkItem {
   version: number
   createdAt: string
   updatedAt: string
+}
+
+export interface WorkItemLink {
+  id: string
+  kind: WorkItemLinkKind
+  direction: WorkItemLinkDirection
+  workItemId: string
+  key: string
+  summary: string
+  type: WorkItemType
+  status: WorkItemStatus
 }
 
 export interface WorkItemComment {
@@ -143,8 +153,6 @@ export interface CreateWorkItemInput {
   sprintName?: string | null
   identifiedOn?: string | null
   storyPoints?: number | null
-  linkType?: WorkItemLinkType | null
-  linkedWorkItemId?: string | null
   labels?: string[]
   countries?: string[]
   attachmentNames?: string[]
@@ -164,8 +172,6 @@ export interface UpdateWorkItemInput {
   sprintName?: string | null
   identifiedOn?: string | null
   storyPoints?: number | null
-  linkType?: WorkItemLinkType | null
-  linkedWorkItemId?: string | null
   labels?: string[]
   countries?: string[]
   attachmentNames?: string[]
@@ -190,6 +196,14 @@ export interface BootstrapResult {
   workspaceSlug: string
   workspaceName: string
   membershipId: string
+}
+
+export interface RegisterInput {
+  displayName: string
+  email: string
+  password: string
+  organizationName: string
+  workspaceName: string
 }
 
 export type ThemePreference = 'System' | 'Light' | 'Dark'
@@ -228,8 +242,15 @@ export interface WorkspaceSetting {
   defaultLocale: string
   defaultTimeZone: string
   allowMemberProjectCreation: boolean
+  logoUrl: string | null
   canAdminister: boolean
   version: number
+}
+
+export interface PresignedWorkspaceLogoUpload {
+  uploadUrl: string
+  objectKey: string
+  expiresAt: string
 }
 
 export interface ProjectSetting {
@@ -242,9 +263,26 @@ export interface ProjectSetting {
   version: number
 }
 
+export interface TypographySetting {
+  leftFontFamily: string
+  leftFontColor: string
+  leftFontSizePx: number
+  middleFontFamily: string
+  middleFontColor: string
+  middleFontSizePx: number
+  rightFontFamily: string
+  rightFontColor: string
+  rightFontSizePx: number
+  controlHeightPx: number
+  controlFontSizePx: number
+  canAdminister: boolean
+  version: number
+}
+
 export type PrincipalType = 'User' | 'ServiceAccount'
 export type TenantRole = 'Owner' | 'Administrator' | 'Member'
 export type ProjectRole = 'Administrator' | 'Member' | 'Viewer'
+export type MembershipTier = 'Standard' | 'Guest'
 
 export interface TenantMembership {
   id: string
@@ -253,6 +291,7 @@ export interface TenantMembership {
   subject: string | null
   principalType: PrincipalType
   role: TenantRole
+  tier: MembershipTier
   isActive: boolean
   createdAt: string
   displayName: string | null
@@ -294,6 +333,7 @@ export interface WorkspaceInvitation {
   id: string
   email: string
   role: TenantRole
+  tier: MembershipTier
   teamId: string | null
   status: WorkspaceInvitationStatus
   expiresAt: string
@@ -410,4 +450,9 @@ export interface ExternalIdentitySummary {
   issuer: string
   subject: string
   createdAt: string
+}
+
+export interface WorkItemWatchers {
+  isWatching: boolean
+  count: number
 }

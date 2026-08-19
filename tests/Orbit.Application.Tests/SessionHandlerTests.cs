@@ -18,8 +18,8 @@ public sealed class SessionHandlerTests
         var now = DateTimeOffset.UtcNow;
         var account = UserAccount.Create("member@example.test", "Member One", now);
         var credential = LocalCredential.Create(account.Id, StoredHash, "Argon2id", 1, now);
-        var older = Workspace.Create("Older Workspace", now.AddDays(-2));
-        var newer = Workspace.Create("Newer Workspace", now.AddDays(-1));
+        var older = Workspace.Create(Guid.CreateVersion7(), "Older Workspace", now.AddDays(-2));
+        var newer = Workspace.Create(Guid.CreateVersion7(), "Newer Workspace", now.AddDays(-1));
         var repository = new AuthRepositoryStub();
         repository.Account = account;
         repository.Credential = credential;
@@ -38,7 +38,7 @@ public sealed class SessionHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new LoginCommand("Member@Example.test", CorrectPassword, null, "orbit-tests", "127.0.0.1"),
+            new LoginCommand("Member@Example.test", CorrectPassword, null, false, "orbit-tests", "127.0.0.1"),
             CancellationToken.None);
 
         Assert.Equal(older.Id, result.WorkspaceId);
@@ -49,14 +49,82 @@ public sealed class SessionHandlerTests
         Assert.NotEmpty(result.AccessToken);
     }
 
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 30)]
+    public async Task Login_SelectsRefreshTokenLifetime_BasedOnRememberMe(bool rememberMe, int expectedLifetimeDays)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var account = UserAccount.Create("member@example.test", "Member One", now);
+        var credential = LocalCredential.Create(account.Id, StoredHash, "Argon2id", 1, now);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", now);
+        var repository = new AuthRepositoryStub();
+        repository.Account = account;
+        repository.Credential = credential;
+        repository.Workspaces[workspace.Id] = workspace;
+        repository.Memberships.Add(TenantMembership.CreateForUser(workspace.Id, account.Id, TenantRole.Owner, now));
+        var handler = new LoginHandler(
+            repository,
+            new PasswordHasherStub(StoredHash, CorrectPassword),
+            new AccessTokenIssuerStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(
+            new LoginCommand("member@example.test", CorrectPassword, null, rememberMe, null, null),
+            CancellationToken.None);
+
+        var session = Assert.Single(repository.Sessions);
+        Assert.Equal(rememberMe, session.IsPersistent);
+        Assert.True(
+            Math.Abs((result.RefreshTokenExpiresAt - now).TotalDays - expectedLifetimeDays) < 0.01,
+            $"Expected ~{expectedLifetimeDays} day lifetime, got {(result.RefreshTokenExpiresAt - now).TotalDays} days.");
+    }
+
+    [Fact]
+    public async Task Refresh_ReappliesPersistentLifetime_WithoutClientResendingRememberMe()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var account = UserAccount.Create("member@example.test", "Member One", now);
+        var credential = LocalCredential.Create(account.Id, StoredHash, "Argon2id", 1, now);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", now);
+        var repository = new AuthRepositoryStub();
+        repository.Account = account;
+        repository.Credential = credential;
+        repository.Workspaces[workspace.Id] = workspace;
+        repository.Memberships.Add(TenantMembership.CreateForUser(workspace.Id, account.Id, TenantRole.Owner, now));
+        var loginHandler = new LoginHandler(
+            repository,
+            new PasswordHasherStub(StoredHash, CorrectPassword),
+            new AccessTokenIssuerStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+        var login = await loginHandler.Handle(
+            new LoginCommand("member@example.test", CorrectPassword, null, RememberMe: true, null, null),
+            CancellationToken.None);
+
+        var refreshHandler = new RefreshSessionHandler(
+            repository,
+            new AccessTokenIssuerStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+        await refreshHandler.Handle(
+            new RefreshSessionCommand(login.RefreshToken, null, null, null),
+            CancellationToken.None);
+
+        var rotated = repository.Sessions.Single(session => session.Id != login.SessionId);
+        Assert.True(rotated.IsPersistent);
+        Assert.True((rotated.ExpiresAt - now).TotalDays > 29);
+    }
+
     [Fact]
     public async Task Login_SelectsRequestedWorkspace_WhenProvided()
     {
         var now = DateTimeOffset.UtcNow;
         var account = UserAccount.Create("member@example.test", "Member One", now);
         var credential = LocalCredential.Create(account.Id, StoredHash, "Argon2id", 1, now);
-        var older = Workspace.Create("Older Workspace", now.AddDays(-2));
-        var newer = Workspace.Create("Newer Workspace", now.AddDays(-1));
+        var older = Workspace.Create(Guid.CreateVersion7(), "Older Workspace", now.AddDays(-2));
+        var newer = Workspace.Create(Guid.CreateVersion7(), "Newer Workspace", now.AddDays(-1));
         var repository = new AuthRepositoryStub();
         repository.Account = account;
         repository.Credential = credential;
@@ -72,7 +140,7 @@ public sealed class SessionHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new LoginCommand("member@example.test", CorrectPassword, newer.Id, null, null),
+            new LoginCommand("member@example.test", CorrectPassword, newer.Id, false, null, null),
             CancellationToken.None);
 
         Assert.Equal(newer.Id, result.WorkspaceId);
@@ -91,7 +159,7 @@ public sealed class SessionHandlerTests
             TimeProvider.System);
 
         var action = () => handler.Handle(
-            new LoginCommand("nobody@example.test", CorrectPassword, null, null, null),
+            new LoginCommand("nobody@example.test", CorrectPassword, null, false, null, null),
             CancellationToken.None);
 
         var exception = await Assert.ThrowsAsync<AuthenticationException>(action);
@@ -114,7 +182,7 @@ public sealed class SessionHandlerTests
             TimeProvider.System);
 
         var action = () => handler.Handle(
-            new LoginCommand("member@example.test", "wrong-password", null, null, null),
+            new LoginCommand("member@example.test", "wrong-password", null, false, null, null),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<AuthenticationException>(action);
@@ -135,7 +203,7 @@ public sealed class SessionHandlerTests
             TimeProvider.System);
 
         var action = () => handler.Handle(
-            new LoginCommand("member@example.test", CorrectPassword, null, null, null),
+            new LoginCommand("member@example.test", CorrectPassword, null, false, null, null),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<AccessDeniedException>(action);
@@ -168,7 +236,7 @@ public sealed class SessionHandlerTests
     {
         var now = DateTimeOffset.UtcNow;
         var (repository, account, currentWorkspace) = await SeedLoggedInAccountAsync(now);
-        var targetWorkspace = Workspace.Create("Target Workspace", now.AddMinutes(1));
+        var targetWorkspace = Workspace.Create(Guid.CreateVersion7(), "Target Workspace", now.AddMinutes(1));
         repository.Workspaces[targetWorkspace.Id] = targetWorkspace;
         repository.Memberships.Add(
             TenantMembership.CreateForUser(targetWorkspace.Id, account.Id, TenantRole.Administrator, now));
@@ -260,13 +328,13 @@ public sealed class SessionHandlerTests
     {
         var now = DateTimeOffset.UtcNow;
         var userId = Guid.NewGuid();
-        var workspace = Workspace.Create("Team Workspace", now);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Team Workspace", now);
         var repository = new AuthRepositoryStub();
         repository.Workspaces[workspace.Id] = workspace;
         var current = RefreshSession.CreateInitial(
-            userId, workspace.Id, "hash-current", "Chrome", "127.0.0.1", now, TimeSpan.FromDays(30));
+            userId, workspace.Id, "hash-current", "Chrome", "127.0.0.1", false, now, TimeSpan.FromDays(30));
         var other = RefreshSession.CreateInitial(
-            userId, workspace.Id, "hash-other", "Firefox", "10.0.0.1", now, TimeSpan.FromDays(30));
+            userId, workspace.Id, "hash-other", "Firefox", "10.0.0.1", false, now, TimeSpan.FromDays(30));
         repository.Sessions.Add(current);
         repository.Sessions.Add(other);
         var handler = new ListSessionsHandler(new CurrentPrincipalStub(userId, current.Id), repository);
@@ -284,8 +352,8 @@ public sealed class SessionHandlerTests
         var now = DateTimeOffset.UtcNow;
         var userId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
-        var first = Workspace.Create("First Workspace", now.AddDays(-2));
-        var second = Workspace.Create("Second Workspace", now.AddDays(-1));
+        var first = Workspace.Create(Guid.CreateVersion7(), "First Workspace", now.AddDays(-2));
+        var second = Workspace.Create(Guid.CreateVersion7(), "Second Workspace", now.AddDays(-1));
         var repository = new AuthRepositoryStub();
         repository.Workspaces[first.Id] = first;
         repository.Workspaces[second.Id] = second;
@@ -323,9 +391,9 @@ public sealed class SessionHandlerTests
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         var repository = new AuthRepositoryStub();
-        var current = RefreshSession.CreateInitial(userId, tenantId, "hash-current", null, null, now, TimeSpan.FromDays(30));
-        var other1 = RefreshSession.CreateInitial(userId, tenantId, "hash-other-1", null, null, now, TimeSpan.FromDays(30));
-        var other2 = RefreshSession.CreateInitial(userId, tenantId, "hash-other-2", null, null, now, TimeSpan.FromDays(30));
+        var current = RefreshSession.CreateInitial(userId, tenantId, "hash-current", null, null, false, now, TimeSpan.FromDays(30));
+        var other1 = RefreshSession.CreateInitial(userId, tenantId, "hash-other-1", null, null, false, now, TimeSpan.FromDays(30));
+        var other2 = RefreshSession.CreateInitial(userId, tenantId, "hash-other-2", null, null, false, now, TimeSpan.FromDays(30));
         repository.Sessions.Add(current);
         repository.Sessions.Add(other1);
         repository.Sessions.Add(other2);
@@ -347,7 +415,7 @@ public sealed class SessionHandlerTests
     {
         var account = UserAccount.Create("member@example.test", "Member One", now);
         var credential = LocalCredential.Create(account.Id, StoredHash, "Argon2id", 1, now);
-        var workspace = Workspace.Create("Team Workspace", now);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Team Workspace", now);
         var repository = new AuthRepositoryStub { Account = account, Credential = credential };
         repository.Workspaces[workspace.Id] = workspace;
         repository.Memberships.Add(TenantMembership.CreateForUser(workspace.Id, account.Id, TenantRole.Member, now));
@@ -365,7 +433,7 @@ public sealed class SessionHandlerTests
                 new AccessTokenIssuerStub(),
                 new UnitOfWorkStub(),
                 new FixedTimeProvider(loginTime))
-            .Handle(new LoginCommand(account.NormalizedEmail, CorrectPassword, workspace.Id, null, null), CancellationToken.None);
+            .Handle(new LoginCommand(account.NormalizedEmail, CorrectPassword, workspace.Id, false, null, null), CancellationToken.None);
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
@@ -388,7 +456,9 @@ public sealed class SessionHandlerTests
 
     private sealed class AccessTokenIssuerStub : IAccessTokenIssuer
     {
-        public TimeSpan RefreshTokenLifetime => TimeSpan.FromDays(30);
+        public TimeSpan RefreshTokenLifetime => TimeSpan.FromDays(1);
+
+        public TimeSpan PersistentRefreshTokenLifetime => TimeSpan.FromDays(30);
 
         public string LocalIssuer => "urn:orbit:local";
 
@@ -417,11 +487,14 @@ public sealed class SessionHandlerTests
         public Guid MembershipId => Guid.NewGuid();
         public PrincipalType PrincipalType => PrincipalType.User;
         public TenantRole TenantRole => TenantRole.Member;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
         public bool IsDevelopmentBypass => false;
     }
 
     private sealed class AuthRepositoryStub : IAuthenticationRepository
     {
+        public List<GoogleSignInHandoff> SignInHandoffs { get; } = [];
+
         public UserAccount? Account { get; set; }
         public LocalCredential? Credential { get; set; }
         public List<TenantMembership> Memberships { get; } = [];
@@ -552,5 +625,21 @@ public sealed class SessionHandlerTests
         public Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
             Guid tenantId, Guid membershipId, CancellationToken cancellationToken) =>
             Task.FromResult<TenantMembership?>(null);
+
+        public Task AddSignInHandoffAsync(GoogleSignInHandoff handoff, CancellationToken cancellationToken)
+        {
+            SignInHandoffs.Add(handoff);
+            return Task.CompletedTask;
+        }
+
+        public Task<GoogleSignInHandoff?> ConsumeSignInHandoffAsync(
+            string codeHash, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            var handoff = SignInHandoffs.SingleOrDefault(candidate => candidate.CodeHash == codeHash);
+            if (handoff is null) return Task.FromResult<GoogleSignInHandoff?>(null);
+            SignInHandoffs.Remove(handoff);
+            return Task.FromResult(handoff.IsUsable(now) ? handoff : null);
+        }
+
     }
 }

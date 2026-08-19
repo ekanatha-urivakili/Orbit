@@ -178,6 +178,25 @@ internal sealed class AuthenticationRepository(OrbitDbContext dbContext) : IAuth
             .Where(credential => credential.MembershipId == membershipId && credential.RevokedAt == null)
             .ToArrayAsync(cancellationToken);
 
+    public async Task AddSignInHandoffAsync(GoogleSignInHandoff handoff, CancellationToken cancellationToken) =>
+        await dbContext.GoogleSignInHandoffs.AddAsync(handoff, cancellationToken);
+
+    public async Task<GoogleSignInHandoff?> ConsumeSignInHandoffAsync(
+        string codeHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var handoff = await dbContext.GoogleSignInHandoffs
+            .SingleOrDefaultAsync(candidate => candidate.CodeHash == codeHash, cancellationToken);
+        if (handoff is null)
+        {
+            return null;
+        }
+
+        dbContext.GoogleSignInHandoffs.Remove(handoff);
+        return handoff.IsUsable(now) ? handoff : null;
+    }
+
     public async Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
         Guid tenantId,
         Guid membershipId,

@@ -188,6 +188,8 @@ public sealed class ServiceAccountHandlerTests
     private sealed class AccessTokenIssuerStub : IAccessTokenIssuer
     {
         public TimeSpan RefreshTokenLifetime => TimeSpan.FromDays(30);
+
+        public TimeSpan PersistentRefreshTokenLifetime => TimeSpan.FromDays(30);
         public string LocalIssuer => "urn:orbit:local";
 
         public AccessToken IssueUserToken(Guid userId, Guid tenantId, Guid sessionId, DateTimeOffset now) =>
@@ -230,10 +232,24 @@ public sealed class ServiceAccountHandlerTests
         public Task<IReadOnlyList<TenantMembership>> ListAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>(
                 Memberships.Where(membership => membership.TenantId == tenantId).ToArray());
+
+        public Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TenantMembership>>(
+                Memberships.Where(m => m.TenantId == tenantId && membershipIds.Contains(m.Id)).ToArray());
+
+        public Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>(
+                [.. Memberships
+                    .Where(m => m.TenantId == tenantId && m.UserId.HasValue && userIds.Contains(m.UserId.Value) && m.IsActive)
+                    .Select(m => m.UserId!.Value)]);
     }
 
     private sealed class AuthenticationRepositoryStub(List<TenantMembership> memberships) : IAuthenticationRepository
     {
+        public List<GoogleSignInHandoff> SignInHandoffs { get; } = [];
+
         public List<ServiceAccountCredential> Credentials { get; } = [];
 
         public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
@@ -326,5 +342,21 @@ public sealed class ServiceAccountHandlerTests
                     && membership.Id == membershipId
                     && membership.IsActive
                     && membership.PrincipalType == PrincipalType.ServiceAccount));
+
+        public Task AddSignInHandoffAsync(GoogleSignInHandoff handoff, CancellationToken cancellationToken)
+        {
+            SignInHandoffs.Add(handoff);
+            return Task.CompletedTask;
+        }
+
+        public Task<GoogleSignInHandoff?> ConsumeSignInHandoffAsync(
+            string codeHash, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            var handoff = SignInHandoffs.SingleOrDefault(candidate => candidate.CodeHash == codeHash);
+            if (handoff is null) return Task.FromResult<GoogleSignInHandoff?>(null);
+            SignInHandoffs.Remove(handoff);
+            return Task.FromResult(handoff.IsUsable(now) ? handoff : null);
+        }
+
     }
 }

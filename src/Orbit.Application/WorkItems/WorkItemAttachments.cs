@@ -16,7 +16,10 @@ internal static class AttachmentContentTypes
 {
     public static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
-        "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+        // SEC-05: image/svg+xml deliberately excluded — SVG is XML and can carry embedded
+        // <script> tags / event handlers that execute when served directly in the browser
+        // via a presigned URL. No server-side SVG sanitisation is in place (ARCH-ORBIT-001 §13.5.2).
+        "image/png", "image/jpeg", "image/gif", "image/webp",
         "application/pdf", "text/plain", "text/csv", "application/json",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

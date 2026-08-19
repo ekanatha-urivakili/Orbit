@@ -68,4 +68,66 @@ public sealed class AccessModelTests
 
         Assert.False(membership.IsActive);
     }
+
+    [Fact]
+    public void TenantMembership_CreateForUser_DefaultsToStandardTier()
+    {
+        var membership = TenantMembership.CreateForUser(
+            Guid.NewGuid(), Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow);
+
+        Assert.Equal(MembershipTier.Standard, membership.Tier);
+    }
+
+    [Theory]
+    [InlineData(TenantRole.Owner)]
+    [InlineData(TenantRole.Administrator)]
+    public void TenantMembership_CreateForUser_RejectsGuestWithElevatedRole(TenantRole role)
+    {
+        var action = () => TenantMembership.CreateForUser(
+            Guid.NewGuid(), Guid.NewGuid(), role, DateTimeOffset.UtcNow, MembershipTier.Guest);
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Fact]
+    public void TenantMembership_CreateForUser_AllowsGuestWithMemberRole()
+    {
+        var membership = TenantMembership.CreateForUser(
+            Guid.NewGuid(), Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow, MembershipTier.Guest);
+
+        Assert.Equal(MembershipTier.Guest, membership.Tier);
+    }
+
+    [Fact]
+    public void TenantMembership_ChangeRole_RejectsPromotingAGuestToAdministrator()
+    {
+        var membership = TenantMembership.CreateForUser(
+            Guid.NewGuid(), Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow, MembershipTier.Guest);
+
+        var action = () => membership.ChangeRole(TenantRole.Administrator);
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Fact]
+    public void TenantMembership_ChangeTier_RejectsPromotingAnAdministratorToGuest()
+    {
+        var membership = TenantMembership.CreateForUser(
+            Guid.NewGuid(), Guid.NewGuid(), TenantRole.Administrator, DateTimeOffset.UtcNow);
+
+        var action = () => membership.ChangeTier(MembershipTier.Guest);
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Fact]
+    public void TenantMembership_ChangeTier_AllowsGuestForAMember()
+    {
+        var membership = TenantMembership.CreateForUser(
+            Guid.NewGuid(), Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow);
+
+        membership.ChangeTier(MembershipTier.Guest);
+
+        Assert.Equal(MembershipTier.Guest, membership.Tier);
+    }
 }

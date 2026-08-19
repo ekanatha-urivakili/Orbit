@@ -16,8 +16,6 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
             table.HasCheckConstraint("ck_work_items_version", "version > 0");
             table.HasCheckConstraint("ck_work_items_story_points", "story_points IS NULL OR story_points BETWEEN 0 AND 10000");
             table.HasCheckConstraint("ck_work_items_epic_name", "type <> 'Epic' OR epic_name IS NOT NULL");
-            table.HasCheckConstraint("ck_work_items_link", "(link_type IS NULL) = (linked_work_item_id IS NULL)");
-            table.HasCheckConstraint("ck_work_items_link_type", "link_type IS NULL OR link_type IN ('DependsOn', 'Blocks', 'RelatesTo')");
             table.HasCheckConstraint(
                 "ck_work_items_type",
                 "type IN ('Initiative', 'Epic', 'Task', 'Story', 'Spike', 'Test', 'Feature', 'Request', 'Bug', 'Subtask')");
@@ -46,8 +44,6 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
         builder.Property(workItem => workItem.SprintName).HasColumnName("sprint_name").HasMaxLength(255);
         builder.Property(workItem => workItem.IdentifiedOn).HasColumnName("identified_on").HasMaxLength(255);
         builder.Property(workItem => workItem.StoryPoints).HasColumnName("story_points").HasPrecision(10, 2);
-        builder.Property(workItem => workItem.LinkType).HasColumnName("link_type").HasConversion<string>().HasMaxLength(32);
-        builder.Property(workItem => workItem.LinkedWorkItemId).HasColumnName("linked_work_item_id");
         builder.Property(workItem => workItem.Labels).HasColumnName("labels").HasColumnType("text[]");
         builder.Property(workItem => workItem.Countries).HasColumnName("countries").HasColumnType("text[]");
         builder.Property(workItem => workItem.AttachmentNames).HasColumnName("attachment_names").HasColumnType("text[]");
@@ -61,15 +57,9 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.Key }).IsUnique();
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.ProjectId, workItem.Status, workItem.Rank });
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.ParentId });
-        builder.HasIndex(workItem => new { workItem.TenantId, workItem.LinkedWorkItemId });
         builder.HasOne<WorkItem>()
             .WithMany()
             .HasForeignKey(workItem => new { workItem.TenantId, workItem.ParentId })
-            .HasPrincipalKey(workItem => new { workItem.TenantId, workItem.Id })
-            .OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne<WorkItem>()
-            .WithMany()
-            .HasForeignKey(workItem => new { workItem.TenantId, workItem.LinkedWorkItemId })
             .HasPrincipalKey(workItem => new { workItem.TenantId, workItem.Id })
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Project>()

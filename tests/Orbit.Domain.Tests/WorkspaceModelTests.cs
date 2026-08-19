@@ -7,7 +7,7 @@ public sealed class WorkspaceModelTests
     [Fact]
     public void Workspace_Create_StartsAtEpochOne()
     {
-        var workspace = Workspace.Create("Orbit", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Orbit", DateTimeOffset.UtcNow);
 
         Assert.Equal(1, workspace.AuthorizationEpoch);
     }
@@ -15,7 +15,7 @@ public sealed class WorkspaceModelTests
     [Fact]
     public void Workspace_IncrementAuthorizationEpoch_IncreasesByOne()
     {
-        var workspace = Workspace.Create("Orbit", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Orbit", DateTimeOffset.UtcNow);
 
         workspace.IncrementAuthorizationEpoch();
         workspace.IncrementAuthorizationEpoch();

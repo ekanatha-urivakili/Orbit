@@ -1,12 +1,15 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell, Building2, FolderCog, LockKeyhole, Tags, UserRound, Users, UsersRound, X } from 'lucide-react'
+import { Bell, Building2, FolderCog, LockKeyhole, Paintbrush, Tags, UserRound, Users, UsersRound, X } from 'lucide-react'
 import { orbitApi } from '../../api/client'
 import * as auth from '../../api/auth'
 import { useIsAuthenticated } from '../../hooks/useIsAuthenticated'
 import { LoginForm } from '../auth/LoginView'
+import { setStoredLogoUrl } from '../../lib/branding'
+import { applyTheme } from '../../lib/theme'
 import { getOidcConfig, startOidcLogin } from '../auth/oidcPkce'
 import { Field, Hint, SubmitRow } from '../../components/form/Field'
+import { SearchableSelect } from '../../components/form/SearchableSelect'
 import type {
   CreateMembershipInput,
   CustomFieldDefinition,
@@ -24,13 +27,15 @@ import type {
   TenantMembership,
   TenantRole,
   ThemePreference,
+  TypographySetting,
   WorkItemType,
   WorkItemTypeDefinition,
   WorkspaceInvitationStatus,
   WorkspaceSetting,
 } from '../../api/types'
+import { applyTypographySetting } from '../../typography'
 
-export type SettingsSection = 'profile' | 'notifications' | 'workspace' | 'project' | 'item-types' | 'custom-fields' | 'members' | 'teams' | 'security'
+export type SettingsSection = 'profile' | 'notifications' | 'workspace' | 'project' | 'item-types' | 'custom-fields' | 'members' | 'teams' | 'security' | 'appearance'
 
 const sections: Array<{ id: SettingsSection; label: string; icon: typeof UserRound }> = [
   { id: 'profile', label: 'Profile and preferences', icon: UserRound },
@@ -39,6 +44,7 @@ const sections: Array<{ id: SettingsSection; label: string; icon: typeof UserRou
   { id: 'teams', label: 'Teams', icon: Users },
   { id: 'security', label: 'Account security', icon: LockKeyhole },
   { id: 'workspace', label: 'Workspace', icon: Building2 },
+  { id: 'appearance', label: 'Appearance', icon: Paintbrush },
   { id: 'project', label: 'Project defaults', icon: FolderCog },
   { id: 'item-types', label: 'Work item types', icon: Tags },
   { id: 'custom-fields', label: 'Custom fields', icon: Tags },
@@ -52,6 +58,7 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
     queryFn: orbitApi.getNotificationPreferences,
   })
   const workspaceQuery = useQuery({ queryKey: ['workspace-settings'], queryFn: orbitApi.getWorkspaceSettings })
+  const typographyQuery = useQuery({ queryKey: ['typography-settings'], queryFn: orbitApi.getTypographySettings })
   const projectQuery = useQuery({
     queryKey: ['project-settings', project.id],
     queryFn: () => orbitApi.getProjectSettings(project.id),
@@ -60,11 +67,11 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
   const customFieldsQuery = useQuery({ queryKey: ['custom-fields'], queryFn: orbitApi.listCustomFields })
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-[#f7f8fa]">
-      <div className="border-b border-gray-200 bg-white px-6 py-5 lg:px-10">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+    <div className="min-h-[calc(100vh-48px)] bg-[#f7f8fa] w-full">
+      <div className="border-b border-gray-200 bg-white px-6 py-4 lg:px-8">
+        <div className="w-full flex items-center justify-between gap-4">
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">Orbit administration</p>
+            <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Orbit administration</p>
             <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
           </div>
           <button onClick={onClose} className="rounded-md p-2 text-gray-500 hover:bg-gray-100" aria-label="Close settings">
@@ -73,7 +80,7 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 md:grid-cols-[240px_minmax(0,1fr)] lg:px-8">
+      <div className="w-full grid gap-6 px-6 py-6 md:grid-cols-[240px_minmax(0,1fr)] lg:px-8">
         <nav aria-label="Settings sections" className="h-fit rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
           {sections.map(({ id, label, icon: Icon }) => (
             <button
@@ -90,6 +97,7 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
           {activeSection === 'profile' && <QueryState query={profileQuery} render={(profile) => <ProfileForm profile={profile} />} />}
           {activeSection === 'notifications' && <QueryState query={notificationsQuery} render={(preference) => <NotificationForm preference={preference} />} />}
           {activeSection === 'workspace' && <QueryState query={workspaceQuery} render={(setting) => <WorkspaceForm setting={setting} />} />}
+          {activeSection === 'appearance' && <QueryState query={typographyQuery} render={(setting) => <AppearanceForm setting={setting} />} />}
           {activeSection === 'project' && <QueryState query={projectQuery} render={(setting) => <ProjectForm project={project} setting={setting} itemTypes={itemTypesQuery.data ?? []} />} />}
           {activeSection === 'item-types' && <QueryState query={itemTypesQuery} render={(definitions) => <ItemTypesPanel definitions={definitions} />} />}
           {activeSection === 'custom-fields' && <QueryState query={customFieldsQuery} render={(fields) => <CustomFieldsPanel fields={fields} />} />}
@@ -133,7 +141,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
     mutationFn: () => orbitApi.updatePreferences(profile, { locale, timeZone, theme, density, reduceMotion, highContrast }),
     onSuccess: (updated) => {
       client.setQueryData(['profile'], updated)
-      document.documentElement.dataset.theme = updated.theme.toLowerCase()
+      applyTheme(updated.theme.toLowerCase())
       document.documentElement.dataset.density = updated.density.toLowerCase()
     },
   })
@@ -154,8 +162,22 @@ function ProfileForm({ profile }: { profile: Profile }) {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field variant="panel" label="Locale"><input value={locale} onChange={(event) => setLocale(event.target.value)} /></Field>
             <Field variant="panel" label="Time zone"><input value={timeZone} onChange={(event) => setTimeZone(event.target.value)} /></Field>
-            <Field variant="panel" label="Theme"><select value={theme} onChange={(event) => setTheme(event.target.value as ThemePreference)}><option>System</option><option>Light</option><option>Dark</option></select></Field>
-            <Field variant="panel" label="Density"><select value={density} onChange={(event) => setDensity(event.target.value as DensityPreference)}><option>Comfortable</option><option>Compact</option></select></Field>
+            <Field variant="panel" label="Theme">
+              <SearchableSelect
+                value={theme}
+                onChange={(val) => setTheme(val as ThemePreference)}
+                options={['System', 'Light', 'Dark']}
+                searchable={false}
+              />
+            </Field>
+            <Field variant="panel" label="Density">
+              <SearchableSelect
+                value={density}
+                onChange={(val) => setDensity(val as DensityPreference)}
+                options={['Comfortable', 'Compact']}
+                searchable={false}
+              />
+            </Field>
           </div>
           <Toggle label="Reduce motion" checked={reduceMotion} onChange={setReduceMotion} />
           <Toggle label="Increase interface contrast" checked={highContrast} onChange={setHighContrast} />
@@ -181,7 +203,14 @@ function NotificationForm({ preference }: { preference: NotificationPreference }
         <Toggle label="In-app notifications" checked={draft.inAppEnabled} onChange={(checked) => patch({ inAppEnabled: checked })} />
         <Toggle label="Email notifications" checked={draft.emailEnabled} onChange={(checked) => patch({ emailEnabled: checked })} />
         <Toggle label="Notify me about my own changes" checked={draft.selfNotify} onChange={(checked) => patch({ selfNotify: checked })} />
-        <Field variant="panel" label="Digest cadence"><select value={draft.digestCadence} onChange={(event) => patch({ digestCadence: event.target.value as DigestCadence })}><option>None</option><option>Daily</option><option>Weekly</option></select></Field>
+        <Field variant="panel" label="Digest cadence">
+          <SearchableSelect
+            value={draft.digestCadence}
+            onChange={(val) => patch({ digestCadence: val as DigestCadence })}
+            options={['None', 'Daily', 'Weekly']}
+            searchable={false}
+          />
+        </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field variant="panel" label="Quiet hours start"><input type="time" value={draft.quietHoursStart?.slice(0, 5) ?? ''} onChange={(event) => patch({ quietHoursStart: event.target.value || null })} /></Field>
           <Field variant="panel" label="Quiet hours end"><input type="time" value={draft.quietHoursEnd?.slice(0, 5) ?? ''} onChange={(event) => patch({ quietHoursEnd: event.target.value || null })} /></Field>
@@ -189,6 +218,51 @@ function NotificationForm({ preference }: { preference: NotificationPreference }
         <SubmitRow mutation={mutation} />
       </form>
     </Panel>
+  )
+}
+
+function WorkspaceLogoField({ setting }: { setting: WorkspaceSetting }) {
+  const client = useQueryClient()
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useMutation({
+    mutationFn: async (file: File) => {
+      const presigned = await orbitApi.presignWorkspaceLogoUpload(file.name, file.type, file.size)
+      await orbitApi.uploadWorkspaceLogoFile(presigned.uploadUrl, file)
+      return orbitApi.confirmWorkspaceLogoUpload(presigned.objectKey, setting.version)
+    },
+    onSuccess: (updated) => {
+      setError(null)
+      setStoredLogoUrl(updated.logoUrl)
+      client.setQueryData(['workspace-settings'], updated)
+    },
+    onError: (uploadError: Error) => setError(uploadError.message),
+  })
+
+  return (
+    <Field variant="panel" label="Workspace logo">
+      <div className="flex items-center gap-3">
+        {setting.logoUrl
+          ? <img src={setting.logoUrl} alt="Workspace logo" className="h-10 w-10 rounded object-contain" />
+          : <div className="flex h-10 w-10 items-center justify-center rounded bg-[#0052cc] text-sm font-bold text-white">O</div>}
+        {setting.canAdminister && (
+          <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            {mutation.isPending ? 'Uploading…' : 'Upload logo'}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              className="hidden"
+              disabled={mutation.isPending}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) mutation.mutate(file)
+                event.target.value = ''
+              }}
+            />
+          </label>
+        )}
+      </div>
+      {error && <p className="mt-1 text-sm text-red-700">{error}</p>}
+    </Field>
   )
 }
 
@@ -203,16 +277,135 @@ function WorkspaceForm({ setting }: { setting: WorkspaceSetting }) {
 
   return (
     <Panel title={setting.workspaceName} description="Workspace-wide defaults and member capabilities.">
-      <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
-        <Field variant="panel" label="Description"><textarea value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value || null })} rows={4} maxLength={1000} disabled={!setting.canAdminister} /></Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field variant="panel" label="Default locale"><input value={draft.defaultLocale} onChange={(event) => patch({ defaultLocale: event.target.value })} disabled={!setting.canAdminister} /></Field>
-          <Field variant="panel" label="Default time zone"><input value={draft.defaultTimeZone} onChange={(event) => patch({ defaultTimeZone: event.target.value })} disabled={!setting.canAdminister} /></Field>
-        </div>
-        <Toggle label="Allow members to create projects" checked={draft.allowMemberProjectCreation} onChange={(checked) => patch({ allowMemberProjectCreation: checked })} disabled={!setting.canAdminister} />
-        {setting.canAdminister ? <SubmitRow mutation={mutation} /> : <Hint variant="panel">You need workspace administrator permission to edit these settings.</Hint>}
-      </form>
+      <div className="space-y-4">
+        <WorkspaceLogoField setting={setting} />
+        <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
+          <Field variant="panel" label="Description"><textarea value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value || null })} rows={4} maxLength={1000} disabled={!setting.canAdminister} /></Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field variant="panel" label="Default locale"><input value={draft.defaultLocale} onChange={(event) => patch({ defaultLocale: event.target.value })} disabled={!setting.canAdminister} /></Field>
+            <Field variant="panel" label="Default time zone"><input value={draft.defaultTimeZone} onChange={(event) => patch({ defaultTimeZone: event.target.value })} disabled={!setting.canAdminister} /></Field>
+          </div>
+          <Toggle label="Allow members to create projects" checked={draft.allowMemberProjectCreation} onChange={(checked) => patch({ allowMemberProjectCreation: checked })} disabled={!setting.canAdminister} />
+          {setting.canAdminister ? <SubmitRow mutation={mutation} /> : <Hint variant="panel">You need workspace administrator permission to edit these settings.</Hint>}
+        </form>
+      </div>
     </Panel>
+  )
+}
+
+const fontFamilyOptions = [
+  { value: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', label: 'Inter (default)' },
+  { value: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', label: 'System UI' },
+  { value: 'Georgia, "Times New Roman", serif', label: 'Georgia (serif)' },
+  { value: '"Courier New", ui-monospace, monospace', label: 'Courier (monospace)' },
+]
+
+function RegionFontFields({
+  legend,
+  family,
+  color,
+  sizePx,
+  disabled,
+  onFamilyChange,
+  onColorChange,
+  onSizeChange,
+}: {
+  legend: string
+  family: string
+  color: string
+  sizePx: number
+  disabled: boolean
+  onFamilyChange: (value: string) => void
+  onColorChange: (value: string) => void
+  onSizeChange: (value: number) => void
+}) {
+  return (
+    <fieldset className="rounded-lg border border-gray-200 p-4">
+      <legend className="px-1 text-sm font-semibold text-gray-800">{legend}</legend>
+      <div className="mt-2 grid gap-4 sm:grid-cols-3">
+        <Field variant="panel" label="Font family">
+          <SearchableSelect
+            value={family}
+            onChange={onFamilyChange}
+            options={fontFamilyOptions}
+            searchable={false}
+            disabled={disabled}
+          />
+        </Field>
+        <Field variant="panel" label="Text color">
+          <input type="color" value={color} disabled={disabled} onChange={(event) => onColorChange(event.target.value)} className="h-10 w-full cursor-pointer p-1" />
+        </Field>
+        <Field variant="panel" label="Font size (px)">
+          <input type="number" min={10} max={24} value={sizePx} disabled={disabled} onChange={(event) => onSizeChange(Number(event.target.value))} />
+        </Field>
+      </div>
+    </fieldset>
+  )
+}
+
+function AppearanceForm({ setting }: { setting: TypographySetting }) {
+  const client = useQueryClient()
+  const [draft, setDraft] = useState(setting)
+  const disabled = !setting.canAdminister
+  const mutation = useMutation({
+    mutationFn: () => orbitApi.updateTypographySettings(draft),
+    onSuccess: (updated) => {
+      setDraft(updated)
+      client.setQueryData(['typography-settings'], updated)
+      applyTypographySetting(updated)
+    },
+  })
+  const patch = (change: Partial<TypographySetting>) => setDraft((current) => ({ ...current, ...change }))
+
+  return (
+    <div className="space-y-5">
+      <Panel title="Appearance" description="Font family, color, and size for each area of Orbit, plus the size used by every textbox and dropdown.">
+        <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
+          <RegionFontFields
+            legend="Left navigation"
+            family={draft.leftFontFamily}
+            color={draft.leftFontColor}
+            sizePx={draft.leftFontSizePx}
+            disabled={disabled}
+            onFamilyChange={(value) => patch({ leftFontFamily: value })}
+            onColorChange={(value) => patch({ leftFontColor: value })}
+            onSizeChange={(value) => patch({ leftFontSizePx: value })}
+          />
+          <RegionFontFields
+            legend="Main content"
+            family={draft.middleFontFamily}
+            color={draft.middleFontColor}
+            sizePx={draft.middleFontSizePx}
+            disabled={disabled}
+            onFamilyChange={(value) => patch({ middleFontFamily: value })}
+            onColorChange={(value) => patch({ middleFontColor: value })}
+            onSizeChange={(value) => patch({ middleFontSizePx: value })}
+          />
+          <RegionFontFields
+            legend="Detail panel"
+            family={draft.rightFontFamily}
+            color={draft.rightFontColor}
+            sizePx={draft.rightFontSizePx}
+            disabled={disabled}
+            onFamilyChange={(value) => patch({ rightFontFamily: value })}
+            onColorChange={(value) => patch({ rightFontColor: value })}
+            onSizeChange={(value) => patch({ rightFontSizePx: value })}
+          />
+          <fieldset className="rounded-lg border border-gray-200 p-4">
+            <legend className="px-1 text-sm font-semibold text-gray-800">Textboxes & dropdowns</legend>
+            <div className="mt-2 grid gap-4 sm:grid-cols-2">
+              <Field variant="panel" label="Control height (px)">
+                <input type="number" min={24} max={56} value={draft.controlHeightPx} disabled={disabled} onChange={(event) => patch({ controlHeightPx: Number(event.target.value) })} />
+              </Field>
+              <Field variant="panel" label="Text size inside controls (px)">
+                <input type="number" min={10} max={24} value={draft.controlFontSizePx} disabled={disabled} onChange={(event) => patch({ controlFontSizePx: Number(event.target.value) })} />
+              </Field>
+            </div>
+          </fieldset>
+          {setting.canAdminister ? <SubmitRow mutation={mutation} /> : <Hint variant="panel">You need workspace administrator permission to edit appearance settings.</Hint>}
+        </form>
+      </Panel>
+    </div>
   )
 }
 
@@ -231,8 +424,22 @@ function ProjectForm({ project, setting, itemTypes }: { project: Project; settin
     <Panel title={`${project.name} defaults`} description="Defaults applied when the project creates new work.">
       <form onSubmit={(event) => { event.preventDefault(); mutation.mutate() }} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field variant="panel" label="Default work item type"><select value={draft.defaultWorkItemType} onChange={(event) => patch({ defaultWorkItemType: event.target.value as WorkItemType })}>{types.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}</select></Field>
-          <Field variant="panel" label="Default priority"><select value={draft.defaultPriority} onChange={(event) => patch({ defaultPriority: event.target.value as Priority })}>{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select></Field>
+          <Field variant="panel" label="Default work item type">
+            <SearchableSelect
+              value={draft.defaultWorkItemType}
+              onChange={(val) => patch({ defaultWorkItemType: val as WorkItemType })}
+              options={types.map((type) => ({ value: type.id, label: type.label }))}
+              searchPlaceholder="Search work types…"
+            />
+          </Field>
+          <Field variant="panel" label="Default priority">
+            <SearchableSelect
+              value={draft.defaultPriority}
+              onChange={(val) => patch({ defaultPriority: val as Priority })}
+              options={priorities.map((priority) => ({ value: priority, label: priority }))}
+              searchPlaceholder="Search priority…"
+            />
+          </Field>
         </div>
         <Toggle label="Enable releases" checked={draft.enableReleases} onChange={(checked) => patch({ enableReleases: checked })} />
         <Toggle label="Enable time tracking" checked={draft.enableTimeTracking} onChange={(checked) => patch({ enableTimeTracking: checked })} />
@@ -315,12 +522,12 @@ function CustomFieldsPanel({ fields }: { fields: CustomFieldDefinition[] }) {
               />
             </Field>
             <Field variant="panel" label="Type">
-              <select
+              <SearchableSelect
                 value={draft.fieldType}
-                onChange={(event) => setDraft((current) => ({ ...current, fieldType: event.target.value as CustomFieldType }))}
-              >
-                {customFieldTypes.map((type) => <option key={type} value={type}>{type}</option>)}
-              </select>
+                onChange={(val) => setDraft((current) => ({ ...current, fieldType: val as CustomFieldType }))}
+                options={customFieldTypes.map((type) => ({ value: type, label: type }))}
+                searchable={false}
+              />
             </Field>
             <Toggle
               label="Required"
@@ -394,15 +601,18 @@ function MembersPanel({ project }: { project: Project }) {
   const [invitationEmail, setInvitationEmail] = useState('')
   const [invitationRole, setInvitationRole] = useState<TenantRole>('Member')
   const [invitationTeamId, setInvitationTeamId] = useState('')
+  const [invitationIsGuest, setInvitationIsGuest] = useState(false)
   const inviteMutation = useMutation({
     mutationFn: () => orbitApi.createInvitation({
       email: invitationEmail,
-      role: invitationRole,
+      role: invitationIsGuest ? 'Member' : invitationRole,
       teamId: invitationTeamId || null,
+      tier: invitationIsGuest ? 'Guest' : 'Standard',
     }),
     onSuccess: () => {
       setInvitationEmail('')
       setInvitationTeamId('')
+      setInvitationIsGuest(false)
       client.invalidateQueries({ queryKey: ['invitations'] })
     },
   })
@@ -445,18 +655,36 @@ function MembersPanel({ project }: { project: Project }) {
               <input required type="email" maxLength={320} value={invitationEmail} onChange={(event) => setInvitationEmail(event.target.value)} />
             </Field>
             <Field variant="panel" label="Workspace role">
-              <select value={invitationRole} onChange={(event) => setInvitationRole(event.target.value as TenantRole)}>
-                <option value="Member">Member</option>
-                <option value="Administrator">Administrator</option>
-              </select>
+              <SearchableSelect
+                value={invitationIsGuest ? 'Member' : invitationRole}
+                onChange={(val) => setInvitationRole(val as TenantRole)}
+                options={['Member', 'Administrator']}
+                searchable={false}
+                disabled={invitationIsGuest}
+              />
             </Field>
             <Field variant="panel" label="Team (optional)">
-              <select value={invitationTeamId} onChange={(event) => setInvitationTeamId(event.target.value)}>
-                <option value="">No team</option>
-                {(teamsQuery.data ?? []).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-              </select>
+              <SearchableSelect
+                value={invitationTeamId}
+                onChange={(val) => setInvitationTeamId(val)}
+                options={[
+                  { value: '', label: 'No team' },
+                  ...(teamsQuery.data ?? []).map((team) => ({ value: team.id, label: team.name })),
+                ]}
+                placeholder="No team"
+                searchPlaceholder="Search teams…"
+              />
             </Field>
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={invitationIsGuest}
+              onChange={(event) => setInvitationIsGuest(event.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Invite as guest — Member role only, sees just the projects they're explicitly added to
+          </label>
           <SubmitRow mutation={inviteMutation} />
         </form>
         <div className="mt-5 grid gap-4 sm:grid-cols-3">
@@ -469,15 +697,17 @@ function MembersPanel({ project }: { project: Project }) {
             />
           </Field>
           <Field variant="panel" label="Status">
-            <select
+            <SearchableSelect
               value={invitationStatusFilter}
-              onChange={(event) => setInvitationStatusFilter(event.target.value as WorkspaceInvitationStatus | '')}
-            >
-              <option value="">All statuses</option>
-              <option value="Active">Active</option>
-              <option value="Accepted">Accepted</option>
-              <option value="Revoked">Revoked</option>
-            </select>
+              onChange={(val) => setInvitationStatusFilter(val as WorkspaceInvitationStatus | '')}
+              options={[
+                { value: '', label: 'All statuses' },
+                { value: 'Active', label: 'Active' },
+                { value: 'Accepted', label: 'Accepted' },
+                { value: 'Revoked', label: 'Revoked' },
+              ]}
+              searchable={false}
+            />
           </Field>
         </div>
         {!!invitationsQuery.data?.length && (
@@ -520,37 +750,46 @@ function MembersPanel({ project }: { project: Project }) {
                   <tr key={membership.id}>
                     <td className="px-4 py-2 text-gray-900">
                       {membership.userId ? 'Local account' : `${membership.issuer} / ${membership.subject}`}
+                      {membership.tier === 'Guest' && (
+                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          Guest
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-gray-600">{membership.principalType}</td>
                     <td className="px-4 py-2">
-                      <select
-                        value={membership.role}
-                        disabled={!membership.isActive || roleMutation.isPending}
-                        onChange={(event) =>
-                          roleMutation.mutate({ membershipId: membership.id, role: event.target.value as TenantRole })
-                        }
-                        className="rounded border border-gray-200 px-2 py-1 text-sm disabled:opacity-50"
-                      >
-                        <option value="Member">Member</option>
-                        <option value="Administrator">Administrator</option>
-                        <option value="Owner">Owner</option>
-                      </select>
+                      <div className="w-36">
+                        <SearchableSelect
+                          size="sm"
+                          value={membership.role}
+                          disabled={!membership.isActive || roleMutation.isPending}
+                          onChange={(val) =>
+                            roleMutation.mutate({ membershipId: membership.id, role: val as TenantRole })
+                          }
+                          options={['Member', 'Administrator', 'Owner']}
+                          searchable={false}
+                        />
+                      </div>
                     </td>
                     <td className="px-4 py-2">
-                      <select
-                        value={projectRoleByMembership.get(membership.id) ?? ''}
-                        disabled={assignMutation.isPending}
-                        onChange={(event) =>
-                          event.target.value &&
-                          assignMutation.mutate({ membershipId: membership.id, role: event.target.value as ProjectRole })
-                        }
-                        className="rounded border border-gray-200 px-2 py-1 text-sm"
-                      >
-                        <option value="">No role</option>
-                        <option value="Viewer">Viewer</option>
-                        <option value="Member">Member</option>
-                        <option value="Administrator">Administrator</option>
-                      </select>
+                      <div className="w-36">
+                        <SearchableSelect
+                          size="sm"
+                          value={projectRoleByMembership.get(membership.id) ?? ''}
+                          disabled={assignMutation.isPending}
+                          onChange={(val) =>
+                            val &&
+                            assignMutation.mutate({ membershipId: membership.id, role: val as ProjectRole })
+                          }
+                          options={[
+                            { value: '', label: 'No role' },
+                            { value: 'Viewer', label: 'Viewer' },
+                            { value: 'Member', label: 'Member' },
+                            { value: 'Administrator', label: 'Administrator' },
+                          ]}
+                          searchable={false}
+                        />
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-gray-600">{membership.isActive ? 'Active' : 'Inactive'}</td>
                     <td className="px-4 py-2 text-right">
@@ -587,17 +826,23 @@ function MembersPanel({ project }: { project: Project }) {
               <input required value={draft.subject} onChange={(event) => setDraft({ ...draft, subject: event.target.value })} placeholder="user or client id" />
             </Field>
             <Field variant="panel" label="Principal type">
-              <select value={draft.principalType} onChange={(event) => setDraft({ ...draft, principalType: event.target.value as PrincipalType })}>
-                <option value="User">User</option>
-                <option value="ServiceAccount">Service account</option>
-              </select>
+              <SearchableSelect
+                value={draft.principalType}
+                onChange={(val) => setDraft({ ...draft, principalType: val as PrincipalType })}
+                options={[
+                  { value: 'User', label: 'User' },
+                  { value: 'ServiceAccount', label: 'Service account' },
+                ]}
+                searchable={false}
+              />
             </Field>
             <Field variant="panel" label="Workspace role">
-              <select value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value as TenantRole })}>
-                <option value="Member">Member</option>
-                <option value="Administrator">Administrator</option>
-                <option value="Owner">Owner</option>
-              </select>
+              <SearchableSelect
+                value={draft.role}
+                onChange={(val) => setDraft({ ...draft, role: val as TenantRole })}
+                options={['Member', 'Administrator', 'Owner']}
+                searchable={false}
+              />
             </Field>
           </div>
           <SubmitRow mutation={createMutation} />
@@ -718,22 +963,26 @@ function TeamMembersEditor({ team, memberships }: { team: Team; memberships: Ten
       )}
       {candidates.length > 0 && (
         <div className="flex items-center gap-2">
-          <select
-            value={selected}
-            onChange={(event) => setSelected(event.target.value)}
-            className="rounded border border-gray-200 px-2 py-1 text-sm"
-          >
-            <option value="">Add a member…</option>
-            {candidates.map((membership) => (
-              <option key={membership.id} value={membership.id}>
-                {describe(membership.id)}
-              </option>
-            ))}
-          </select>
+          <div className="w-56">
+            <SearchableSelect
+              size="sm"
+              value={selected}
+              onChange={(val) => setSelected(val)}
+              options={[
+                { value: '', label: 'Add a member…' },
+                ...candidates.map((membership) => ({
+                  value: membership.id,
+                  label: describe(membership.id),
+                })),
+              ]}
+              placeholder="Add a member…"
+              searchPlaceholder="Search members…"
+            />
+          </div>
           <button
             onClick={() => selected && addMutation.mutate(selected)}
             disabled={!selected || addMutation.isPending}
-            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-blue-700"
           >
             Add
           </button>

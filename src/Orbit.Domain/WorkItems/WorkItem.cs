@@ -53,8 +53,6 @@ public sealed class WorkItem
     public string? SprintName { get; private set; }
     public string? IdentifiedOn { get; private set; }
     public decimal? StoryPoints { get; private set; }
-    public WorkItemLinkType? LinkType { get; private set; }
-    public Guid? LinkedWorkItemId { get; private set; }
     public string[] Labels { get; private set; } = [];
     public string[] Countries { get; private set; } = [];
     public string[] AttachmentNames { get; private set; } = [];
@@ -113,8 +111,6 @@ public sealed class WorkItem
         string? sprintName,
         string? identifiedOn,
         decimal? storyPoints,
-        WorkItemLinkType? linkType,
-        Guid? linkedWorkItemId,
         IEnumerable<string>? labels,
         IEnumerable<string>? countries,
         IEnumerable<string>? attachmentNames)
@@ -129,12 +125,7 @@ public sealed class WorkItem
             throw new DomainException("Story points must be between 0 and 10,000.");
         }
 
-        if (linkType.HasValue != linkedWorkItemId.HasValue)
-        {
-            throw new DomainException("A linked work item and relationship type must be supplied together.");
-        }
-
-        if (parentId == Id || linkedWorkItemId == Id)
+        if (parentId == Id)
         {
             throw new DomainException("A work item cannot reference itself.");
         }
@@ -149,8 +140,6 @@ public sealed class WorkItem
         SprintName = Normalize(sprintName, 255, "Sprint");
         IdentifiedOn = Normalize(identifiedOn, 255, "Identified on");
         StoryPoints = storyPoints;
-        LinkType = linkType;
-        LinkedWorkItemId = linkedWorkItemId;
         Labels = NormalizeValues(labels, 50, 100, "Label");
         Countries = NormalizeValues(countries, 50, 100, "Country");
         AttachmentNames = NormalizeValues(attachmentNames, 20, 255, "Attachment name");
@@ -200,8 +189,6 @@ public sealed class WorkItem
         string? sprintName,
         string? identifiedOn,
         decimal? storyPoints,
-        WorkItemLinkType? linkType,
-        Guid? linkedWorkItemId,
         IEnumerable<string>? labels,
         IEnumerable<string>? countries,
         IEnumerable<string>? attachmentNames,
@@ -233,8 +220,6 @@ public sealed class WorkItem
             sprintName,
             identifiedOn,
             storyPoints,
-            linkType,
-            linkedWorkItemId,
             labels,
             countries,
             attachmentNames);

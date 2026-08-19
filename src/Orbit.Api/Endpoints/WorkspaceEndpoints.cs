@@ -27,6 +27,19 @@ public static class WorkspaceEndpoints
         .WithName("CreateWorkspace")
         .WithTags("Workspaces");
 
+        group.MapPost("/organization/workspaces", async (
+            CreateWorkspaceRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var workspace = await sender.Send(
+                new CreateWorkspaceInOrganizationCommand(request.Name),
+                cancellationToken);
+            return Results.Created($"/api/v1/workspaces/{workspace.Id}", workspace);
+        })
+        .WithName("CreateWorkspaceInOrganization")
+        .WithTags("Workspaces");
+
         return group;
     }
 

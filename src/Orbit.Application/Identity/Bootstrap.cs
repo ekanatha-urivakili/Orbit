@@ -4,6 +4,7 @@ using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Organizations;
 using Orbit.Domain.Workspaces;
 
 namespace Orbit.Application.Identity;
@@ -80,7 +81,13 @@ public sealed class BootstrapHandler(
             passwordHash.ParametersVersion,
             now);
         var siteRole = SiteRoleAssignment.CreateSuperAdministrator(account.Id, now);
-        var workspace = Workspace.Create(request.WorkspaceName, now);
+        var organization = Organization.Create(request.WorkspaceName, now);
+        var workspace = Workspace.Create(organization.Id, request.WorkspaceName, now);
+        var organizationMembership = OrganizationMembership.Create(
+            organization.Id,
+            account.Id,
+            OrganizationRole.Owner,
+            now);
         var ownerMembership = TenantMembership.CreateForUser(
             workspace.Id,
             account.Id,
@@ -91,7 +98,9 @@ public sealed class BootstrapHandler(
             account,
             credential,
             siteRole,
+            organization,
             workspace,
+            organizationMembership,
             ownerMembership,
             cancellationToken);
         if (!initialized)

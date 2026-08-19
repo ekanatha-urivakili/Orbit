@@ -91,8 +91,17 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
 
         if (publicInvitation)
         {
-            await next(context);
-            await transaction.CommitAsync(context.RequestAborted);
+            try
+            {
+                await next(context);
+                await transaction.CommitAsync(context.RequestAborted);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+
             return;
         }
 
@@ -156,7 +165,12 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
                 }
 
                 currentPrincipal.SetMembership(
-                    resolved.MembershipId, resolved.UserId, resolved.PrincipalType, resolved.TenantRole, sessionId);
+                    resolved.MembershipId,
+                    resolved.UserId,
+                    resolved.PrincipalType,
+                    resolved.TenantRole,
+                    resolved.MembershipTier,
+                    sessionId);
             }
             else
             {
@@ -172,8 +186,18 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
             }
         }
 
-        await next(context);
-        await transaction.CommitAsync(context.RequestAborted);
+        // SEC-04: Explicit rollback on any exception prevents partial DB writes from
+        // being committed by the driver's implicit flush when the transaction is disposed.
+        try
+        {
+            await next(context);
+            await transaction.CommitAsync(context.RequestAborted);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     /// <summary>
@@ -210,7 +234,7 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         }
 
         var resolved = new CachedAuthorizationContext(
-            membership.Id, membership.UserId, membership.PrincipalType, membership.Role);
+            membership.Id, membership.UserId, membership.PrincipalType, membership.Role, membership.Tier);
         await authorizationCache.SetAsync(tenantId, userId, workspace.AuthorizationEpoch, resolved, cancellationToken);
         return resolved;
     }
@@ -254,9 +278,17 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         if (!path.StartsWithSegments("/api/v1")) return false;
         if (path.StartsWithSegments("/api/v1/choices")) return false;
         if (path.StartsWithSegments("/api/v1/bootstrap")) return false;
+        if (path.StartsWithSegments("/api/v1/register")) return false;
         if (path.StartsWithSegments("/api/v1/auth")) return false;
         if (path.StartsWithSegments("/api/v1/me")) return false;
-        if (path.StartsWithSegments("/api/v1/workspaces") && HttpMethods.IsPost(context.Request.Method)) return false;
+        // Only the literal "create workspace" endpoint is exempt - a prefix match here would also
+        // swallow authenticated, tenant-scoped nested routes like POST /workspaces/current/settings/logo/presign.
+        if (path.Equals("/api/v1/workspaces", StringComparison.OrdinalIgnoreCase)
+            && HttpMethods.IsPost(context.Request.Method))
+        {
+            return false;
+        }
+
         return true;
     }
 

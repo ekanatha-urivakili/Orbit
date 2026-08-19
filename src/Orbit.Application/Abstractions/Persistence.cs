@@ -6,6 +6,7 @@ using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Messaging;
+using Orbit.Domain.Organizations;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
 using Orbit.Domain.WorkItems;
@@ -25,6 +26,7 @@ public interface ICurrentPrincipal
     Guid MembershipId { get; }
     PrincipalType PrincipalType { get; }
     TenantRole TenantRole { get; }
+    MembershipTier MembershipTier { get; }
     bool IsDevelopmentBypass { get; }
 }
 
@@ -46,6 +48,25 @@ public interface ITenantMembershipRepository
         CancellationToken cancellationToken);
     Task<TenantMembership?> GetOwnerAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<IReadOnlyList<TenantMembership>> ListAsync(Guid tenantId, CancellationToken cancellationToken);
+    /// <summary>
+    /// Returns only the memberships whose IDs are in <paramref name="membershipIds"/>.
+    /// Used to avoid loading every tenant member when only a small subset is needed.
+    /// </summary>
+    Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> membershipIds,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the subset of <paramref name="userIds"/> that currently hold an active membership
+    /// in the tenant. Used to filter notification recipients so a deactivated member's stale
+    /// <see cref="WorkItemWatcher"/> row or a comment mention of them no longer resolves to a sent
+    /// email.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken);
 }
 
 public interface ISettingsRepository
@@ -56,12 +77,23 @@ public interface ISettingsRepository
         CancellationToken cancellationToken);
     Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken);
     Task<NotificationPreference?> GetNotificationPreferenceAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Bulk variant of <see cref="GetNotificationPreferenceAsync"/> for fan-out notification
+    /// triggers (comment mentions/watchers, sprint start/complete) that would otherwise issue one
+    /// query per recipient.
+    /// </summary>
+    Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken);
     Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ProjectSetting?> GetProjectSettingAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken);
     Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken);
     Task AddNotificationPreferenceAsync(NotificationPreference preference, CancellationToken cancellationToken);
     Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken);
+    Task AddWorkspaceTypographySettingAsync(WorkspaceTypographySetting setting, CancellationToken cancellationToken);
     Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken);
 }
 
@@ -110,9 +142,47 @@ public interface IExternalIdentityTokenValidator
     Task<VerifiedExternalIdentity> ValidateAsync(string token, CancellationToken cancellationToken);
 }
 
+public sealed record VerifiedGoogleIdentity(string Subject, string? Email, bool EmailVerified, string? Name);
+
+/// <summary>
+/// Verifies a Google-issued ID token's signature/issuer/audience (separate from
+/// <see cref="IExternalIdentityTokenValidator"/>, which validates against a single
+/// installation-configured "Authentication:Authority" - Google is always available regardless of
+/// whether that generic external-authority setting is configured).
+/// </summary>
+public interface IGoogleIdTokenValidator
+{
+    Task<VerifiedGoogleIdentity> ValidateAsync(string idToken, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Drives the server-side (confidential-client) leg of "Sign in with Google": building the
+/// authorize-redirect URL and exchanging an authorization code for an ID token via Google's token
+/// endpoint using the configured client secret.
+/// </summary>
+public interface IGoogleOAuthClient
+{
+    string BuildAuthorizeUrl(string state);
+    Task<string> ExchangeCodeForIdTokenAsync(string code, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Signs/verifies the OAuth <c>state</c> parameter as a compact, storage-free token (mode + nonce +
+/// expiry + returnUrl), since the callback runs before any session or database row identifies the in-flight
+/// request.
+/// </summary>
+public interface IOAuthStateCodec
+{
+    string Encode(string mode, DateTimeOffset now, TimeSpan lifetime, string? returnUrl = null);
+    bool TryDecode(string state, DateTimeOffset now, out string mode, out string? returnUrl);
+}
+
 public interface IAccessTokenIssuer
 {
     TimeSpan RefreshTokenLifetime { get; }
+
+    /// <summary>Refresh-token lifetime for a "remember me" login (<see cref="RefreshSession.IsPersistent"/>).</summary>
+    TimeSpan PersistentRefreshTokenLifetime { get; }
 
     /// <summary>
     /// The issuer this instance signs tokens as - the value a service-account membership's
@@ -155,6 +225,13 @@ public interface IAuthenticationRepository
     Task RevokeActivePasswordResetTokensForUserAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken);
     Task UpdateLocalCredentialAsync(LocalCredential credential, CancellationToken cancellationToken);
     Task AddServiceAccountCredentialAsync(ServiceAccountCredential credential, CancellationToken cancellationToken);
+    Task AddSignInHandoffAsync(GoogleSignInHandoff handoff, CancellationToken cancellationToken);
+
+    /// <summary>Looks up and deletes a handoff row atomically - it is single-use by construction.</summary>
+    Task<GoogleSignInHandoff?> ConsumeSignInHandoffAsync(
+        string codeHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Looks up the currently-active credential for a client id (there may also be older, revoked
@@ -225,8 +302,47 @@ public interface IBootstrapRepository
         UserAccount account,
         LocalCredential credential,
         SiteRoleAssignment siteRole,
+        Organization organization,
         Workspace workspace,
+        OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Backs public self-service registration (<c>POST /register</c>): unlike <see cref="IBootstrapRepository"/>,
+/// this runs unboundedly many times (no advisory-lock singleton guard) and never grants
+/// <see cref="SiteRole.SuperAdministrator"/> - each call provisions one brand-new, independent
+/// organization/workspace/owner, not the one-time installation superadmin.
+/// </summary>
+public interface ISignUpRepository
+{
+    Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken);
+    Task AddAsync(
+        UserAccount account,
+        LocalCredential credential,
+        Organization organization,
+        Workspace workspace,
+        OrganizationMembership organizationMembership,
+        TenantMembership ownerMembership,
+        RefreshSession refreshSession,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Provisions a new organization/workspace for a user identified purely by an external identity
+    /// (no password, so no <see cref="LocalCredential"/>) - the "Sign in with Google" register path.
+    /// A <see cref="GoogleSignInHandoff"/> is created in the same transaction rather than a
+    /// <see cref="RefreshSession"/> directly, since the OAuth callback that calls this runs as a
+    /// full-page browser redirect and cannot itself hand tokens back to the SPA.
+    /// </summary>
+    Task ProvisionExternalAccountAsync(
+        UserAccount account,
+        ExternalIdentity identity,
+        Organization organization,
+        Workspace workspace,
+        OrganizationMembership organizationMembership,
+        TenantMembership ownerMembership,
+        GoogleSignInHandoff handoff,
         CancellationToken cancellationToken);
 }
 
@@ -235,6 +351,22 @@ public interface IWorkspaceProvisioningRepository
     Task<bool> IsSiteSuperAdministratorAsync(Guid userId, CancellationToken cancellationToken);
     Task<bool> SlugExistsAsync(string slug, CancellationToken cancellationToken);
     Task AddAsync(
+        Organization organization,
+        Workspace workspace,
+        OrganizationMembership organizationMembership,
+        TenantMembership ownerMembership,
+        Guid currentTenantId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Looks up the caller's membership in the organization that owns <paramref name="workspaceTenantId"/>,
+    /// used to authorize adding a second workspace to an existing organization (as opposed to
+    /// <see cref="AddAsync"/>'s site-super-admin path, which always creates a brand-new organization).
+    /// </summary>
+    Task<OrganizationMembership?> GetOrganizationMembershipAsync(
+        Guid workspaceTenantId, Guid userId, CancellationToken cancellationToken);
+
+    Task AddWorkspaceToOrganizationAsync(
         Workspace workspace,
         TenantMembership ownerMembership,
         Guid currentTenantId,
@@ -404,6 +536,29 @@ public interface IWorkItemRepository
         CancellationToken cancellationToken);
 }
 
+public interface IWorkItemLinkRepository
+{
+    Task AddAsync(WorkItemLink link, CancellationToken cancellationToken);
+    Task<WorkItemLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns all links where the work item is either the source or the target.
+    /// </summary>
+    Task<IReadOnlyList<WorkItemLink>> ListByWorkItemAsync(
+        Guid tenantId,
+        Guid workItemId,
+        CancellationToken cancellationToken);
+
+    Task<bool> ExistsAsync(
+        Guid tenantId,
+        Guid sourceWorkItemId,
+        Guid targetWorkItemId,
+        WorkItemLinkKind kind,
+        CancellationToken cancellationToken);
+
+    Task RemoveAsync(WorkItemLink link, CancellationToken cancellationToken);
+}
+
 public interface IWorkItemCommentRepository
 {
     Task AddAsync(WorkItemComment comment, CancellationToken cancellationToken);
@@ -453,6 +608,19 @@ public interface IAttachmentRepository
         CancellationToken cancellationToken);
 
     Task RemoveAsync(Attachment attachment, CancellationToken cancellationToken);
+}
+
+public interface IWorkItemWatcherRepository
+{
+    Task AddAsync(WorkItemWatcher watcher, CancellationToken cancellationToken);
+
+    Task<WorkItemWatcher?> GetAsync(
+        Guid tenantId, Guid workItemId, Guid userId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<WorkItemWatcher>> ListByWorkItemAsync(
+        Guid tenantId, Guid workItemId, CancellationToken cancellationToken);
+
+    Task RemoveAsync(WorkItemWatcher watcher, CancellationToken cancellationToken);
 }
 
 public interface ITenantOwnerLock

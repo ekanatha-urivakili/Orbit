@@ -144,6 +144,12 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
+                    b.Property<string>("Tier")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("tier");
+
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
@@ -161,11 +167,15 @@ namespace Orbit.Infrastructure.Persistence.Migrations
 
                     b.ToTable("tenant_memberships", null, t =>
                         {
+                            t.HasCheckConstraint("ck_tenant_memberships_guest_role", "tier <> 'Guest' OR tenant_role = 'Member'");
+
                             t.HasCheckConstraint("ck_tenant_memberships_identity", "(user_id IS NOT NULL AND issuer IS NULL AND subject IS NULL AND principal_type = 'User') OR (user_id IS NULL AND issuer IS NOT NULL AND subject IS NOT NULL)");
 
                             t.HasCheckConstraint("ck_tenant_memberships_principal_type", "principal_type IN ('User', 'ServiceAccount')");
 
                             t.HasCheckConstraint("ck_tenant_memberships_role", "tenant_role IN ('Owner', 'Administrator', 'Member')");
+
+                            t.HasCheckConstraint("ck_tenant_memberships_tier", "tier IN ('Standard', 'Guest')");
                         });
                 });
 
@@ -221,6 +231,12 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
+                    b.Property<string>("Tier")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("tier");
+
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -255,9 +271,13 @@ namespace Orbit.Infrastructure.Persistence.Migrations
 
                     b.ToTable("workspace_invitations", null, t =>
                         {
+                            t.HasCheckConstraint("ck_workspace_invitations_guest_role", "tier <> 'Guest' OR tenant_role = 'Member'");
+
                             t.HasCheckConstraint("ck_workspace_invitations_role", "tenant_role IN ('Administrator', 'Member')");
 
                             t.HasCheckConstraint("ck_workspace_invitations_status", "status IN ('Active', 'Accepted', 'Revoked')");
+
+                            t.HasCheckConstraint("ck_workspace_invitations_tier", "tier IN ('Standard', 'Guest')");
 
                             t.HasCheckConstraint("ck_workspace_invitations_version", "version > 0");
                         });
@@ -786,6 +806,44 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.ToTable("external_identities", (string)null);
                 });
 
+            modelBuilder.Entity("Orbit.Domain.Identity.GoogleSignInHandoff", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("google_sign_in_handoffs", (string)null);
+                });
+
             modelBuilder.Entity("Orbit.Domain.Identity.LocalCredential", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -893,6 +951,10 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("ip_address");
+
+                    b.Property<bool>("IsPersistent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_persistent");
 
                     b.Property<DateTimeOffset>("LastUsedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1134,6 +1196,74 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.ToTable("outbox_email_messages", (string)null);
                 });
 
+            modelBuilder.Entity("Orbit.Domain.Organizations.Organization", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(63)
+                        .HasColumnType("character varying(63)")
+                        .HasColumnName("slug");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("organizations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_organizations_slug", "slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'");
+                        });
+                });
+
+            modelBuilder.Entity("Orbit.Domain.Organizations.OrganizationMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("role");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("organization_memberships", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_organization_memberships_role", "role IN ('Owner', 'Administrator', 'Member')");
+                        });
+                });
+
             modelBuilder.Entity("Orbit.Domain.Projects.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1362,6 +1492,11 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("description");
 
+                    b.Property<string>("LogoObjectKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("logo_object_key");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1374,6 +1509,82 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.HasKey("TenantId");
 
                     b.ToTable("workspace_settings", (string)null);
+                });
+
+            modelBuilder.Entity("Orbit.Domain.Settings.WorkspaceTypographySetting", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int>("ControlFontSizePx")
+                        .HasColumnType("integer")
+                        .HasColumnName("control_font_size_px");
+
+                    b.Property<int>("ControlHeightPx")
+                        .HasColumnType("integer")
+                        .HasColumnName("control_height_px");
+
+                    b.Property<string>("LeftFontColor")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("left_font_color");
+
+                    b.Property<string>("LeftFontFamily")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("left_font_family");
+
+                    b.Property<int>("LeftFontSizePx")
+                        .HasColumnType("integer")
+                        .HasColumnName("left_font_size_px");
+
+                    b.Property<string>("MiddleFontColor")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("middle_font_color");
+
+                    b.Property<string>("MiddleFontFamily")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("middle_font_family");
+
+                    b.Property<int>("MiddleFontSizePx")
+                        .HasColumnType("integer")
+                        .HasColumnName("middle_font_size_px");
+
+                    b.Property<string>("RightFontColor")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("right_font_color");
+
+                    b.Property<string>("RightFontFamily")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("right_font_family");
+
+                    b.Property<int>("RightFontSizePx")
+                        .HasColumnType("integer")
+                        .HasColumnName("right_font_size_px");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("workspace_typography_settings", (string)null);
                 });
 
             modelBuilder.Entity("Orbit.Domain.WorkItems.Attachment", b =>
@@ -1497,15 +1708,6 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("text[]")
                         .HasColumnName("labels");
 
-                    b.Property<string>("LinkType")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("link_type");
-
-                    b.Property<Guid?>("LinkedWorkItemId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("linked_work_item_id");
-
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_id");
@@ -1584,8 +1786,6 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Key")
                         .IsUnique();
 
-                    b.HasIndex("TenantId", "LinkedWorkItemId");
-
                     b.HasIndex("TenantId", "ParentId");
 
                     b.HasIndex("TenantId", "Type");
@@ -1595,10 +1795,6 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.ToTable("work_items", null, t =>
                         {
                             t.HasCheckConstraint("ck_work_items_epic_name", "type <> 'Epic' OR epic_name IS NOT NULL");
-
-                            t.HasCheckConstraint("ck_work_items_link", "(link_type IS NULL) = (linked_work_item_id IS NULL)");
-
-                            t.HasCheckConstraint("ck_work_items_link_type", "link_type IS NULL OR link_type IN ('DependsOn', 'Blocks', 'RelatesTo')");
 
                             t.HasCheckConstraint("ck_work_items_priority", "priority IN ('Lowest', 'Low', 'Medium', 'High', 'Highest')");
 
@@ -1680,6 +1876,82 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItemLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("SourceWorkItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_work_item_id");
+
+                    b.Property<Guid>("TargetWorkItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_work_item_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SourceWorkItemId");
+
+                    b.HasIndex("TenantId", "TargetWorkItemId");
+
+                    b.HasIndex("TenantId", "SourceWorkItemId", "TargetWorkItemId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("work_item_links", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_work_item_links_distinct", "source_work_item_id <> target_work_item_id");
+
+                            t.HasCheckConstraint("ck_work_item_links_kind", "kind IN ('Blocks', 'RelatesTo', 'Duplicates')");
+                        });
+                });
+
+            modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItemWatcher", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("WorkItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("work_item_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "WorkItemId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_work_item_watchers_tenant_item_user");
+
+                    b.ToTable("work_item_watchers", (string)null);
+                });
+
             modelBuilder.Entity("Orbit.Domain.Workspaces.Workspace", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1700,6 +1972,10 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(120)")
                         .HasColumnName("name");
 
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
                     b.Property<string>("Slug")
                         .IsRequired()
                         .HasMaxLength(63)
@@ -1707,6 +1983,8 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnName("slug");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("Slug")
                         .IsUnique();
@@ -1941,6 +2219,15 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Orbit.Domain.Identity.GoogleSignInHandoff", b =>
+                {
+                    b.HasOne("Orbit.Domain.Identity.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Orbit.Domain.Identity.LocalCredential", b =>
                 {
                     b.HasOne("Orbit.Domain.Identity.UserAccount", null)
@@ -1973,6 +2260,15 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                     b.HasOne("Orbit.Domain.Identity.UserAccount", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Orbit.Domain.Organizations.OrganizationMembership", b =>
+                {
+                    b.HasOne("Orbit.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -2020,6 +2316,15 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Orbit.Domain.Settings.WorkspaceTypographySetting", b =>
+                {
+                    b.HasOne("Orbit.Domain.Workspaces.Workspace", null)
+                        .WithOne()
+                        .HasForeignKey("Orbit.Domain.Settings.WorkspaceTypographySetting", "TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Orbit.Domain.WorkItems.Attachment", b =>
                 {
                     b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
@@ -2032,12 +2337,6 @@ namespace Orbit.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItem", b =>
                 {
-                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "LinkedWorkItemId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
                         .WithMany()
                         .HasForeignKey("TenantId", "ParentId")
@@ -2065,6 +2364,42 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId", "WorkItemId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItemLink", b =>
+                {
+                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "SourceWorkItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "TargetWorkItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Orbit.Domain.WorkItems.WorkItemWatcher", b =>
+                {
+                    b.HasOne("Orbit.Domain.WorkItems.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "WorkItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Orbit.Domain.Workspaces.Workspace", b =>
+                {
+                    b.HasOne("Orbit.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 #pragma warning restore 612, 618

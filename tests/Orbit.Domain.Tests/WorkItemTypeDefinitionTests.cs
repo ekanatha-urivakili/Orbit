@@ -15,7 +15,7 @@ public sealed class WorkItemTypeDefinitionTests
 
         Assert.Equal(10, definitions.Count);
         Assert.Equal("Task", definitions.Single(definition => definition.Id == WorkItemType.Task).Label);
-        Assert.False(definitions.Single(definition => definition.Id == WorkItemType.Subtask).Enabled);
+        Assert.True(definitions.Single(definition => definition.Id == WorkItemType.Subtask).Enabled);
         Assert.All(definitions, definition => Assert.Equal(tenantId, definition.TenantId));
     }
 

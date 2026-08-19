@@ -15,6 +15,7 @@ public sealed record WorkspaceInvitationDto(
     Guid Id,
     string Email,
     TenantRole Role,
+    MembershipTier Tier,
     Guid? TeamId,
     WorkspaceInvitationStatus Status,
     DateTimeOffset ExpiresAt,
@@ -26,6 +27,7 @@ public sealed record WorkspaceInvitationDto(
             invitation.Id,
             invitation.NormalizedEmail,
             invitation.Role,
+            invitation.Tier,
             invitation.TeamId,
             invitation.Status,
             invitation.ExpiresAt,
@@ -37,7 +39,8 @@ public sealed record CreateWorkspaceInvitationCommand(
     string Email,
     TenantRole Role,
     Guid? TeamId,
-    string FrontendBaseUrl) : ICommand<WorkspaceInvitationDto>;
+    string FrontendBaseUrl,
+    MembershipTier Tier = MembershipTier.Standard) : ICommand<WorkspaceInvitationDto>;
 
 public sealed class CreateWorkspaceInvitationValidator : AbstractValidator<CreateWorkspaceInvitationCommand>
 {
@@ -45,6 +48,11 @@ public sealed class CreateWorkspaceInvitationValidator : AbstractValidator<Creat
     {
         RuleFor(command => command.Email).NotEmpty().MaximumLength(320).EmailAddress();
         RuleFor(command => command.Role).IsInEnum().NotEqual(TenantRole.Owner);
+        RuleFor(command => command.Tier).IsInEnum();
+        RuleFor(command => command.Role)
+            .Equal(TenantRole.Member)
+            .When(command => command.Tier == MembershipTier.Guest)
+            .WithMessage("A guest invitation can only grant the Member role.");
         RuleFor(command => command.TeamId).NotEmpty().When(command => command.TeamId.HasValue);
         RuleFor(command => command.FrontendBaseUrl)
             .Must(value =>
@@ -101,7 +109,8 @@ public sealed class CreateWorkspaceInvitationHandler(
                 tokenHash,
                 principal.MembershipId,
                 now,
-                InvitationLifetime);
+                InvitationLifetime,
+                request.Tier);
             await invitations.AddAsync(invitation, cancellationToken);
         }
         else
@@ -112,7 +121,8 @@ public sealed class CreateWorkspaceInvitationHandler(
                 tokenHash,
                 principal.MembershipId,
                 now,
-                InvitationLifetime);
+                InvitationLifetime,
+                request.Tier);
         }
 
         var message = OutboxEmailMessage.CreateWorkspaceInvitation(
@@ -277,16 +287,25 @@ public sealed class AcceptWorkspaceInvitationHandler(
             cancellationToken);
         if (membership is null)
         {
-            membership = TenantMembership.CreateForUser(invitation.TenantId, accountId, invitation.Role, now);
+            membership = TenantMembership.CreateForUser(
+                invitation.TenantId, accountId, invitation.Role, now, invitation.Tier);
             await invitations.AddTenantMembershipAsync(membership, cancellationToken);
         }
-        else if (!membership.IsActive)
+        else
         {
-            membership.Reactivate(invitation.Role);
-        }
-        else if (membership.Role != invitation.Role)
-        {
-            membership.ChangeRole(invitation.Role);
+            if (!membership.IsActive)
+            {
+                membership.Reactivate(invitation.Role);
+            }
+            else if (membership.Role != invitation.Role)
+            {
+                membership.ChangeRole(invitation.Role);
+            }
+
+            if (membership.Tier != invitation.Tier)
+            {
+                membership.ChangeTier(invitation.Tier);
+            }
         }
 
         if (invitation.TeamId is { } teamId

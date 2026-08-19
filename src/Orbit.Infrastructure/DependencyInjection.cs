@@ -25,8 +25,10 @@ public static class DependencyInjection
                 npgsql.MigrationsAssembly(typeof(OrbitDbContext).Assembly.FullName)));
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IWorkItemRepository, WorkItemRepository>();
+        services.AddScoped<IWorkItemLinkRepository, WorkItemLinkRepository>();
         services.AddScoped<IWorkItemCommentRepository, WorkItemCommentRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
+        services.AddScoped<IWorkItemWatcherRepository, WorkItemWatcherRepository>();
         services.AddScoped<ITenantMembershipRepository, TenantMembershipRepository>();
         services.AddScoped<IProjectRoleRepository, ProjectRoleRepository>();
         services.AddScoped<ITeamRepository, TeamRepository>();
@@ -43,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantOwnerLock, TenantOwnerLock>();
         services.AddScoped<IAuthorizationContextCache, AuthorizationContextCache>();
         services.AddScoped<IBootstrapRepository, BootstrapRepository>();
+        services.AddScoped<ISignUpRepository, SignUpRepository>();
         services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<IAuthenticationRepository, AuthenticationRepository>();
@@ -60,6 +63,10 @@ public static class DependencyInjection
         services.Configure<LocalTokenOptions>(configuration.GetSection(LocalTokenOptions.SectionName));
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddSingleton<IExternalIdentityTokenValidator, ExternalIdentityTokenValidator>();
+        services.Configure<GoogleOAuthOptions>(configuration.GetSection(GoogleOAuthOptions.SectionName));
+        services.AddHttpClient<IGoogleOAuthClient, GoogleOAuthClient>();
+        services.AddSingleton<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
+        services.AddSingleton<IOAuthStateCodec, OAuthStateCodec>();
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<OrbitDbContext>());
         services.AddScoped<RuntimeDatabaseSecurityValidator>();
         services.AddSingleton(TimeProvider.System);

@@ -55,7 +55,7 @@ public sealed class GroupHandlerTests
     [Fact]
     public async Task AddGroupMember_RejectsDuplicateMembership()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
         var membershipId = Guid.NewGuid();
@@ -82,7 +82,7 @@ public sealed class GroupHandlerTests
     [Fact]
     public async Task AddGroupMember_PersistsNewMembership()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
         var membershipId = Guid.NewGuid();
@@ -108,7 +108,7 @@ public sealed class GroupHandlerTests
     [Fact]
     public async Task AssignGroupProjectRole_CreatesNewAssignment()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
@@ -133,7 +133,7 @@ public sealed class GroupHandlerTests
     [Fact]
     public async Task AssignGroupProjectRole_UpdatesExistingAssignment()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
@@ -165,6 +165,7 @@ public sealed class GroupHandlerTests
         public Guid MembershipId => membershipId;
         public PrincipalType PrincipalType => PrincipalType.User;
         public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
         public bool IsDevelopmentBypass => false;
     }
 
@@ -290,6 +291,14 @@ public sealed class GroupHandlerTests
 
         public Task<IReadOnlyList<TenantMembership>> ListAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>([]);
+
+        public Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TenantMembership>>([]);
+
+        public Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private sealed class SettingsRepositoryStub(Workspace workspace) : ISettingsRepository
@@ -308,11 +317,19 @@ public sealed class GroupHandlerTests
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
 
+        public Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<NotificationPreference>>([]);
+
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult(workspace.Id == tenantId ? workspace : null);
 
         public Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<WorkspaceSetting?>(null);
+
+        public Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(
+            Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkspaceTypographySetting?>(null);
 
         public Task<ProjectSetting?> GetProjectSettingAsync(
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
@@ -326,6 +343,10 @@ public sealed class GroupHandlerTests
             Task.CompletedTask;
 
         public Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddWorkspaceTypographySettingAsync(
+            WorkspaceTypographySetting setting, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>

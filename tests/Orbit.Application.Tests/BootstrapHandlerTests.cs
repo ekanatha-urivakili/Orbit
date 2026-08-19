@@ -3,6 +3,7 @@ using Orbit.Application.Common;
 using Orbit.Application.Identity;
 using Orbit.Domain.Access;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Organizations;
 using Orbit.Domain.Workspaces;
 
 namespace Orbit.Application.Tests;
@@ -71,6 +72,8 @@ public sealed class BootstrapHandlerTests
         public bool InitializationRequired { get; init; } = true;
         public UserAccount? Account { get; private set; }
         public LocalCredential? Credential { get; private set; }
+        public Organization? Organization { get; private set; }
+        public OrganizationMembership? OrganizationMembership { get; private set; }
         public TenantMembership? OwnerMembership { get; private set; }
 
         public Task<bool> IsInitializationRequiredAsync(CancellationToken cancellationToken) =>
@@ -80,12 +83,16 @@ public sealed class BootstrapHandlerTests
             UserAccount account,
             LocalCredential credential,
             SiteRoleAssignment siteRole,
+            Organization organization,
             Workspace workspace,
+            OrganizationMembership organizationMembership,
             TenantMembership ownerMembership,
             CancellationToken cancellationToken)
         {
             Account = account;
             Credential = credential;
+            Organization = organization;
+            OrganizationMembership = organizationMembership;
             OwnerMembership = ownerMembership;
             return Task.FromResult(InitializationRequired);
         }

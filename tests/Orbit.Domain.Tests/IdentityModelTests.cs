@@ -22,7 +22,7 @@ public sealed class IdentityModelTests
     [Fact]
     public void Workspace_CreateBuildsStableAsciiSlug()
     {
-        var workspace = Workspace.Create("Éka's Product Team", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Éka's Product Team", DateTimeOffset.UtcNow);
 
         Assert.Equal("eka-s-product-team", workspace.Slug);
         Assert.Equal(1, workspace.AuthorizationEpoch);
@@ -56,6 +56,7 @@ public sealed class IdentityModelTests
             "hash-1",
             "orbit-tests",
             "127.0.0.1",
+            false,
             now,
             TimeSpan.FromDays(30));
 
@@ -80,6 +81,7 @@ public sealed class IdentityModelTests
             "hash-1",
             null,
             null,
+            false,
             now,
             TimeSpan.FromMinutes(1));
 
@@ -97,6 +99,7 @@ public sealed class IdentityModelTests
             "hash-1",
             null,
             null,
+            false,
             now,
             TimeSpan.FromDays(30));
 

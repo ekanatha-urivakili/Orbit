@@ -101,6 +101,7 @@ internal sealed class RefreshSessionConfiguration : IEntityTypeConfiguration<Ref
         builder.Property(session => session.TokenHash).HasColumnName("token_hash").HasMaxLength(64).IsRequired();
         builder.Property(session => session.UserAgent).HasColumnName("user_agent").HasMaxLength(512);
         builder.Property(session => session.IpAddress).HasColumnName("ip_address").HasMaxLength(64);
+        builder.Property(session => session.IsPersistent).HasColumnName("is_persistent");
         builder.Property(session => session.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(16);
         builder.Property(session => session.CreatedAt).HasColumnName("created_at");
         builder.Property(session => session.LastUsedAt).HasColumnName("last_used_at");
@@ -112,6 +113,24 @@ internal sealed class RefreshSessionConfiguration : IEntityTypeConfiguration<Ref
         builder.HasIndex(session => new { session.UserId, session.Status });
         builder.HasIndex(session => session.FamilyId);
         builder.HasOne<UserAccount>().WithMany().HasForeignKey(session => session.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class GoogleSignInHandoffConfiguration : IEntityTypeConfiguration<GoogleSignInHandoff>
+{
+    public void Configure(EntityTypeBuilder<GoogleSignInHandoff> builder)
+    {
+        builder.ToTable("google_sign_in_handoffs");
+        builder.HasKey(handoff => handoff.Id);
+        builder.Property(handoff => handoff.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(handoff => handoff.CodeHash).HasColumnName("code_hash").HasMaxLength(64).IsRequired();
+        builder.Property(handoff => handoff.UserId).HasColumnName("user_id");
+        builder.Property(handoff => handoff.TenantId).HasColumnName("tenant_id");
+        builder.Property(handoff => handoff.CreatedAt).HasColumnName("created_at");
+        builder.Property(handoff => handoff.ExpiresAt).HasColumnName("expires_at");
+        builder.HasIndex(handoff => handoff.CodeHash).IsUnique();
+        builder.HasOne<UserAccount>().WithMany().HasForeignKey(handoff => handoff.UserId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

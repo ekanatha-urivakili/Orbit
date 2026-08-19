@@ -30,7 +30,8 @@ public static class InvitationEndpoints
                     request.Email,
                     request.Role,
                     request.TeamId,
-                    frontendBaseUrl),
+                    frontendBaseUrl,
+                    request.Tier),
                 cancellationToken);
             return Results.Created($"/api/v1/invitations/{invitation.Id}", invitation);
         })
@@ -91,7 +92,11 @@ public static class InvitationEndpoints
         return group;
     }
 
-    public sealed record CreateWorkspaceInvitationRequest(string Email, TenantRole Role, Guid? TeamId);
+    public sealed record CreateWorkspaceInvitationRequest(
+        string Email,
+        TenantRole Role,
+        Guid? TeamId,
+        MembershipTier Tier = MembershipTier.Standard);
 
     public sealed record AcceptWorkspaceInvitationRequest(string Token, string DisplayName, string Password);
 

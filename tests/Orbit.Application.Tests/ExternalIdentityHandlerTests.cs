@@ -165,6 +165,7 @@ public sealed class ExternalIdentityHandlerTests
         public Guid MembershipId => Guid.NewGuid();
         public PrincipalType PrincipalType => PrincipalType.User;
         public TenantRole TenantRole => TenantRole.Member;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
         public bool IsDevelopmentBypass => false;
     }
 
@@ -183,6 +184,8 @@ public sealed class ExternalIdentityHandlerTests
 
     private sealed class AuthRepositoryStub : IAuthenticationRepository
     {
+        public List<GoogleSignInHandoff> SignInHandoffs { get; } = [];
+
         public List<ExternalIdentity> ExternalIdentities { get; } = [];
         public UserAccount? Account { get; set; }
 
@@ -280,6 +283,22 @@ public sealed class ExternalIdentityHandlerTests
         public Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
             Guid tenantId, Guid membershipId, CancellationToken cancellationToken) =>
             Task.FromResult<TenantMembership?>(null);
+
+        public Task AddSignInHandoffAsync(GoogleSignInHandoff handoff, CancellationToken cancellationToken)
+        {
+            SignInHandoffs.Add(handoff);
+            return Task.CompletedTask;
+        }
+
+        public Task<GoogleSignInHandoff?> ConsumeSignInHandoffAsync(
+            string codeHash, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            var handoff = SignInHandoffs.SingleOrDefault(candidate => candidate.CodeHash == codeHash);
+            if (handoff is null) return Task.FromResult<GoogleSignInHandoff?>(null);
+            SignInHandoffs.Remove(handoff);
+            return Task.FromResult(handoff.IsUsable(now) ? handoff : null);
+        }
+
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

@@ -35,12 +35,21 @@ public sealed class ApiExceptionHandler(
             logger.LogError(exception, "Unhandled request failure. Trace id: {TraceId}", httpContext.TraceIdentifier);
         }
 
+        // BP-04 / SEC-09: EF's DbUpdateException.Message may embed table/column names from the
+        // database schema. Use a generic message for that case; all other non-500 exceptions come
+        // from domain code whose messages are safe to surface.
+        var detail = status == StatusCodes.Status500InternalServerError
+            ? null
+            : exception is DbUpdateException
+                ? "The change conflicts with existing data."
+                : exception.Message;
+
         var problem = new ProblemDetails
         {
             Status = status,
             Type = type,
             Title = title,
-            Detail = status == StatusCodes.Status500InternalServerError ? null : exception.Message
+            Detail = detail
         };
         problem.Extensions["correlationId"] = httpContext.TraceIdentifier;
 

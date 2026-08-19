@@ -24,12 +24,17 @@ import type {
   TeamMembership,
   TenantMembership,
   TenantRole,
+  TypographySetting,
   WorkspaceSetting,
+  PresignedWorkspaceLogoUpload,
   WorkspaceInvitation,
   WorkspaceInvitationStatus,
+  MembershipTier,
   SystemChoices,
   WorkItem,
   WorkItemAttachment,
+  WorkItemLink,
+  WorkItemLinkKind,
   PresignedAttachmentUpload,
   WorkItemComment,
   WorkItemTypeDefinition,
@@ -128,6 +133,17 @@ export const orbitApi = {
       headers: { 'If-Match': `"${workItem.version}"` },
       body: JSON.stringify({ beforeWorkItemId: neighbors.beforeId, afterWorkItemId: neighbors.afterId }),
     }),
+  listWorkItemLinks: (workItemId: string) =>
+    request<WorkItemLink[]>(`/work-items/${encodeURIComponent(workItemId)}/links`),
+  addWorkItemLink: (workItemId: string, input: { kind: WorkItemLinkKind; targetWorkItemId: string; inverse: boolean }) =>
+    request<WorkItemLink>(`/work-items/${encodeURIComponent(workItemId)}/links`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  removeWorkItemLink: (workItemId: string, linkId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/links/${encodeURIComponent(linkId)}`, {
+      method: 'DELETE',
+    }),
   listWorkItemComments: (workItemId: string) =>
     request<WorkItemComment[]>(`/work-items/${encodeURIComponent(workItemId)}/comments`),
   addWorkItemComment: (workItemId: string, body: string) =>
@@ -165,6 +181,12 @@ export const orbitApi = {
     request<void>(`/work-items/${encodeURIComponent(workItemId)}/attachments/${encodeURIComponent(attachmentId)}`, {
       method: 'DELETE',
     }),
+  getWorkItemWatchers: (workItemId: string) =>
+    request<import('./types').WorkItemWatchers>(`/work-items/${encodeURIComponent(workItemId)}/watchers`),
+  watchWorkItem: (workItemId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/watchers/me`, { method: 'PUT' }),
+  unwatchWorkItem: (workItemId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/watchers/me`, { method: 'DELETE' }),
   // Direct PUT to the presigned object-storage URL — bypasses the Orbit API wrapper entirely,
   // since the file bytes go straight to MinIO/S3, not through the Orbit backend.
   uploadAttachmentFile: async (uploadUrl: string, file: File) => {
@@ -180,6 +202,11 @@ export const orbitApi = {
   getSiteCapabilities: () => request<SiteCapabilities>('/me/site-capabilities'),
   createWorkspace: (name: string) =>
     request<CreatedWorkspace>('/workspaces', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  createWorkspaceInOrganization: (name: string) =>
+    request<CreatedWorkspace>('/organization/workspaces', {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
@@ -209,6 +236,33 @@ export const orbitApi = {
   getWorkspaceSettings: () => request<WorkspaceSetting>('/workspaces/current/settings'),
   updateWorkspaceSettings: (input: WorkspaceSetting) =>
     request<WorkspaceSetting>('/workspaces/current/settings', {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${input.version}"` },
+      body: JSON.stringify(input),
+    }),
+  presignWorkspaceLogoUpload: (fileName: string, contentType: string, sizeBytes: number) =>
+    request<PresignedWorkspaceLogoUpload>('/workspaces/current/settings/logo/presign', {
+      method: 'POST',
+      body: JSON.stringify({ fileName, contentType, sizeBytes }),
+    }),
+  confirmWorkspaceLogoUpload: (objectKey: string, version: number) =>
+    request<WorkspaceSetting>('/workspaces/current/settings/logo', {
+      method: 'PUT',
+      headers: { 'If-Match': `"${version}"` },
+      body: JSON.stringify({ objectKey }),
+    }),
+  // Direct PUT to the presigned object-storage URL, same as uploadAttachmentFile.
+  uploadWorkspaceLogoFile: async (uploadUrl: string, file: File) => {
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    })
+    if (!response.ok) throw new Error(`Upload failed (${response.status})`)
+  },
+  getTypographySettings: () => request<TypographySetting>('/workspaces/current/typography-settings'),
+  updateTypographySettings: (input: TypographySetting) =>
+    request<TypographySetting>('/workspaces/current/typography-settings', {
       method: 'PATCH',
       headers: { 'If-Match': `"${input.version}"` },
       body: JSON.stringify(input),
@@ -313,7 +367,7 @@ export const orbitApi = {
     const query = params.toString()
     return request<WorkspaceInvitation[]>(`/invitations${query ? `?${query}` : ''}`)
   },
-  createInvitation: (input: { email: string; role: TenantRole; teamId: string | null }) =>
+  createInvitation: (input: { email: string; role: TenantRole; teamId: string | null; tier?: MembershipTier }) =>
     request<WorkspaceInvitation>('/invitations', { method: 'POST', body: JSON.stringify(input) }),
   revokeInvitation: (invitationId: string) =>
     request<void>(`/invitations/${encodeURIComponent(invitationId)}`, { method: 'DELETE' }),

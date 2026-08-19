@@ -35,11 +35,32 @@ internal sealed class SettingsRepository(OrbitDbContext dbContext) : ISettingsRe
             preference => preference.UserId == userId,
             cancellationToken);
 
+    public async Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await dbContext.NotificationPreferences
+            .Where(preference => userIds.Contains(preference.UserId))
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
         dbContext.Workspaces.SingleOrDefaultAsync(workspace => workspace.Id == tenantId, cancellationToken);
 
     public Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken) =>
         dbContext.WorkspaceSettings.SingleOrDefaultAsync(setting => setting.TenantId == tenantId, cancellationToken);
+
+    public Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken) =>
+        dbContext.WorkspaceTypographySettings.SingleOrDefaultAsync(
+            setting => setting.TenantId == tenantId,
+            cancellationToken);
 
     public Task<ProjectSetting?> GetProjectSettingAsync(
         Guid tenantId,
@@ -59,6 +80,11 @@ internal sealed class SettingsRepository(OrbitDbContext dbContext) : ISettingsRe
 
     public async Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken) =>
         await dbContext.WorkspaceSettings.AddAsync(setting, cancellationToken);
+
+    public async Task AddWorkspaceTypographySettingAsync(
+        WorkspaceTypographySetting setting,
+        CancellationToken cancellationToken) =>
+        await dbContext.WorkspaceTypographySettings.AddAsync(setting, cancellationToken);
 
     public async Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
         await dbContext.ProjectSettings.AddAsync(setting, cancellationToken);

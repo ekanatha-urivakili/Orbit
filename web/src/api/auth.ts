@@ -1,4 +1,4 @@
-import type { AuthSession } from './types'
+import type { AuthSession, RegisterInput } from './types'
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5014/api/v1'
 const refreshTokenStorageKey = 'orbit.refresh-token'
@@ -36,10 +36,34 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T
 }
 
-function applySession(session: AuthSession) {
+/** Reads the refresh token from whichever storage currently holds it (localStorage survives a
+ * browser restart for a "remember me" session; sessionStorage clears when the tab closes). */
+function getStoredRefreshToken(): { token: string; remember: boolean } | null {
+  const persisted = localStorage.getItem(refreshTokenStorageKey)
+  if (persisted) return { token: persisted, remember: true }
+  const session = sessionStorage.getItem(refreshTokenStorageKey)
+  return session ? { token: session, remember: false } : null
+}
+
+function setStoredRefreshToken(token: string, remember: boolean) {
+  if (remember) {
+    localStorage.setItem(refreshTokenStorageKey, token)
+    sessionStorage.removeItem(refreshTokenStorageKey)
+  } else {
+    sessionStorage.setItem(refreshTokenStorageKey, token)
+    localStorage.removeItem(refreshTokenStorageKey)
+  }
+}
+
+function clearStoredRefreshToken() {
+  localStorage.removeItem(refreshTokenStorageKey)
+  sessionStorage.removeItem(refreshTokenStorageKey)
+}
+
+function applySession(session: AuthSession, remember: boolean) {
   accessToken = session.accessToken
   accessTokenExpiresAt = new Date(session.accessTokenExpiresAt).getTime()
-  sessionStorage.setItem(refreshTokenStorageKey, session.refreshToken)
+  setStoredRefreshToken(session.refreshToken, remember)
   localStorage.setItem(tenantStorageKey, session.workspaceId)
   currentSession = session
   notify()
@@ -57,32 +81,62 @@ export function getCurrentSession(): AuthSession | null {
   return currentSession
 }
 
-export async function login(email: string, password: string): Promise<AuthSession> {
+export async function login(email: string, password: string, rememberMe = false): Promise<AuthSession> {
   const response = await fetch(`${apiUrl}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, rememberMe }),
   })
   const session = await parseResponse<AuthSession>(response)
-  applySession(session)
+  applySession(session, rememberMe)
+  return session
+}
+
+/** Full-page navigation target for "Sign in with Google" - the backend brokers the OAuth code
+ * exchange server-side, so this is a real redirect, not a fetch. */
+export function googleOAuthStartUrl(mode: 'login' | 'register'): string {
+  const returnUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const returnParam = returnUrl ? `&returnUrl=${encodeURIComponent(returnUrl)}` : ''
+  return `${apiUrl}/auth/google/start?mode=${mode}${returnParam}`
+}
+
+export async function exchangeGoogleHandoff(code: string): Promise<AuthSession> {
+  const response = await fetch(`${apiUrl}/auth/google/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+  const session = await parseResponse<AuthSession>(response)
+  applySession(session, false)
+  return session
+}
+
+export async function register(input: RegisterInput): Promise<AuthSession> {
+  const response = await fetch(`${apiUrl}/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const session = await parseResponse<AuthSession>(response)
+  applySession(session, false)
   return session
 }
 
 async function refresh(workspaceId?: string): Promise<AuthSession | null> {
-  const refreshToken = sessionStorage.getItem(refreshTokenStorageKey)
-  if (!refreshToken) return null
+  const stored = getStoredRefreshToken()
+  if (!stored) return null
 
   const response = await fetch(`${apiUrl}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken, workspaceId }),
+    body: JSON.stringify({ refreshToken: stored.token, workspaceId }),
   })
   if (!response.ok) {
     // Only a 401 means the refresh token itself is invalid/expired/revoked - clear the session.
     // A 403 (e.g. switching to a workspace the user is no longer an active member of) leaves the
     // existing session valid, so it must not be torn down here.
     if (response.status === 401) {
-      sessionStorage.removeItem(refreshTokenStorageKey)
+      clearStoredRefreshToken()
       accessToken = null
       currentSession = null
       notify()
@@ -91,7 +145,7 @@ async function refresh(workspaceId?: string): Promise<AuthSession | null> {
   }
 
   const session = await parseResponse<AuthSession>(response)
-  applySession(session)
+  applySession(session, stored.remember)
   return session
 }
 
@@ -103,8 +157,8 @@ function refreshOnce(): Promise<AuthSession | null> {
 }
 
 export async function logout(): Promise<void> {
-  const refreshToken = sessionStorage.getItem(refreshTokenStorageKey)
-  sessionStorage.removeItem(refreshTokenStorageKey)
+  const refreshToken = getStoredRefreshToken()?.token ?? null
+  clearStoredRefreshToken()
   accessToken = null
   currentSession = null
   notify()

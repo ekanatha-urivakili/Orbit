@@ -295,6 +295,8 @@ public sealed class WorkspaceInvitationHandlerTests
     private sealed class ExternalAuthRepositoryStub(UserAccount? account = null, ExternalIdentity? identity = null)
         : IAuthenticationRepository
     {
+        public List<GoogleSignInHandoff> SignInHandoffs { get; } = [];
+
         public List<ExternalIdentity> AddedIdentities { get; } = [];
 
         public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
@@ -379,6 +381,22 @@ public sealed class WorkspaceInvitationHandlerTests
         public Task<TenantMembership?> GetActiveServiceAccountMembershipAsync(
             Guid tenantId, Guid membershipId, CancellationToken cancellationToken) =>
             Task.FromResult<TenantMembership?>(null);
+
+        public Task AddSignInHandoffAsync(GoogleSignInHandoff handoff, CancellationToken cancellationToken)
+        {
+            SignInHandoffs.Add(handoff);
+            return Task.CompletedTask;
+        }
+
+        public Task<GoogleSignInHandoff?> ConsumeSignInHandoffAsync(
+            string codeHash, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            var handoff = SignInHandoffs.SingleOrDefault(candidate => candidate.CodeHash == codeHash);
+            if (handoff is null) return Task.FromResult<GoogleSignInHandoff?>(null);
+            SignInHandoffs.Remove(handoff);
+            return Task.FromResult(handoff.IsUsable(now) ? handoff : null);
+        }
+
     }
 
     private static AcceptWorkspaceInvitationHandler CreateHandler(

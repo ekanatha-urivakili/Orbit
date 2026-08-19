@@ -14,11 +14,11 @@ public enum WorkItemType
     Subtask
 }
 
-public enum WorkItemLinkType
+public enum WorkItemLinkKind
 {
-    DependsOn,
     Blocks,
-    RelatesTo
+    RelatesTo,
+    Duplicates
 }
 
 public enum WorkItemStatus
@@ -126,7 +126,7 @@ public static class SystemChoiceCatalog
         new("test", WorkItemType.Test, "Test", "A repeatable validation scenario.", 70, "teal"),
         new("feature", WorkItemType.Feature, "Feature", "A cohesive product capability.", 80, "cyan"),
         new("request", WorkItemType.Request, "Request", "A request from a customer or stakeholder.", 90, "orange"),
-        new("subtask", WorkItemType.Subtask, "Subtask", "A historical child-work type.", 100, "slate", false)
+        new("subtask", WorkItemType.Subtask, "Subtask", "A child work item nested under a task, story, or bug.", 100, "slate")
     ];
 
     public static IReadOnlyList<ChoiceOption<WorkItemStatus>> WorkItemStatuses { get; } =

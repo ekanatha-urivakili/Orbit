@@ -13,7 +13,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task ChangeRole_PromotesMemberToAdministrator()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var membership = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([membership]);
@@ -38,7 +38,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task ChangeRole_RejectsDemotingTheSoleOwner()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var owner = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Owner, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([owner]);
@@ -62,7 +62,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task ChangeRole_AllowsDemotingAnOwnerWhenAnotherOwnerRemains()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var owner = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Owner, DateTimeOffset.UtcNow);
         var coOwner = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Owner, DateTimeOffset.UtcNow);
@@ -85,7 +85,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task ChangeRole_UnknownMembership_ThrowsNotFound()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var handler = new ChangeTenantMembershipRoleHandler(
             new TenantContextStub(workspace.Id),
             new AuthorizationStub(true),
@@ -104,7 +104,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task Deactivate_RejectsRemovingTheSoleOwner()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var owner = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Owner, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([owner]);
@@ -126,7 +126,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
     [Fact]
     public async Task Deactivate_RemovesAnOrdinaryMember()
     {
-        var workspace = Workspace.Create("Workspace", DateTimeOffset.UtcNow);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", DateTimeOffset.UtcNow);
         var tenantId = workspace.Id;
         var member = TenantMembership.CreateForUser(tenantId, Guid.NewGuid(), TenantRole.Member, DateTimeOffset.UtcNow);
         var memberships = new MembershipRepositoryStub([member]);
@@ -186,6 +186,18 @@ public sealed class TenantMembershipLifecycleHandlerTests
 
         public Task<IReadOnlyList<TenantMembership>> ListAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>(memberships);
+
+        public Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TenantMembership>>(
+                memberships.Where(m => membershipIds.Contains(m.Id)).ToList());
+
+        public Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>(
+                [.. memberships
+                    .Where(m => m.UserId.HasValue && userIds.Contains(m.UserId.Value) && m.IsActive)
+                    .Select(m => m.UserId!.Value)]);
     }
 
     private sealed class SettingsRepositoryStub(Workspace workspace) : ISettingsRepository
@@ -204,11 +216,19 @@ public sealed class TenantMembershipLifecycleHandlerTests
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
 
+        public Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<NotificationPreference>>([]);
+
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult(workspace.Id == tenantId ? workspace : null);
 
         public Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<WorkspaceSetting?>(null);
+
+        public Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(
+            Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkspaceTypographySetting?>(null);
 
         public Task<ProjectSetting?> GetProjectSettingAsync(
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
@@ -222,6 +242,10 @@ public sealed class TenantMembershipLifecycleHandlerTests
             Task.CompletedTask;
 
         public Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddWorkspaceTypographySettingAsync(
+            WorkspaceTypographySetting setting, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>

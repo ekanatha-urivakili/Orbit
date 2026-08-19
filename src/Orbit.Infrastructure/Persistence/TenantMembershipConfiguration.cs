@@ -18,6 +18,12 @@ internal sealed class TenantMembershipConfiguration : IEntityTypeConfiguration<T
                 "ck_tenant_memberships_role",
                 "tenant_role IN ('Owner', 'Administrator', 'Member')");
             table.HasCheckConstraint(
+                "ck_tenant_memberships_tier",
+                "tier IN ('Standard', 'Guest')");
+            table.HasCheckConstraint(
+                "ck_tenant_memberships_guest_role",
+                "tier <> 'Guest' OR tenant_role = 'Member'");
+            table.HasCheckConstraint(
                 "ck_tenant_memberships_identity",
                 "(user_id IS NOT NULL AND issuer IS NULL AND subject IS NULL AND principal_type = 'User') OR " +
                 "(user_id IS NULL AND issuer IS NOT NULL AND subject IS NOT NULL)");
@@ -37,6 +43,10 @@ internal sealed class TenantMembershipConfiguration : IEntityTypeConfiguration<T
             .HasColumnName("tenant_role")
             .HasConversion<string>()
             .HasMaxLength(32);
+        builder.Property(membership => membership.Tier)
+            .HasColumnName("tier")
+            .HasConversion<string>()
+            .HasMaxLength(16);
         builder.Property(membership => membership.IsActive).HasColumnName("is_active");
         builder.Property(membership => membership.CreatedAt).HasColumnName("created_at");
         builder.HasIndex(membership => new { membership.TenantId, membership.Issuer, membership.Subject })

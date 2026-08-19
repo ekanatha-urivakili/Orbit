@@ -27,5 +27,6 @@ internal sealed class WorkerCurrentPrincipal : ICurrentPrincipal
     public Guid MembershipId => Guid.Empty;
     public PrincipalType PrincipalType => PrincipalType.ServiceAccount;
     public TenantRole TenantRole => TenantRole.Member;
+    public MembershipTier MembershipTier => MembershipTier.Standard;
     public bool IsDevelopmentBypass => false;
 }

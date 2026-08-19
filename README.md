@@ -1,6 +1,6 @@
 # Orbit Work Management
 
-Orbit is an open-source, headless sprint and Kanban work-management platform. The current implementation includes one-time local installation bootstrap, site-admin workspace creation, local email/password login with rotating sessions, global accounts and secure workspace switching, workspace teams and admin lifecycle (promote/demote/remove members), projects, tenant-isolated work items, a tenant-configurable stable software item-type registry, optimistic status transitions, OIDC-backed tenant memberships, project roles, query-level permission enforcement, and a responsive installable PWA.
+Orbit is an open-source, headless sprint and Kanban work-management platform. The current implementation includes self-service organization signup, one-time local installation bootstrap, site-admin workspace creation, local email/password login with rotating sessions and a remember-me session lifetime, backend-brokered Google sign-in, global accounts and secure workspace switching, workspace teams and admin lifecycle (promote/demote/remove members), a guest membership tier scoped to explicitly assigned projects, projects, tenant-isolated work items, many-to-many work item dependency linking, workspace-level typography and logo branding settings, TipTap-based rich text editing with font size and attachment resolution, presigned MinIO/S3 attachment uploads, a tenant-configurable stable software item-type registry, optimistic status transitions, OIDC-backed tenant memberships, project roles, query-level permission enforcement, and a responsive installable PWA.
 
 The target architecture and phased backlog are in [ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md](ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md).
 
@@ -46,7 +46,80 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. The browser creates a local development tenant id and sends it through `X-Tenant-Id`. This bypass is enabled only by local configuration. Production requires a validated bearer token with a `tenant_id` claim and an active membership matching the token issuer and subject; service accounts additionally use `principal_type=service_account` and `client_id` or `azp` claims.
+Open `http://localhost:5800`. The browser creates a local development tenant id and sends it through `X-Tenant-Id`. This bypass is enabled only by local configuration. Production requires a validated bearer token with a `tenant_id` claim and an active membership matching the token issuer and subject; service accounts additionally use `principal_type=service_account` and `client_id` or `azp` claims.
+
+### Optional: HTTPS via `https://www.orbit-local.com`
+
+The PWA can also be reached over HTTPS at `https://www.orbit-local.com`, proxied by a local nginx instance to `http://localhost:5800`. This is a local-only convenience (e.g. for testing PWA install prompts and service-worker behavior that require a secure context on a stable hostname); it is not part of the deployed stack and nothing here is pushed to source control.
+
+1. Install [mkcert](https://github.com/FiloSottile/mkcert) and [nginx](https://nginx.org) (`brew install mkcert nginx`), then trust the local CA once:
+
+   ```bash
+   mkcert -install
+   ```
+
+2. Generate a certificate for the local domain (kept outside the repo):
+
+   ```bash
+   mkdir -p ~/.local/orbit-nginx-certs
+   cd ~/.local/orbit-nginx-certs
+   mkcert -cert-file orbit-local.com.crt -key-file orbit-local.com.key www.orbit-local.com orbit-local.com
+   ```
+
+3. Point the hostname at localhost:
+
+   ```bash
+   sudo sh -c 'printf "127.0.0.1 orbit-local.com\n127.0.0.1 www.orbit-local.com\n" >> /etc/hosts'
+   ```
+
+4. Add an nginx server block (Homebrew nginx auto-includes `$(brew --prefix)/etc/nginx/servers/*`) at `$(brew --prefix)/etc/nginx/servers/orbit-local.conf`:
+
+   ```nginx
+   server {
+       listen 80;
+       server_name orbit-local.com www.orbit-local.com;
+       return 301 https://$host$request_uri;
+   }
+
+   server {
+       listen 443 ssl;
+       server_name orbit-local.com www.orbit-local.com;
+
+       ssl_certificate     /Users/<you>/.local/orbit-nginx-certs/orbit-local.com.crt;
+       ssl_certificate_key /Users/<you>/.local/orbit-nginx-certs/orbit-local.com.key;
+       ssl_protocols TLSv1.2 TLSv1.3;
+
+       location / {
+           proxy_pass http://localhost:5800/;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+   ```
+
+5. Start nginx (binding ports 80/443 requires root) and the dev stack:
+
+   ```bash
+   sudo nginx
+   ./scripts/start-dev.sh
+   ```
+
+`Cors:Origins` and `Frontend:BaseUrl` in [src/Orbit.Api/appsettings.Development.json](src/Orbit.Api/appsettings.Development.json) already allow both `http://localhost:5800` and `https://www.orbit-local.com`.
+
+Self-service accounts do not require the installation bootstrap. Anyone can register their own organization, first workspace, and owner account directly:
+
+```bash
+curl -X POST http://localhost:5014/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  --data '{"displayName":"Ada Lovelace","email":"ada@example.com","password":"ReplaceWithStrongPassword123","organizationName":"Analytical Engines","workspaceName":"Engineering"}'
+```
+
+This is a separate path from the installation bootstrap below: bootstrap creates exactly one installation-level site super admin, while registration creates an organization-scoped owner with no site role.
 
 On a new database, initialize the installation through the public bootstrap contract:
 
@@ -64,8 +137,10 @@ Log in with that account to receive a rotating session:
 ```bash
 curl -X POST http://localhost:5014/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  --data '{"email":"admin@example.com","password":"ReplaceWithStrongPassword123"}'
+  --data '{"email":"admin@example.com","password":"ReplaceWithStrongPassword123","rememberMe":false}'
 ```
+
+Omitting `rememberMe` (or passing `false`) issues a session lasting about one day; passing `true` extends it to about thirty days. The application header also offers "Sign in with Google," a backend-brokered OAuth flow (`GET /auth/google/start`, `/auth/google/callback`, `POST /auth/google/exchange`) that never exposes a Google client secret or raw Google ID token to the browser — the callback redirect carries only a single-use, hashed handoff code that the frontend immediately exchanges for a session.
 
 Accounts belonging to multiple workspaces can select the active workspace from the application
 header. The switch is authorized server-side and rotates the refresh session into the selected
@@ -106,6 +181,22 @@ curl http://localhost:5014/api/v1/invitations -H "Authorization: Bearer $TOKEN"
 The email opens the PWA acceptance form. Existing local accounts prove their password; a new email
 creates its global account and workspace membership atomically. Federated-only invitation acceptance
 remains a follow-up increment.
+
+A workspace membership also carries a `MembershipTier` orthogonal to its role: `Standard` members get the
+usual tenant-wide project visibility for their role, while `Guest` members (always `Member` role — enforced
+by domain validation and a database check constraint) see only projects they are explicitly assigned to.
+Owners and administrators can upload a workspace logo the same way work items get attachments — presign,
+upload directly to MinIO/S3, then confirm:
+
+```bash
+curl -X POST http://localhost:5014/api/v1/workspaces/current/settings/logo/presign \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  --data '{"fileName":"logo.png","contentType":"image/png","sizeBytes":20480}'
+# PUT the file to the returned presigned URL, then:
+curl -X PUT http://localhost:5014/api/v1/workspaces/current/settings/logo \
+  -H "Authorization: Bearer $TOKEN" -H "If-Match: $VERSION" -H 'Content-Type: application/json' \
+  --data '{"objectKey":"'"$OBJECT_KEY"'"}'
+```
 
 ## Verify
 

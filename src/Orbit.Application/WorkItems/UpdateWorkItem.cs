@@ -23,8 +23,6 @@ public sealed record UpdateWorkItemCommand(
     string? SprintName,
     string? IdentifiedOn,
     decimal? StoryPoints,
-    WorkItemLinkType? LinkType,
-    Guid? LinkedWorkItemId,
     string[]? Labels,
     string[]? Countries,
     string[]? AttachmentNames,
@@ -44,9 +42,6 @@ public sealed class UpdateWorkItemValidator : AbstractValidator<UpdateWorkItemCo
         RuleFor(command => command.IdentifiedOn).MaximumLength(255);
         RuleFor(command => command.StoryPoints).InclusiveBetween(0, 10_000).When(command => command.StoryPoints.HasValue);
         RuleFor(command => command.ExpectedVersion).GreaterThan(0);
-        RuleFor(command => command)
-            .Must(command => command.LinkType.HasValue == command.LinkedWorkItemId.HasValue)
-            .WithMessage("A linked work item and relationship type must be supplied together.");
     }
 }
 
@@ -56,6 +51,9 @@ public sealed class UpdateWorkItemHandler(
     IWorkItemRepository workItems,
     ISprintMembershipRepository sprintMemberships,
     ISprintScopeFactRepository sprintScopeFacts,
+    ITenantMembershipRepository tenantMemberships,
+    ISettingsRepository settings,
+    IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UpdateWorkItemCommand, WorkItemDto>
 {
@@ -70,16 +68,16 @@ public sealed class UpdateWorkItemHandler(
             throw new ConcurrencyException("The work item changed after it was loaded.");
         }
 
-        WorkItemRelations.ValidateOwners(
-            request.AssigneeUserId, request.DeveloperUserId, request.ProductOwnerUserId, principal.UserId);
+        await WorkItemRelations.ValidateOwnersAsync(
+            tenantMemberships, tenantContext.TenantId, request.AssigneeUserId, request.DeveloperUserId,
+            request.ProductOwnerUserId, cancellationToken);
         var parent = await WorkItemRelations.GetRelatedItemAsync(
             workItems, tenantContext.TenantId, request.ParentId, workItem.ProjectId, "Parent", cancellationToken);
         WorkItemRelations.ValidateParentType(workItem.Type, parent);
-        await WorkItemRelations.GetRelatedItemAsync(
-            workItems, tenantContext.TenantId, request.LinkedWorkItemId, workItem.ProjectId, "Linked work item", cancellationToken);
 
         var previousStoryPoints = workItem.StoryPoints;
         var previousStatus = workItem.Status;
+        var previousAssigneeUserId = workItem.AssigneeUserId;
         var now = timeProvider.GetUtcNow();
         workItem.Update(
             request.Summary,
@@ -95,8 +93,6 @@ public sealed class UpdateWorkItemHandler(
             request.SprintName,
             request.IdentifiedOn,
             request.StoryPoints,
-            request.LinkType,
-            request.LinkedWorkItemId,
             request.Labels,
             request.Countries,
             request.AttachmentNames,
@@ -117,6 +113,12 @@ public sealed class UpdateWorkItemHandler(
                         delta, now, now),
                     cancellationToken);
             }
+        }
+
+        if (workItem.AssigneeUserId is { } assigneeUserId && assigneeUserId != previousAssigneeUserId)
+        {
+            await WorkItemRelations.NotifyAssigneeAsync(
+                principal, settings, outbox, workItem, assigneeUserId, now, cancellationToken);
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

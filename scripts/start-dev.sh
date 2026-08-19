@@ -34,7 +34,7 @@ ensure_port_available() {
 }
 
 ensure_port_available 5014 "Orbit API"
-ensure_port_available 5173 "Orbit web"
+ensure_port_available 5800 "Orbit web"
 
 if [[ ! -d web/node_modules ]]; then
     echo "Frontend dependencies are missing. Run 'cd web && npm ci' first." >&2
@@ -90,12 +90,12 @@ child_pids+=("$!")
 
 (
     cd web
-    npm run dev -- --host 127.0.0.1 --strictPort
+    NODE_OPTIONS="--max-old-space-size=4096" npm run dev -- --host 127.0.0.1 --strictPort
 ) &
 child_pids+=("$!")
 
 echo "Orbit API: http://127.0.0.1:5014"
-echo "Orbit web: http://127.0.0.1:5173"
+echo "Orbit web: http://127.0.0.1:5800"
 echo "Press Ctrl+C to stop the API, worker, and web processes. Podman services remain running."
 
 while true; do
