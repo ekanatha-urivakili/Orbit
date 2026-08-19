@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WorkItemSubtasks } from './WorkItemSubtasks'
 import type { Project, TenantMembership, WorkItem } from '../../api/types'
@@ -50,10 +50,11 @@ const project: Project = { id: 'project-1', key: 'ORB', name: 'Orbit' } as Proje
 const members: TenantMembership[] = []
 
 describe('WorkItemSubtasks', () => {
-  it('renders each subtask title as a new-tab link to /browse/<key>', () => {
+  it('opens a subtask in-app via onOpenWorkItem when its title is clicked', () => {
     const parent = buildWorkItem()
     const subtask = buildWorkItem({ id: 'sub-1', key: 'ORB-2', summary: 'Do the thing', parentId: parent.id, type: 'Subtask' })
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const onOpenWorkItem = vi.fn()
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -63,14 +64,12 @@ describe('WorkItemSubtasks', () => {
           project={project}
           members={members}
           onStatusChange={vi.fn()}
+          onOpenWorkItem={onOpenWorkItem}
         />
       </QueryClientProvider>,
     )
 
-    const link = screen.getByText('Do the thing').closest('a')
-    expect(link).not.toBeNull()
-    expect(link).toHaveAttribute('href', '/browse/ORB-2')
-    expect(link).toHaveAttribute('target', '_blank')
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    fireEvent.click(screen.getByText('Do the thing').closest('button')!)
+    expect(onOpenWorkItem).toHaveBeenCalledWith(subtask)
   })
 })

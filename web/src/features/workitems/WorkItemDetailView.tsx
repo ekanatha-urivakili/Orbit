@@ -538,7 +538,7 @@ export function WorkItemDetailView({
             onFocusParentField={() => {
               const field = document.getElementById('work-item-parent-field')
               field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-              field?.querySelector('input, button')?.dispatchEvent(new Event('focus'))
+              field?.querySelector<HTMLElement>('input, button')?.focus()
             }}
             onDeleted={onBack}
           />
@@ -685,6 +685,7 @@ export function WorkItemDetailView({
               project={project}
               members={members}
               onStatusChange={onStatusChange}
+              onOpenWorkItem={onOpenWorkItem}
             />
           )}
           <WorkItemLinkedItems workItemId={item.id} workItems={workItems} />

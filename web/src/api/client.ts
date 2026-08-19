@@ -280,7 +280,10 @@ export const orbitApi = {
       `${apiUrl}/work-items/${workItem.id}/export?format=${format}`,
       { headers },
     )
-    if (!response.ok) throw new Error(`Export failed (${response.status})`)
+    if (!response.ok) {
+      const problem = (await response.json().catch(() => ({}))) as ProblemDetails
+      throw new Error(problem.detail ?? problem.title ?? `Export failed (${response.status})`)
+    }
     return { blob: await response.blob(), fileName: `${workItem.key}.${format.toLowerCase()}` }
   },
   // Direct PUT to the presigned object-storage URL — bypasses the Orbit API wrapper entirely,

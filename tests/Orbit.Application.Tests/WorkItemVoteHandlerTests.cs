@@ -46,7 +46,8 @@ public sealed class WorkItemVoteHandlerTests
         await addHandler.Handle(new AddWorkItemVoteCommand(workItem.Id), CancellationToken.None);
 
         var removeHandler = new RemoveWorkItemVoteHandler(
-            new TenantContextStub(tenantId), new CurrentPrincipalStub(userId), votes, new UnitOfWorkStub());
+            new TenantContextStub(tenantId), new CurrentPrincipalStub(userId), new WorkItemRepositoryStub(workItem),
+            votes, new UnitOfWorkStub());
         await removeHandler.Handle(new RemoveWorkItemVoteCommand(workItem.Id), CancellationToken.None);
 
         var getHandler = new GetWorkItemVotesHandler(

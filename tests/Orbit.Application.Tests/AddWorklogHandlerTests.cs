@@ -38,18 +38,23 @@ public sealed class AddWorklogHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var authorMembershipId = Guid.NewGuid();
+        var workItem = WorkItem.Create(
+            tenantId, Guid.NewGuid(), 1, "ORB", "Log work on this card", null, WorkItemType.Task, Priority.Medium,
+            DateTimeOffset.UtcNow);
         var worklog = WorkItemWorklog.Create(
-            tenantId, Guid.NewGuid(), authorMembershipId, 30, DateOnly.FromDateTime(DateTime.UtcNow), null,
+            tenantId, workItem.Id, authorMembershipId, 30, DateOnly.FromDateTime(DateTime.UtcNow), null,
             DateTimeOffset.UtcNow);
         var worklogs = new WorkItemWorklogRepositoryStub(worklog);
         var otherHandler = new DeleteWorklogHandler(
-            new TenantContextStub(tenantId), new CurrentPrincipalStub(Guid.NewGuid()), worklogs, new UnitOfWorkStub());
+            new TenantContextStub(tenantId), new CurrentPrincipalStub(Guid.NewGuid()),
+            new WorkItemRepositoryStub(workItem), worklogs, new UnitOfWorkStub());
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             otherHandler.Handle(new DeleteWorklogCommand(worklog.WorkItemId, worklog.Id), CancellationToken.None));
 
         var authorHandler = new DeleteWorklogHandler(
-            new TenantContextStub(tenantId), new CurrentPrincipalStub(authorMembershipId), worklogs, new UnitOfWorkStub());
+            new TenantContextStub(tenantId), new CurrentPrincipalStub(authorMembershipId),
+            new WorkItemRepositoryStub(workItem), worklogs, new UnitOfWorkStub());
         await authorHandler.Handle(new DeleteWorklogCommand(worklog.WorkItemId, worklog.Id), CancellationToken.None);
 
         Assert.Empty(worklogs.Items);

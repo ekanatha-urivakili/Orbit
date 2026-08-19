@@ -123,10 +123,15 @@ public sealed class GetSlackConnectionValidator : AbstractValidator<GetSlackConn
 
 public sealed class GetSlackConnectionHandler(
     ITenantContext tenantContext,
+    IProjectRepository projects,
     ISlackConnectionRepository connections) : IRequestHandler<GetSlackConnectionQuery, SlackConnectionDto?>
 {
     public async Task<SlackConnectionDto?> Handle(GetSlackConnectionQuery request, CancellationToken cancellationToken)
     {
+        _ = await projects.GetAsync(
+                tenantContext.TenantId, request.ProjectId, ProjectPermission.View, cancellationToken)
+            ?? throw new NotFoundException("Project was not found.");
+
         var connection = await connections.GetByProjectAsync(tenantContext.TenantId, request.ProjectId, cancellationToken);
         return connection is null
             ? null

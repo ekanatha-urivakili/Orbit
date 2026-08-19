@@ -53,12 +53,17 @@ public sealed class RemoveWorkItemVoteValidator : AbstractValidator<RemoveWorkIt
 public sealed class RemoveWorkItemVoteHandler(
     ITenantContext tenantContext,
     ICurrentPrincipal principal,
+    IWorkItemRepository workItems,
     IWorkItemVoteRepository votes,
     IUnitOfWork unitOfWork) : IRequestHandler<RemoveWorkItemVoteCommand, Unit>
 {
     public async Task<Unit> Handle(RemoveWorkItemVoteCommand request, CancellationToken cancellationToken)
     {
         var userId = PrincipalGuards.RequireUser(principal);
+        _ = await workItems.GetAsync(
+                tenantContext.TenantId, request.WorkItemId, ProjectPermission.View, cancellationToken)
+            ?? throw new NotFoundException("Work item was not found.");
+
         var existing = await votes.GetAsync(tenantContext.TenantId, request.WorkItemId, userId, cancellationToken);
         if (existing is null)
         {

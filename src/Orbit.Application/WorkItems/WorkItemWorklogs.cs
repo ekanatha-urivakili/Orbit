@@ -107,11 +107,16 @@ public sealed class DeleteWorklogValidator : AbstractValidator<DeleteWorklogComm
 public sealed class DeleteWorklogHandler(
     ITenantContext tenantContext,
     ICurrentPrincipal principal,
+    IWorkItemRepository workItems,
     IWorkItemWorklogRepository worklogs,
     IUnitOfWork unitOfWork) : IRequestHandler<DeleteWorklogCommand, Unit>
 {
     public async Task<Unit> Handle(DeleteWorklogCommand request, CancellationToken cancellationToken)
     {
+        _ = await workItems.GetAsync(
+                tenantContext.TenantId, request.WorkItemId, ProjectPermission.TransitionWorkItem, cancellationToken)
+            ?? throw new NotFoundException("Work item was not found.");
+
         var worklog = await worklogs.GetAsync(tenantContext.TenantId, request.WorklogId, cancellationToken)
             ?? throw new NotFoundException("Work log entry was not found.");
 
