@@ -107,6 +107,130 @@ public sealed class WorkItemTests
     }
 
     [Fact]
+    public void ChangeType_UpdatesTypeAndIncrementsVersion()
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Reclassify this card", null,
+            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+
+        item.ChangeType(WorkItemType.Bug, DateTimeOffset.UtcNow.AddMinutes(1));
+
+        Assert.Equal(WorkItemType.Bug, item.Type);
+        Assert.Equal(2, item.Version);
+    }
+
+    [Fact]
+    public void ChangeType_IsNoOp_WhenTypeUnchanged()
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Keep this card's type", null,
+            WorkItemType.Story, Priority.Medium, DateTimeOffset.UtcNow);
+
+        item.ChangeType(WorkItemType.Story, DateTimeOffset.UtcNow.AddMinutes(1));
+
+        Assert.Equal(1, item.Version);
+    }
+
+    [Theory]
+    [InlineData(WorkItemType.Initiative)]
+    [InlineData(WorkItemType.Epic)]
+    [InlineData(WorkItemType.Subtask)]
+    public void ChangeType_RejectsStructuralTypesAsSource(WorkItemType sourceType)
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Structural item", null,
+            sourceType, Priority.Medium, DateTimeOffset.UtcNow);
+
+        var action = () => item.ChangeType(WorkItemType.Task, DateTimeOffset.UtcNow.AddMinutes(1));
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Theory]
+    [InlineData(WorkItemType.Initiative)]
+    [InlineData(WorkItemType.Epic)]
+    [InlineData(WorkItemType.Subtask)]
+    public void ChangeType_RejectsStructuralTypesAsTarget(WorkItemType targetType)
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Regular item", null,
+            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+
+        var action = () => item.ChangeType(targetType, DateTimeOffset.UtcNow.AddMinutes(1));
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Fact]
+    public void SetFlagged_TogglesAndIncrementsVersion()
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Flag this card", null,
+            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+
+        item.SetFlagged(true, DateTimeOffset.UtcNow.AddMinutes(1));
+        Assert.True(item.IsFlagged);
+        Assert.Equal(2, item.Version);
+
+        item.SetFlagged(true, DateTimeOffset.UtcNow.AddMinutes(2));
+        Assert.Equal(2, item.Version);
+
+        item.SetFlagged(false, DateTimeOffset.UtcNow.AddMinutes(3));
+        Assert.False(item.IsFlagged);
+        Assert.Equal(3, item.Version);
+    }
+
+    [Fact]
+    public void SetCover_UpdatesCoverAttachmentId()
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Cover this card", null,
+            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+        var attachmentId = Guid.NewGuid();
+
+        item.SetCover(attachmentId, DateTimeOffset.UtcNow.AddMinutes(1));
+
+        Assert.Equal(attachmentId, item.CoverAttachmentId);
+        Assert.Equal(2, item.Version);
+    }
+
+    [Fact]
+    public void Archive_ThenUnarchive_RoundTrips()
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Archive this card", null,
+            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+
+        item.Archive(DateTimeOffset.UtcNow.AddMinutes(1));
+        Assert.True(item.IsArchived);
+        Assert.NotNull(item.ArchivedAt);
+        Assert.Equal(2, item.Version);
+
+        item.Archive(DateTimeOffset.UtcNow.AddMinutes(2));
+        Assert.Equal(2, item.Version);
+
+        item.Unarchive(DateTimeOffset.UtcNow.AddMinutes(3));
+        Assert.False(item.IsArchived);
+        Assert.Null(item.ArchivedAt);
+        Assert.Equal(3, item.Version);
+    }
+
+    [Fact]
+    public void MoveToProject_ReassignsProjectAndKey()
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Move this card", null,
+            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+        var targetProjectId = Guid.NewGuid();
+
+        item.MoveToProject(targetProjectId, 7, "TGT", DateTimeOffset.UtcNow.AddMinutes(1));
+
+        Assert.Equal(targetProjectId, item.ProjectId);
+        Assert.Equal("TGT-7", item.Key);
+        Assert.Equal(2, item.Version);
+    }
+
+    [Fact]
     public void SetDetails_RequiresEpicName()
     {
         var item = WorkItem.Create(

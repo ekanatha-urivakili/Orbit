@@ -315,6 +315,7 @@ flowchart TB
         EXT["Extension Context"]
         NOTIF["Notification Context"]
         PREF["User Preference Context"]
+        SLACK["Slack Integration Context"]
     end
 
     BOOT --> ACCOUNT
@@ -338,6 +339,7 @@ flowchart TB
     AUTO -->|"commands"| WI
     ACCOUNT --> PREF
     PREF --> NOTIF
+    WI -->|"share/post"| SLACK
 ```
 
 ### 2.2 Ubiquitous language
@@ -2328,7 +2330,7 @@ The repository contains the first executable vertical slice. This baseline is in
 | Tenancy | `Organization` as the top-level self-service tenancy root (v1.24) above workspaces, with `OrganizationMembership` Owner role seeded atomically at signup; self-service `POST /api/v1/auth/register` provisioning organization + first workspace + owner membership + session in one transaction (v1.24); global user account and workspace persistence; one-time advisory-lock bootstrap; site-super-admin workspace provisioning and owner assignment; local email/password login with concurrency-safe rotating refresh-session families and a caller-selected "remember me" session lifetime (~1 day unchecked, ~30 days checked, v1.24); backend-brokered Google OAuth login/registration (authorize → callback → one-time handoff code → exchange, v1.24) alongside locally-signed and external OIDC bearer validation; proof-validated external identity linking; self-service password reset; authenticated workspace discovery and refresh-token-rotated workspace switching (`GET /api/v1/me/workspaces`); complete EF tenant filters; transaction-local PostgreSQL RLS; production startup rejection of `SUPERUSER`/`BYPASSRLS` runtime roles; separate migration-owner connection | External-SSO workspace switching, connection-reuse isolation suite, multi-workspace organizations beyond the one created at signup |
 | Access control | Owner/admin/member tenant roles; a `MembershipTier` (Standard/Guest) orthogonal to `TenantRole`, enforced at domain validation, a Postgres check constraint, and the project-access query's tenant-wide-access shortcut so a guest only sees explicitly assigned projects (v1.24); direct and directory-group administrator/member/viewer project roles; shared permission predicates inside project/work-item queries; existence-hiding reads; authorization epoch/cache; advisory-lock-serialized owner lifecycle | Custom, fully user-defined roles and permission sets (a `Role`/`RolePermission` schema replacing the `TenantRole`/`ProjectRole` enums and their `ProjectPermissionRoles` switch — deliberately not started without wiring real enforcement to it); permission schemes and dynamic grants, issue security, administration UI and audit |
 | Workspace directory | Bootstrap-created first workspace and owner membership; tenant memberships and project roles; workspace-scoped teams; hashed, expiring, single-use workspace/team invitations with transactional email delivery, renewal/revocation, forced RLS, and local-account acceptance (`/api/v1/invitations`, `/api/v1/workspaces/{tenantId}/invitations/accept`) | Workspace selection, federated-only invitation acceptance, verified-email account linking, invitation audit search |
-| Work items | Create/list; tenant-scoped versioned registry for stable Initiative, Epic, Task, Story, Bug, Spike, Test, Feature, Request, and Subtask ids (v1.31 enabled Subtask by default; previously disabled as historical); administrator rename/enable/order UI; typed creation fields; portfolio hierarchy; self-referencing dependency links; many-to-many work item linking (v1.23); ownership ids; labels/countries arrays; attachment-name metadata; `If-Match` status transition; versioned full-field update (`PATCH /api/v1/work-items/{id}`, summary/description/priority/hierarchy/ownership/labels, `WorkItemType` immutable post-creation); comments; real file attachments via presigned MinIO/S3 upload (`POST /work-items/{id}/attachments/presign`\|``, `GET`/`DELETE`, v1.22); detail view for subtasks and linked items | Administrator-created item-type ids and hierarchy capabilities, configurable field/screen registry, malware/quarantine scanning for uploaded attachments, audit history |
+| Work items | Create/list; tenant-scoped versioned registry for stable Initiative, Epic, Task, Story, Bug, Spike, Test, Feature, Request, and Subtask ids (v1.31 enabled Subtask by default; previously disabled as historical); administrator rename/enable/order UI; typed creation fields; portfolio hierarchy; self-referencing dependency links; many-to-many work item linking (v1.23); ownership ids; labels/countries arrays; attachment-name metadata; `If-Match` status transition; versioned full-field update (`PATCH /api/v1/work-items/{id}`, summary/description/priority/hierarchy/ownership/labels); post-creation type change (v1.33, previously immutable), flag, vote, cover image, time-tracking worklog, clone, cross-project move, archive/unarchive, hard delete (blocked while children exist), and CSV/XML/JSON export (v1.33); comments; real file attachments via presigned MinIO/S3 upload (`POST /work-items/{id}/attachments/presign`\|``, `GET`/`DELETE`, v1.22); detail view for subtasks and linked items; email sharing and a per-project Slack channel connection for posting a ticket summary (v1.33) | Administrator-created item-type ids and hierarchy capabilities, configurable field/screen registry, malware/quarantine scanning for uploaded attachments, audit history, real `.docx`/`.xlsx` export |
 | Agile UI | Persisted boards, configurable columns/WIP limits, fractional ranking, and Future/Active/Closing/Closed/Reopened sprint lifecycle; temporal memberships; atomic sprint completion with optional rollover, idempotent operation records, reopening, and sprint-scope facts with `EstimateDelta` written on scope/status/estimate changes; batched sprint/member reads; sprint burndown/scope-change/velocity report projected from the immutable fact log, reproducible for closed sprints (`GET /sprints/{id}/report`, v1.21); backlog/board search and an assignee quick-filter backed by an enriched member directory (v1.20) | Parallel active sprints, worker-backed completion for very large sprints, cumulative-flow/control-chart/cycle-time reports, swimlanes, virtualization, cross-column drag |
 | PWA | Installable manifest, generated service worker, offline application shell, responsive sidebar/bottom navigation | Encrypted offline drafts, background sync review, update prompt, accessibility/device conformance suite |
 | Data | EF Core/Npgsql migrations, PostgreSQL choice/role constraints, tenant-composite foreign keys, indexes, forced RLS for work, settings, links, and access tables (including `sprints`/`sprint_memberships`, `workspace_invitations`, `settings`, `work_item_links`, and `attachments`); a global, unfiltered `outbox_email_messages` table for transactional email, now also consumed by the comment-mention (v1.25) and status-transition (v1.26) notification triggers (§10.5) | Field definitions/options, typed projections, workflow graph, audit partitions |
@@ -2408,6 +2410,7 @@ Implementation order from this baseline:
 14. ~~Let an organization owner add a second workspace under their existing organization, rather than always minting a new one.~~ **Done in v1.28:** new `POST /api/v1/organization/workspaces` reuses the caller's current organization (`IWorkspaceProvisioningRepository.GetOrganizationMembershipAsync`/`AddWorkspaceToOrganizationAsync`), gated on `OrganizationRole.Owner`.
 15. ~~Open work item ownership assignment to any tenant member and wire the deferred "assigned to a work item" notification trigger.~~ **Done in v1.29:** `WorkItemRelations.ValidateOwnersAsync` checks `ITenantMembershipRepository.GetActiveByUserAsync` instead of self-only; `WorkItemRelations.NotifyAssigneeAsync` fires on a new or changed `AssigneeUserId`. The frontend's owner picker (`CreateWorkItemDialog`/`EditWorkItemDialog`) already rendered every tenant member — it had been silently rejected at the API since v1.14.
 16. ~~Add a work item watcher list and wire the "comment on a watched item" notification trigger, closing §10.5.~~ **Done in v1.30:** new `WorkItemWatcher` aggregate (forced RLS, migration `AddWorkItemWatchers`) with self-service watch/unwatch endpoints; `AddWorkItemCommentHandler` notifies watchers not already covered by a mention. §10.5's trigger table is now fully wired.
+17. ~~Wire the v1.32 breadcrumb menus to real persistence and add ticket-level sharing, Slack, and an Actions menu (flag/vote/cover/worklog/clone/move/archive/delete/export/print/command palette).~~ **Done in v1.33 (§10.8):** see §10.8 for the full breakdown. Highlights: `WorkItem.ChangeType` plus `PATCH /work-items/{id}/type` replace v1.32's local-state-only type switcher; `ShareWorkItemCommand` reuses the v1.25/v1.26 outbox pipeline for email sharing; a new `Integrations` bounded context (`SlackConnection`, `ISlackClient`, `ISecretProtector`) adds a per-project Slack channel connection via Incoming Webhooks — the codebase's first reversibly-encrypted secret at rest (ASP.NET Core Data Protection), versus the one-way hashing used for invitation tokens and Google handoff codes elsewhere; two new aggregates (`WorkItemVote`, `WorkItemWorklog`) and four new `WorkItem` fields (`IsFlagged`, `CoverAttachmentId`, `IsArchived`/`ArchivedAt`) back the Actions menu. Remaining: real `.docx`/`.xlsx` export, multi-instance Data Protection key persistence, and a Slack-side channel picker beyond the OAuth consent screen's own.
 
 #### 13.5.4 v1.24 — Organizations, remember-me, Google sign-in, logo branding, and guest tier
 
@@ -2709,3 +2712,82 @@ sequenceDiagram
   - Breadcrumbs provide direct backward navigation (`Spaces` -> `[Project Name]` -> `[Ticket Key]`).
   - An inline `✏️ Add epic` button in the breadcrumbs opens a floating search popup displaying the top 5 recent Epics in the project, permitting instant epic assignment or unlinking.
 - **Search Bar Widening & Workspace Relocation:** The top header search bar is expanded (`max-w-2xl`) while workspace identity and switching are relocated to the Home dashboard banner and sidebar.
+
+See §10.8 for the v1.33 increment that replaces the epic-icon click behavior described above with a split icon/title interaction, wires the work-type switcher to real persistence, and adds copy-link, sharing, Slack, and the full ticket Actions menu.
+
+### 10.8 Ticket Actions, Sharing, and Slack Integration (Implemented v1.33)
+
+**Implemented as of v1.33.** Closes the remaining gaps between §10.7's baseline and Jira-parity ticket
+chrome: the epic/type breadcrumb menus now persist, and the header gains copy-link, Share, and Actions.
+
+- **Work type persistence:** `WorkItem.ChangeType` (`Orbit.Domain.WorkItems.WorkItem`) rejects converting
+  to/from `Initiative`/`Epic`/`Subtask`; `ChangeWorkItemTypeCommand`/`Handler`
+  (`Orbit.Application.WorkItems.ChangeWorkItemType`) and `PATCH /work-items/{id}/type` back the "Change
+  work type" breadcrumb menu, replacing the local-state-only stub from v1.32. The menu's type list is now
+  driven by the tenant's enabled `WorkItemTypeDefinition`s instead of a hardcoded array.
+- **Split epic breadcrumb interaction:** clicking the epic icon opens an "Unlink parent" / "View all
+  epics" menu (the latter reusing v1.32's search popup); clicking the epic's title navigates to it in the
+  same tab via the existing `onOpenWorkItem` callback, replacing v1.32's single combined click target.
+- **New-tab child navigation:** subtask and linked-item titles (`WorkItemSubtasks.tsx`,
+  `WorkItemLinkedItems.tsx`) are real `<a href="/browse/{key}" target="_blank">` anchors, since
+  `/browse/<KEY>` genuinely resolves on a fresh load (§10.7's deep-link mechanism) — no new routing needed.
+- **Copy link:** a link icon next to the ticket key copies `{origin}/browse/{key}` via
+  `navigator.clipboard` and shows an inline "Copied!" confirmation.
+- **Share:** a header Share icon opens `WorkItemShareMenu.tsx` with two tabs. "Share work item" resolves
+  a "Names or teams" picker against the existing `GET /memberships`/`GET /teams` endpoints and calls the
+  new `ShareWorkItemCommand` (`Orbit.Application.WorkItems.ShareWorkItem`), which expands team ids via
+  `ITeamMembershipRepository`, dedupes with directly-picked memberships, and enqueues one
+  `OutboxEmailMessage` per recipient through the same outbox pipeline as the v1.25/v1.26 notification
+  triggers — reused as-is, no new dispatcher. Unlike those passive triggers, an explicit share does not
+  gate on `NotificationPreference.EmailEnabled`. "Share in Slack" is the second tab (see below).
+- **Slack integration (`Orbit.Domain.Integrations.SlackConnection`, `Orbit.Application.Integrations`,
+  `Orbit.Infrastructure.Integrations`):** a new bounded context, one `SlackConnection` per project,
+  using Slack's [Incoming Webhook](https://api.slack.com/messaging/webhooks) OAuth flow (`incoming-webhook`
+  scope) rather than a general bot token, since it matches "Connect Slack channel" exactly and needs no
+  separate channel-picker API call. `StartSlackConnectCommand` builds the authorize URL with the project id
+  carried through the existing `IOAuthStateCodec` (previously Google-OAuth-only, now reused); the redirect
+  target is the frontend (`/slack/callback`), not the API, so `CompleteSlackOAuthCommand` runs under the
+  caller's normal authenticated tenant context rather than needing an anonymous-callback tenant-resolution
+  path. The returned webhook URL is encrypted at rest via a new `ISecretProtector`
+  (`DataProtectionSecretProtector`, ASP.NET Core Data Protection — the codebase's first *reversible*
+  secret-at-rest; existing secrets like invitation tokens and Google handoff codes are one-way SHA-256
+  hashed, which doesn't work for a credential that must be replayed against Slack's API). Local/single-instance
+  Data Protection key storage is a known limitation for multi-instance deployment, called out in the README.
+  `PostWorkItemToSlackCommand` decrypts and posts to the stored webhook — this is what "Share in Slack" and
+  nothing else calls; there is no general-purpose Slack bot API surface. Requires real `Slack__ClientId`/
+  `Slack__ClientSecret`/`Slack__SigningSecret`/`Slack__RedirectUri` configuration to exercise end-to-end,
+  matching how `Email:Smtp` already works — the code path is real, only the credentials are
+  environment-supplied.
+- **Actions menu (`WorkItemActionsMenu.tsx`):** every entry is wired to a real, persisted command, no
+  placeholders:
+  - *Log work* — new `WorkItemWorklog` aggregate (append-only time entries: minutes, date, description,
+    author membership), `AddWorklogCommand`/`ListWorklogsQuery`/`DeleteWorklogCommand`
+    (`Orbit.Application.WorkItems.WorkItemWorklogs`), listed read-only in a new `WorkItemWorklogSection.tsx`
+    (only the entry's author can delete it, matching the comment-delete authorization pattern).
+  - *Add/Remove flag* — `WorkItem.IsFlagged` + `ToggleWorkItemFlagCommand`.
+  - *Add/Remove vote* — new `WorkItemVote` aggregate, copied almost verbatim from the existing
+    `WorkItemWatcher`/`WorkItemWatchers.cs` add/remove/count shape.
+  - *Select cover* — `WorkItem.CoverAttachmentId` + `SetWorkItemCoverCommand`, validated server-side against
+    the attachment's `ContentType` starting with `image/`; picks from attachments already uploaded to the
+    ticket, no new upload flow.
+  - *Change parent* — no new backend; scrolls/focuses the existing sidebar Parent field.
+  - *Clone* — `CloneWorkItemCommand` copies summary (prefixed "Copy of "), description, type, priority,
+    parent, labels, story points; deliberately does not copy comments/attachments/links/watchers/worklogs
+    or the assignee (matches Jira's default clone semantics).
+  - *Move* — `MoveWorkItemCommand` + `WorkItem.MoveToProject` reassigns `ProjectId` and allocates a new key
+    from the target project's sequence via the same `Project.AllocateItemSequence` the create handler uses;
+    requires `ProjectPermission.Administer` on both projects.
+  - *Archive/Unarchive* — `WorkItem.IsArchived`/`ArchivedAt`.
+  - *Delete* — hard delete (`DeleteWorkItemCommand`), blocked with a validation error when
+    `IWorkItemRepository.HasChildrenAsync` finds subtasks or child items still pointing at it.
+  - *Print* — `window.print()` plus a new `@media print` stylesheet block.
+  - *Export Excel/XML/JSON* — `ExportWorkItemQuery` (`Orbit.Application.WorkItems.ExportWorkItem`) formats
+    the work item as CSV (labeled "Export Excel (CSV)" in the UI — no `.docx`/real `.xlsx` generator was
+    added, so the menu doesn't claim one), XML (`System.Xml.Linq`), or JSON, streamed via
+    `GET /work-items/{id}/export?format=`.
+  - *Open command palette* — global `CommandPalette.tsx` (Cmd/Ctrl+K, or dispatched via an
+    `orbit:open-command-palette` `window` event, mirroring the existing `orbit:open-ticket` custom-event
+    pattern used by rich-text ticket links). Searches already-loaded projects and the current project's
+    work items; navigation commands (Summary/Backlog/Board/Settings) only appear once a project is
+    selected. No new search endpoint — scoped to what's already in the React Query cache.
+  - *Connect Slack channel* — see the Slack integration above.

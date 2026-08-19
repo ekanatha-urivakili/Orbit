@@ -5,6 +5,7 @@ using Orbit.Domain.Boards;
 using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Integrations;
 using Orbit.Domain.Messaging;
 using Orbit.Domain.Organizations;
 using Orbit.Domain.Projects;
@@ -56,6 +57,9 @@ public sealed class OrbitDbContext(
     public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<WorkItemWatcher> WorkItemWatchers => Set<WorkItemWatcher>();
+    public DbSet<WorkItemVote> WorkItemVotes => Set<WorkItemVote>();
+    public DbSet<WorkItemWorklog> WorkItemWorklogs => Set<WorkItemWorklog>();
+    public DbSet<SlackConnection> SlackConnections => Set<SlackConnection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -101,5 +105,11 @@ public sealed class OrbitDbContext(
             .HasQueryFilter(attachment => attachment.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkItemWatcher>()
             .HasQueryFilter(watcher => watcher.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkItemVote>()
+            .HasQueryFilter(vote => vote.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkItemWorklog>()
+            .HasQueryFilter(worklog => worklog.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<SlackConnection>()
+            .HasQueryFilter(connection => connection.TenantId == tenantContext.TenantId);
     }
 }

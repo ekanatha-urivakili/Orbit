@@ -26,6 +26,10 @@ public sealed record WorkItemDto(
     WorkItemStatus Status,
     Priority Priority,
     decimal Rank,
+    bool IsFlagged,
+    Guid? CoverAttachmentId,
+    bool IsArchived,
+    DateTimeOffset? ArchivedAt,
     long Version,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
@@ -54,6 +58,10 @@ public sealed record WorkItemDto(
             workItem.Status,
             workItem.Priority,
             workItem.Rank,
+            workItem.IsFlagged,
+            workItem.CoverAttachmentId,
+            workItem.IsArchived,
+            workItem.ArchivedAt,
             workItem.Version,
             workItem.CreatedAt,
             workItem.UpdatedAt);

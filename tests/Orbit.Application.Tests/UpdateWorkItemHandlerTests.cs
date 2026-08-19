@@ -303,6 +303,9 @@ public sealed class UpdateWorkItemHandlerTests
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WorkItem>>(
                 items.Where(item => item.TenantId == tenantId && workItemIds.Contains(item.Id)).ToArray());
+        public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+        public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class SprintMembershipRepositoryStub(SprintMembership? membership = null) : ISprintMembershipRepository

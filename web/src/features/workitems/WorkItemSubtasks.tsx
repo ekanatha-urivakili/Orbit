@@ -12,14 +12,12 @@ export function WorkItemSubtasks({
   workItems,
   project,
   members,
-  onOpenWorkItem,
   onStatusChange,
 }: {
   parent: WorkItem
   workItems: WorkItem[]
   project: Project
   members: TenantMembership[]
-  onOpenWorkItem: (workItem: WorkItem) => void
   onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
 }) {
   const queryClient = useQueryClient()
@@ -143,15 +141,16 @@ export function WorkItemSubtasks({
                 {subtasks.map((subtask) => (
                   <tr key={subtask.id}>
                     <td>
-                      <button
-                        type="button"
+                      <a
+                        href={`/browse/${subtask.key}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="subtasks-row-link"
-                        onClick={() => onOpenWorkItem(subtask)}
                       >
                         <WorkItemTypeIcon type={subtask.type} size={15} />
                         <span className="subtasks-row-key">{subtask.key}</span>
                         <span className="subtasks-row-summary">{subtask.summary}</span>
-                      </button>
+                      </a>
                     </td>
                     <td>{subtask.priority}</td>
                     <td>{subtask.storyPoints ?? '—'}</td>

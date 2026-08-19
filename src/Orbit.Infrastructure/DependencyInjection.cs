@@ -5,6 +5,7 @@ using Orbit.Application.Abstractions;
 using Orbit.Infrastructure.Authorization;
 using Orbit.Infrastructure.Email;
 using Orbit.Infrastructure.Identity;
+using Orbit.Infrastructure.Integrations;
 using Orbit.Infrastructure.Messaging;
 using Orbit.Infrastructure.Persistence;
 using Orbit.Infrastructure.Storage;
@@ -29,6 +30,9 @@ public static class DependencyInjection
         services.AddScoped<IWorkItemCommentRepository, WorkItemCommentRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
         services.AddScoped<IWorkItemWatcherRepository, WorkItemWatcherRepository>();
+        services.AddScoped<IWorkItemVoteRepository, WorkItemVoteRepository>();
+        services.AddScoped<IWorkItemWorklogRepository, WorkItemWorklogRepository>();
+        services.AddScoped<ISlackConnectionRepository, SlackConnectionRepository>();
         services.AddScoped<ITenantMembershipRepository, TenantMembershipRepository>();
         services.AddScoped<IProjectRoleRepository, ProjectRoleRepository>();
         services.AddScoped<ITeamRepository, TeamRepository>();
@@ -67,6 +71,10 @@ public static class DependencyInjection
         services.AddHttpClient<IGoogleOAuthClient, GoogleOAuthClient>();
         services.AddSingleton<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
         services.AddSingleton<IOAuthStateCodec, OAuthStateCodec>();
+        services.Configure<SlackOptions>(configuration.GetSection(SlackOptions.SectionName));
+        services.AddHttpClient<ISlackClient, SlackClient>();
+        services.AddDataProtection();
+        services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<OrbitDbContext>());
         services.AddScoped<RuntimeDatabaseSecurityValidator>();
         services.AddSingleton(TimeProvider.System);

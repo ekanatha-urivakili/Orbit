@@ -236,6 +236,7 @@ api.MapTeamEndpoints();
 api.MapGroupEndpoints();
 api.MapProjectEndpoints();
 api.MapWorkItemEndpoints();
+api.MapSlackEndpoints();
 api.MapBoardEndpoints();
 api.MapSprintEndpoints();
 

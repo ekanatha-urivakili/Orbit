@@ -60,6 +60,10 @@ public sealed class WorkItem
     public WorkItemStatus Status { get; private set; }
     public Priority Priority { get; private set; }
     public decimal Rank { get; private set; }
+    public bool IsFlagged { get; private set; }
+    public Guid? CoverAttachmentId { get; private set; }
+    public bool IsArchived { get; private set; }
+    public DateTimeOffset? ArchivedAt { get; private set; }
     public long Version { get; private set; } = 1;
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -248,6 +252,84 @@ public sealed class WorkItem
         }
 
         Rank = rank;
+        Version++;
+        UpdatedAt = now;
+    }
+
+    public void ChangeType(WorkItemType newType, DateTimeOffset now)
+    {
+        if (Type == newType)
+        {
+            return;
+        }
+
+        if (Type is WorkItemType.Initiative or WorkItemType.Epic or WorkItemType.Subtask
+            || newType is WorkItemType.Initiative or WorkItemType.Epic or WorkItemType.Subtask)
+        {
+            throw new DomainException(
+                "Initiative, Epic and Subtask work items cannot be converted to or from another type.");
+        }
+
+        Type = newType;
+        Version++;
+        UpdatedAt = now;
+    }
+
+    public void SetFlagged(bool flagged, DateTimeOffset now)
+    {
+        if (IsFlagged == flagged)
+        {
+            return;
+        }
+
+        IsFlagged = flagged;
+        Version++;
+        UpdatedAt = now;
+    }
+
+    public void SetCover(Guid? attachmentId, DateTimeOffset now)
+    {
+        if (CoverAttachmentId == attachmentId)
+        {
+            return;
+        }
+
+        CoverAttachmentId = attachmentId;
+        Version++;
+        UpdatedAt = now;
+    }
+
+    public void Archive(DateTimeOffset now)
+    {
+        if (IsArchived)
+        {
+            return;
+        }
+
+        IsArchived = true;
+        ArchivedAt = now;
+        Version++;
+        UpdatedAt = now;
+    }
+
+    public void Unarchive(DateTimeOffset now)
+    {
+        if (!IsArchived)
+        {
+            return;
+        }
+
+        IsArchived = false;
+        ArchivedAt = null;
+        Version++;
+        UpdatedAt = now;
+    }
+
+    public void MoveToProject(Guid projectId, long sequenceNumber, string projectKey, DateTimeOffset now)
+    {
+        ProjectId = projectId;
+        SequenceNumber = sequenceNumber;
+        Key = $"{projectKey}-{sequenceNumber}";
         Version++;
         UpdatedAt = now;
     }

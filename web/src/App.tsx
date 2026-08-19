@@ -19,6 +19,7 @@ import { Header } from './components/layout/Header'
 import { Sidebar } from './components/layout/Sidebar'
 import { SubNavigation, type TabType } from './components/layout/SubNavigation'
 import { LoadingScreen, ErrorScreen } from './components/layout/FeedbackScreens'
+import { CommandPalette } from './components/CommandPalette'
 
 // Feature Components
 import { BoardView } from './features/board/BoardView'
@@ -93,6 +94,25 @@ function App() {
   }, [])
 
   useEffect(() => auth.subscribe(() => setAuthSession(auth.getCurrentSession())), [])
+
+  // Slack's OAuth redirect lands here (Slack__RedirectUri points at this fixed frontend path).
+  // The connecting ticket's path was stashed in sessionStorage before the redirect away, since
+  // there's no client-side router to restore it automatically.
+  useEffect(() => {
+    if (window.location.pathname !== '/slack/callback') return
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+    const returnPath = sessionStorage.getItem('slack-connect-return-path') ?? '/'
+    sessionStorage.removeItem('slack-connect-return-path')
+    if (code && state) {
+      orbitApi.completeSlackOAuth(code, state).finally(() => {
+        window.location.href = returnPath
+      })
+    } else {
+      window.location.href = returnPath
+    }
+  }, [])
 
   // Runs once on every load, including immediately after an OIDC redirect back to the app root -
   // there is no client-side router to restore the view the user started from, so the callback is
@@ -485,6 +505,15 @@ function App() {
 
   return (
     <div className="min-h-screen bg-white">
+      <CommandPalette
+        projects={projects}
+        workItems={workItems}
+        hasSelectedProject={Boolean(selectedProject)}
+        onNavigateToProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }}
+        onOpenWorkItem={handleOpenWorkItem}
+        onNavigateTab={(tab) => { setActiveTab(tab); setActiveView('project') }}
+        onOpenSettings={() => { setSettingsSection('profile'); setActiveView('settings') }}
+      />
       <Header
         online={online}
         profile={profileQuery.data}
@@ -564,6 +593,7 @@ function App() {
                 onNavigateHome={handleNavigateHome}
                 onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
                 onOpenWorkItem={handleOpenWorkItem}
+                onManageWorkTypes={() => { setSettingsSection('item-types'); setActiveView('settings') }}
                 sprints={sprints}
               />
             ) : null

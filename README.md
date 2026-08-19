@@ -198,6 +198,33 @@ curl -X PUT http://localhost:5014/api/v1/workspaces/current/settings/logo \
   --data '{"objectKey":"'"$OBJECT_KEY"'"}'
 ```
 
+## Sharing and Slack integration (optional)
+
+Every work item has a stable, copyable URL at `/browse/<PROJECTKEY-NUMBER>` (e.g. `/browse/ORB-42`) —
+this is what the ticket detail page's copy-link button and the "Share work item" email panel send.
+Tenancy isn't encoded in the URL (Orbit resolves the tenant from the viewer's session, not the link
+itself — see "Architecture boundaries" below), so a recipient needs an active session in the same
+workspace to open it.
+
+"Connect Slack channel" and "Share in Slack" (from a work item's Actions/Share menus) post to a Slack
+channel via an [Incoming Webhook](https://api.slack.com/messaging/webhooks) obtained through Slack
+OAuth — one connection per project. This requires a Slack app with OAuth redirect
+`{web origin}/slack/callback` and the `incoming-webhook` scope; configure its credentials via
+environment variables (bound to `Slack:*` in configuration):
+
+```bash
+Slack__ClientId=...
+Slack__ClientSecret=...
+Slack__SigningSecret=...
+Slack__RedirectUri=https://your-web-origin/slack/callback
+```
+
+Without these set, "Connect Slack channel" fails with a clear "Slack is not configured" error rather
+than silently doing nothing. The connected webhook URL is encrypted at rest via ASP.NET Core Data
+Protection; in a multi-instance deployment, configure a shared Data Protection key ring (e.g. persisted
+to blob storage or Redis) so connections remain decryptable across restarts and instances — the default
+local key ring is single-machine only.
+
 ## Verify
 
 ```bash

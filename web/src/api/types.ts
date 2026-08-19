@@ -48,10 +48,31 @@ export interface WorkItem {
   status: WorkItemStatus
   priority: Priority
   rank: number
+  isFlagged: boolean
+  coverAttachmentId: string | null
+  isArchived: boolean
+  archivedAt: string | null
   version: number
   createdAt: string
   updatedAt: string
 }
+
+export interface WorkItemVotes {
+  hasVoted: boolean
+  count: number
+}
+
+export interface WorkItemWorklog {
+  id: string
+  workItemId: string
+  authorMembershipId: string
+  minutesSpent: number
+  workDate: string
+  description: string | null
+  createdAt: string
+}
+
+export type WorkItemExportFormat = 'Csv' | 'Xml' | 'Json'
 
 export interface WorkItemLink {
   id: string

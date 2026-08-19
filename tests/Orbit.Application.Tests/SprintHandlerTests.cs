@@ -634,6 +634,9 @@ public sealed class SprintHandlerTests
             CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<WorkItem>([], 0));
 
+        public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+        public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<IReadOnlyList<WorkItem>> ListByIdsAsync(
             Guid tenantId,
             IReadOnlyCollection<Guid> workItemIds,

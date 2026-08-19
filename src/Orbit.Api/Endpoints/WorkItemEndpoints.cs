@@ -1,4 +1,5 @@
 using MediatR;
+using Orbit.Application.Integrations;
 using Orbit.Application.WorkItems;
 using Orbit.Domain.Choices;
 
@@ -112,6 +113,28 @@ public static class WorkItemEndpoints
             return Results.Ok(workItem);
         })
         .WithName("ChangeWorkItemStatus")
+        .WithTags("Work items");
+
+        group.MapPatch("/work-items/{workItemId:guid}/type", async (
+            Guid workItemId,
+            ChangeWorkItemTypeRequest request,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var workItem = await sender.Send(
+                new ChangeWorkItemTypeCommand(workItemId, request.Type, expectedVersion),
+                cancellationToken);
+            httpResponse.Headers.ETag = $"\"{workItem.Version}\"";
+            return Results.Ok(workItem);
+        })
+        .WithName("ChangeWorkItemType")
         .WithTags("Work items");
 
         group.MapPatch("/work-items/{workItemId:guid}/rank", async (
@@ -348,6 +371,258 @@ public static class WorkItemEndpoints
             .WithName("DeleteWorkItemAttachment")
             .WithTags("Work items");
 
+        // ------------------------------------------------------------------
+        // Share
+        // ------------------------------------------------------------------
+
+        group.MapPost("/work-items/{workItemId:guid}/share", async (
+            Guid workItemId,
+            ShareWorkItemRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(
+                new ShareWorkItemCommand(
+                    workItemId, request.MembershipIds, request.TeamIds, request.Message),
+                cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("ShareWorkItem")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/slack-share", async (
+            Guid workItemId,
+            SlackShareRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new PostWorkItemToSlackCommand(workItemId, request.Message), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("PostWorkItemToSlack")
+            .WithTags("Work items");
+
+        // ------------------------------------------------------------------
+        // Flag / Cover
+        // ------------------------------------------------------------------
+
+        group.MapPatch("/work-items/{workItemId:guid}/flag", async (
+            Guid workItemId,
+            ToggleFlagRequest request,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var workItem = await sender.Send(
+                new ToggleWorkItemFlagCommand(workItemId, request.Flagged, expectedVersion), cancellationToken);
+            httpResponse.Headers.ETag = $"\"{workItem.Version}\"";
+            return Results.Ok(workItem);
+        })
+            .WithName("ToggleWorkItemFlag")
+            .WithTags("Work items");
+
+        group.MapPatch("/work-items/{workItemId:guid}/cover", async (
+            Guid workItemId,
+            SetCoverRequest request,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var workItem = await sender.Send(
+                new SetWorkItemCoverCommand(workItemId, request.AttachmentId, expectedVersion), cancellationToken);
+            httpResponse.Headers.ETag = $"\"{workItem.Version}\"";
+            return Results.Ok(workItem);
+        })
+            .WithName("SetWorkItemCover")
+            .WithTags("Work items");
+
+        // ------------------------------------------------------------------
+        // Votes
+        // ------------------------------------------------------------------
+
+        group.MapGet("/work-items/{workItemId:guid}/votes", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new GetWorkItemVotesQuery(workItemId), cancellationToken)))
+            .WithName("GetWorkItemVotes")
+            .WithTags("Work items");
+
+        group.MapPut("/work-items/{workItemId:guid}/votes/me", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new AddWorkItemVoteCommand(workItemId), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("AddWorkItemVote")
+            .WithTags("Work items");
+
+        group.MapDelete("/work-items/{workItemId:guid}/votes/me", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new RemoveWorkItemVoteCommand(workItemId), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("RemoveWorkItemVote")
+            .WithTags("Work items");
+
+        // ------------------------------------------------------------------
+        // Worklogs ("Log work")
+        // ------------------------------------------------------------------
+
+        group.MapGet("/work-items/{workItemId:guid}/worklogs", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new ListWorklogsQuery(workItemId), cancellationToken)))
+            .WithName("ListWorklogs")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/worklogs", async (
+            Guid workItemId,
+            AddWorklogRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var worklog = await sender.Send(
+                new AddWorklogCommand(workItemId, request.MinutesSpent, request.WorkDate, request.Description),
+                cancellationToken);
+            return Results.Created($"/api/v1/work-items/{workItemId}/worklogs/{worklog.Id}", worklog);
+        })
+            .WithName("AddWorklog")
+            .WithTags("Work items");
+
+        group.MapDelete("/work-items/{workItemId:guid}/worklogs/{worklogId:guid}", async (
+            Guid workItemId,
+            Guid worklogId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new DeleteWorklogCommand(workItemId, worklogId), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("DeleteWorklog")
+            .WithTags("Work items");
+
+        // ------------------------------------------------------------------
+        // Clone / Move / Archive / Delete / Export
+        // ------------------------------------------------------------------
+
+        group.MapPost("/work-items/{workItemId:guid}/clone", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var clone = await sender.Send(new CloneWorkItemCommand(workItemId), cancellationToken);
+            return Results.Created($"/api/v1/work-items/{clone.Id}", clone);
+        })
+            .WithName("CloneWorkItem")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/move", async (
+            Guid workItemId,
+            MoveWorkItemRequest request,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var workItem = await sender.Send(
+                new MoveWorkItemCommand(workItemId, request.TargetProjectId, expectedVersion), cancellationToken);
+            httpResponse.Headers.ETag = $"\"{workItem.Version}\"";
+            return Results.Ok(workItem);
+        })
+            .WithName("MoveWorkItem")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/archive", async (
+            Guid workItemId,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var workItem = await sender.Send(new ArchiveWorkItemCommand(workItemId, expectedVersion), cancellationToken);
+            httpResponse.Headers.ETag = $"\"{workItem.Version}\"";
+            return Results.Ok(workItem);
+        })
+            .WithName("ArchiveWorkItem")
+            .WithTags("Work items");
+
+        group.MapPost("/work-items/{workItemId:guid}/unarchive", async (
+            Guid workItemId,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var workItem = await sender.Send(new UnarchiveWorkItemCommand(workItemId, expectedVersion), cancellationToken);
+            httpResponse.Headers.ETag = $"\"{workItem.Version}\"";
+            return Results.Ok(workItem);
+        })
+            .WithName("UnarchiveWorkItem")
+            .WithTags("Work items");
+
+        group.MapDelete("/work-items/{workItemId:guid}", async (
+            Guid workItemId,
+            HttpRequest httpRequest,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            await sender.Send(new DeleteWorkItemCommand(workItemId, expectedVersion), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("DeleteWorkItem")
+            .WithTags("Work items");
+
+        group.MapGet("/work-items/{workItemId:guid}/export", async (
+            Guid workItemId,
+            WorkItemExportFormat format,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await sender.Send(new ExportWorkItemQuery(workItemId, format), cancellationToken);
+            return Results.File(result.Content, result.ContentType, result.FileName);
+        })
+            .WithName("ExportWorkItem")
+            .WithTags("Work items");
+
         return group;
     }
 
@@ -391,6 +666,8 @@ public static class WorkItemEndpoints
 
     public sealed record ChangeStatusRequest(WorkItemStatus Status);
 
+    public sealed record ChangeWorkItemTypeRequest(WorkItemType Type);
+
     public sealed record ReorderWorkItemRequest(Guid? BeforeWorkItemId, Guid? AfterWorkItemId);
 
     public sealed record AddWorkItemLinkRequest(WorkItemLinkKind Kind, Guid TargetWorkItemId, bool Inverse);
@@ -403,4 +680,16 @@ public static class WorkItemEndpoints
 
     public sealed record ConfirmWorkItemAttachmentRequest(
         string FileName, string ContentType, long SizeBytes, string ObjectKey);
+
+    public sealed record ToggleFlagRequest(bool Flagged);
+
+    public sealed record SetCoverRequest(Guid? AttachmentId);
+
+    public sealed record AddWorklogRequest(int MinutesSpent, DateOnly WorkDate, string? Description);
+
+    public sealed record MoveWorkItemRequest(Guid TargetProjectId);
+
+    public sealed record ShareWorkItemRequest(Guid[] MembershipIds, Guid[] TeamIds, string? Message);
+
+    public sealed record SlackShareRequest(string? Message);
 }

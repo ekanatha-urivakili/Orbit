@@ -192,10 +192,17 @@
       "Bash(node verify.js)",
       "Bash(node verify2.js)",
       "Bash(dotnet user-secrets *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(awk '/export function WorkItemDetailView/,/^\\\\\\) \\\\{/' /Users/ekanathareddyurivakili/Documents/GitHub/Orbit/web/src/features/workitems/WorkItemDetailView.tsx)",
+      "Bash(sed -n '1,55p' /Users/ekanathareddyurivakili/Documents/GitHub/Orbit/src/Orbit.Domain/Projects/*.cs | grep -n \"NextItemSequence\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.dataprotection/index.json\")",
+      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); print\\(data['versions'][-10:]\\)\")",
+      "Bash(node -e \"const icons = require\\('lucide-react'\\); console.log\\(Object.keys\\(icons\\).filter\\(k => /slack|message|hash/i.test\\(k\\)\\)\\)\")",
+      "Bash(sort -t. -k2 -n -u)"
     ],
     "additionalDirectories": [
-      "/private/tmp/claude-501/-Users-ekanathareddyurivakili-Documents-GitHub-Orbit/a4a72212-7f19-4b42-bed9-a90b14b889cf/scratchpad"
+      "/private/tmp/claude-501/-Users-ekanathareddyurivakili-Documents-GitHub-Orbit/a4a72212-7f19-4b42-bed9-a90b14b889cf/scratchpad",
+      "/Users/ekanathareddyurivakili/Documents/GitHub/Orbit/src/Orbit.Domain/Projects"
     ]
   }
 }

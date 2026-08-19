@@ -4,11 +4,12 @@ import {
   ChevronLeft,
   ChevronDown,
   Check,
-  Plus,
   Settings,
   Edit,
   Eye,
   EyeOff,
+  Link as LinkIcon,
+  Share2,
 } from 'lucide-react'
 import { orbitApi } from '../../api/client'
 import { useUpdateWorkItem } from '../../hooks/useUpdateWorkItem'
@@ -19,6 +20,9 @@ import { WorkItemComments } from './WorkItemComments'
 import { WorkItemAttachments } from './WorkItemAttachments'
 import { WorkItemSubtasks } from './WorkItemSubtasks'
 import { WorkItemLinkedItems } from './WorkItemLinkedItems'
+import { WorkItemWorklogSection } from './WorkItemWorklogSection'
+import { WorkItemShareMenu } from './WorkItemShareMenu'
+import { WorkItemActionsMenu } from './WorkItemActionsMenu'
 import { WorkItemTypeIcon } from './typeIcons'
 import { RichTextEditor } from '../../components/form/RichTextEditor'
 import { allStatuses, statusMeta } from '../board/constants'
@@ -44,13 +48,8 @@ const countries = [
   'Turkey',
 ]
 
-const availableWorkTypes: Array<{ type: WorkItemType; label: string }> = [
-  { type: 'Story', label: 'Story' },
-  { type: 'Task', label: 'Task' },
-  { type: 'Initiative', label: 'Feature' },
-  { type: 'Spike', label: 'Request' },
-  { type: 'Bug', label: 'Bug' },
-]
+// Types that cannot be converted to/from another type (see WorkItem.ChangeType in the backend).
+const structuralTypes: WorkItemType[] = ['Initiative', 'Epic', 'Subtask']
 
 // Empty initial value for rich text acceptance criteria
 const emptyAcceptanceCriteria = ''
@@ -66,6 +65,7 @@ export function WorkItemDetailView({
   onStatusChange,
   onOpenWorkItem,
   onNavigateHome,
+  onManageWorkTypes,
   sprints = [],
 }: {
   item: WorkItem
@@ -78,12 +78,17 @@ export function WorkItemDetailView({
   onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
   onOpenWorkItem: (workItem: WorkItem) => void
   onNavigateHome?: () => void
+  onManageWorkTypes?: () => void
   sprints?: Sprint[]
 }) {
   const queryClient = useQueryClient()
   const [currentType, setCurrentType] = useState<WorkItemType>(item.type)
+  useEffect(() => {
+    setCurrentType(item.type)
+  }, [item.type])
   const [typeMenuOpen, setTypeMenuOpen] = useState(false)
   const [epicPopupOpen, setEpicPopupOpen] = useState(false)
+  const [epicMenuOpen, setEpicMenuOpen] = useState(false)
   const [epicSearch, setEpicSearch] = useState('')
   const [summary, setSummary] = useState(item.summary)
   const [editingSummary, setEditingSummary] = useState(false)
@@ -124,12 +129,23 @@ export function WorkItemDetailView({
   const [newSprintName, setNewSprintName] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       if (successTimerRef.current) clearTimeout(successTimerRef.current)
+      if (linkCopiedTimerRef.current) clearTimeout(linkCopiedTimerRef.current)
     }
   }, [])
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(`${window.location.origin}/browse/${item.key}`)
+    setLinkCopied(true)
+    if (linkCopiedTimerRef.current) clearTimeout(linkCopiedTimerRef.current)
+    linkCopiedTimerRef.current = setTimeout(() => setLinkCopied(false), 2000)
+  }
 
   const patch = (change: Partial<typeof details>) => {
     setSaveSuccess(false)
@@ -158,9 +174,27 @@ export function WorkItemDetailView({
   })
   const attachments = attachmentsQuery.data ?? []
 
+  const typeDefinitionsQuery = useQuery({
+    queryKey: ['work-item-types'],
+    queryFn: () => orbitApi.listWorkItemTypes(),
+  })
+  const availableWorkTypes = (typeDefinitionsQuery.data ?? [])
+    .filter((definition) => definition.enabled && !structuralTypes.includes(definition.id))
+    .sort((a, b) => a.order - b.order)
+    .map((definition) => ({ type: definition.id, label: definition.label }))
+
+  const changeTypeMutation = useMutation({
+    mutationFn: (newType: WorkItemType) => orbitApi.changeWorkItemType(item, newType),
+    onSuccess: (updated) => {
+      setCurrentType(updated.type)
+      queryClient.invalidateQueries({ queryKey: ['work-items', item.projectId] })
+    },
+  })
+
   const handleChangeType = (newType: WorkItemType) => {
-    setCurrentType(newType)
     setTypeMenuOpen(false)
+    if (newType === currentType) return
+    changeTypeMutation.mutate(newType)
   }
 
   const watchersQuery = useQuery({
@@ -277,30 +311,65 @@ export function WorkItemDetailView({
         {/* Breadcrumb Add Epic / Epic badge (Matching Jira Screenshot 3) */}
         {currentType !== 'Initiative' && currentType !== 'Epic' && (
           <>
-            <div className="relative inline-flex items-center">
-              <button
-                type="button"
-                onClick={() => setEpicPopupOpen(!epicPopupOpen)}
-                className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors"
-                title={parentEpic ? `Parent Epic: ${parentEpic.summary} (Click to change)` : 'Add epic'}
-              >
-                {parentEpic ? (
-                  <>
+            <div className="relative inline-flex items-center gap-0.5">
+              {parentEpic ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setEpicMenuOpen(!epicMenuOpen)}
+                    className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] transition-colors"
+                    title="Epic - Change epic"
+                  >
                     <WorkItemTypeIcon type="Epic" size={13} />
-                    <span className="truncate max-w-[140px] text-purple-700 dark:text-purple-400 font-semibold">
-                      {parentEpic.summary}
-                    </span>
-                    <Edit size={11} className="text-gray-400" />
-                  </>
-                ) : (
-                  <>
-                    <Edit size={12} className="text-gray-400" />
-                    <span>Add epic</span>
-                  </>
-                )}
-              </button>
+                    <ChevronDown size={11} className="text-gray-400" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenWorkItem(parentEpic)}
+                    className="truncate max-w-[140px] text-xs font-semibold text-purple-700 dark:text-purple-400 hover:underline"
+                    title={`${parentEpic.key}: ${parentEpic.summary}`}
+                  >
+                    {parentEpic.summary}
+                  </button>
 
-              {/* Epic Search / Selection floating popup */}
+                  {epicMenuOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 w-44 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl py-1.5 z-50 animate-in fade-in">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSelectEpic(null)
+                          setEpicMenuOpen(false)
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
+                      >
+                        Unlink parent
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEpicMenuOpen(false)
+                          setEpicPopupOpen(true)
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
+                      >
+                        View all epics
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEpicPopupOpen(!epicPopupOpen)}
+                  className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors"
+                  title="Add epic"
+                >
+                  <Edit size={12} className="text-gray-400" />
+                  <span>Add epic</span>
+                </button>
+              )}
+
+              {/* Epic Search / Selection floating popup ("View all epics") */}
               {epicPopupOpen && (
                 <div className="absolute left-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl p-2.5 z-50 animate-in fade-in">
                   <div className="flex items-center justify-between mb-2">
@@ -372,6 +441,20 @@ export function WorkItemDetailView({
             <span>{item.key}</span>
             <ChevronDown size={12} className="text-gray-400" />
           </button>
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className="relative flex items-center p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-400 transition-colors"
+            title={`${window.location.origin}/browse/${item.key}`}
+            aria-label="Copy link to this ticket"
+          >
+            {linkCopied ? <Check size={13} className="text-green-600" /> : <LinkIcon size={13} />}
+            {linkCopied && (
+              <span className="absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-[11px] font-medium text-white shadow-lg animate-in fade-in">
+                Copied!
+              </span>
+            )}
+          </button>
 
           {/* Type switcher floating menu (Matching Screenshot 2) */}
           {typeMenuOpen && (
@@ -397,28 +480,21 @@ export function WorkItemDetailView({
                   </button>
                 ))}
               </div>
-              <div className="my-1 border-t border-gray-100" />
-              <button
-                type="button"
-                onClick={() => setTypeMenuOpen(false)}
-                className="w-full text-left px-3.5 py-1.5 text-xs text-gray-600 hover:bg-[#f4f5f7] flex items-center gap-2"
-              >
-                <Plus size={13} className="text-gray-400" /> Add work type
-              </button>
-              <button
-                type="button"
-                onClick={() => setTypeMenuOpen(false)}
-                className="w-full text-left px-3.5 py-1.5 text-xs text-gray-600 hover:bg-[#f4f5f7] flex items-center gap-2"
-              >
-                <Edit size={13} className="text-gray-400" /> Edit work type
-              </button>
-              <button
-                type="button"
-                onClick={() => setTypeMenuOpen(false)}
-                className="w-full text-left px-3.5 py-1.5 text-xs text-gray-600 hover:bg-[#f4f5f7] flex items-center gap-2"
-              >
-                <Settings size={13} className="text-gray-400" /> Manage work types
-              </button>
+              {onManageWorkTypes && (
+                <>
+                  <div className="my-1 border-t border-gray-100" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTypeMenuOpen(false)
+                      onManageWorkTypes()
+                    }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-gray-600 hover:bg-[#f4f5f7] flex items-center gap-2"
+                  >
+                    <Settings size={13} className="text-gray-400" /> Manage work types
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -442,6 +518,30 @@ export function WorkItemDetailView({
               {watchers.count}
             </span>
           </button>
+
+          <div className="relative inline-flex items-center">
+            <button
+              type="button"
+              onClick={() => setShareOpen((open) => !open)}
+              className="flex items-center justify-center p-2 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              title="Share"
+              aria-label="Share"
+            >
+              <Share2 size={16} />
+            </button>
+            {shareOpen && <WorkItemShareMenu item={item} onClose={() => setShareOpen(false)} />}
+          </div>
+
+          <WorkItemActionsMenu
+            item={item}
+            onOpenWorkItem={onOpenWorkItem}
+            onFocusParentField={() => {
+              const field = document.getElementById('work-item-parent-field')
+              field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              field?.querySelector('input, button')?.dispatchEvent(new Event('focus'))
+            }}
+            onDeleted={onBack}
+          />
         </div>
       </div>
 
@@ -584,11 +684,15 @@ export function WorkItemDetailView({
               workItems={workItems}
               project={project}
               members={members}
-              onOpenWorkItem={onOpenWorkItem}
               onStatusChange={onStatusChange}
             />
           )}
           <WorkItemLinkedItems workItemId={item.id} workItems={workItems} />
+          <WorkItemWorklogSection
+            workItemId={item.id}
+            members={members}
+            currentMembershipId={members.find((member) => member.userId === profile?.userId)?.id}
+          />
           <WorkItemComments workItemId={item.id} profile={profile} members={members} />
         </div>
 
@@ -646,6 +750,7 @@ export function WorkItemDetailView({
             </Field>
 
             {currentType !== 'Initiative' && (
+              <div id="work-item-parent-field">
               <Field variant="panel" label="Parent">
                 <SearchableSelect
                   size="xl"
@@ -663,6 +768,7 @@ export function WorkItemDetailView({
                   searchPlaceholder="Search parent work items…"
                 />
               </Field>
+              </div>
             )}
 
             {currentType !== 'Initiative' && currentType !== 'Epic' && (
