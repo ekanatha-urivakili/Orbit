@@ -19,10 +19,13 @@ public sealed class MoveWorkItemHandlerTests
         var workItem = WorkItem.Create(
             tenantId, sourceProject.Id, 1, "SRC", "Move this card", null, WorkItemType.Task, Priority.Medium,
             DateTimeOffset.UtcNow);
+        var history = new WorkItemHistoryRepositoryStub();
         var handler = new MoveWorkItemHandler(
             new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(),
             new ProjectRepositoryStub(sourceProject, targetProject),
             new WorkItemRepositoryStub(workItem),
+            history,
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -31,6 +34,10 @@ public sealed class MoveWorkItemHandlerTests
 
         Assert.Equal(targetProject.Id, result.ProjectId);
         Assert.Equal("TGT-1", result.Key);
+        Assert.Single(history.Entries);
+        Assert.Equal("Project", history.Entries[0].FieldName);
+        Assert.Equal("SRC", history.Entries[0].OldValue);
+        Assert.Equal("TGT", history.Entries[0].NewValue);
     }
 
     [Fact]
@@ -41,18 +48,45 @@ public sealed class MoveWorkItemHandlerTests
         var workItem = WorkItem.Create(
             tenantId, project.Id, 1, "SRC", "Stay put", null, WorkItemType.Task, Priority.Medium,
             DateTimeOffset.UtcNow);
+        var history = new WorkItemHistoryRepositoryStub();
         var handler = new MoveWorkItemHandler(
-            new TenantContextStub(tenantId), new ProjectRepositoryStub(project, project),
-            new WorkItemRepositoryStub(workItem), new UnitOfWorkStub(), TimeProvider.System);
+            new TenantContextStub(tenantId), new CurrentPrincipalStub(),
+            new ProjectRepositoryStub(project, project),
+            new WorkItemRepositoryStub(workItem), history, new UnitOfWorkStub(), TimeProvider.System);
 
         var result = await handler.Handle(
             new MoveWorkItemCommand(workItem.Id, project.Id, workItem.Version), CancellationToken.None);
 
         Assert.Equal("SRC-1", result.Key);
         Assert.Equal(1, result.Version);
+        Assert.Empty(history.Entries);
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
+
+    private sealed class CurrentPrincipalStub : ICurrentPrincipal
+    {
+        public Guid? UserId => null;
+        public Guid? SessionId => null;
+        public Guid MembershipId => Guid.NewGuid();
+        public PrincipalType PrincipalType => PrincipalType.User;
+        public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
+        public bool IsDevelopmentBypass => true;
+    }
+
+    private sealed class WorkItemHistoryRepositoryStub : IWorkItemHistoryRepository
+    {
+        public List<WorkItemHistoryEntry> Entries { get; } = [];
+        public Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken)
+        {
+            Entries.Add(entry);
+            return Task.CompletedTask;
+        }
+        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>(Entries);
+    }
 
     private sealed class ProjectRepositoryStub(params Project[] projects) : IProjectRepository
     {

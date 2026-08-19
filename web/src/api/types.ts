@@ -40,6 +40,8 @@ export interface WorkItem {
   productOwnerUserId: string | null
   sprintName: string | null
   identifiedOn: string | null
+  startDate: string | null
+  teamId: string | null
   storyPoints: number | null
   labels: string[]
   countries: string[]
@@ -99,6 +101,16 @@ export interface WorkItemComment {
   createdAt: string
   updatedAt: string
   lastEditedAt: string | null
+}
+
+export interface WorkItemHistoryEntry {
+  id: string
+  fieldName: string
+  oldValue: string | null
+  newValue: string | null
+  changedByUserId: string | null
+  changedByDisplayName: string
+  changedAt: string
 }
 
 export interface WorkItemAttachment {
@@ -173,6 +185,8 @@ export interface CreateWorkItemInput {
   productOwnerUserId?: string | null
   sprintName?: string | null
   identifiedOn?: string | null
+  startDate?: string | null
+  teamId?: string | null
   storyPoints?: number | null
   labels?: string[]
   countries?: string[]
@@ -192,6 +206,8 @@ export interface UpdateWorkItemInput {
   productOwnerUserId?: string | null
   sprintName?: string | null
   identifiedOn?: string | null
+  startDate?: string | null
+  teamId?: string | null
   storyPoints?: number | null
   labels?: string[]
   countries?: string[]

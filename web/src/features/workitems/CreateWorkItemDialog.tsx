@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Paperclip, X } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { Field, Hint } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
@@ -31,6 +31,8 @@ const blankDetails: Required<Omit<CreateWorkItemInput, 'projectId' | 'summary' |
   productOwnerUserId: null,
   sprintName: null,
   identifiedOn: null,
+  startDate: null,
+  teamId: null,
   storyPoints: null,
   labels: [],
   countries: [],
@@ -69,6 +71,12 @@ export function CreateWorkItemDialog({
   const [createAnother, setCreateAnother] = useState(false)
   const [selectedSprintId, setSelectedSprintId] = useState('')
   const [newSprintName, setNewSprintName] = useState('')
+
+  const teamsQuery = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => orbitApi.listTeams(),
+  })
+  const teams = teamsQuery.data ?? []
 
   const patch = (change: Partial<typeof blankDetails>) => setDetails((current) => ({ ...current, ...change }))
   const mutation = useCreateWorkItem(project.id)
@@ -191,7 +199,7 @@ export function CreateWorkItemDialog({
           {type === 'Epic' && <Field label="Epic name *"><input required maxLength={255} value={details.epicName ?? ''} onChange={(event) => patch({ epicName: event.target.value || null })} /><Hint>Provide a short name to identify this epic.</Hint></Field>}
           <Field label="Summary *"><input autoFocus required minLength={3} maxLength={255} value={summary} onChange={(event) => setSummary(event.target.value)} /></Field>
           <Field label="Description"><RichTextEditor value={description} onChange={setDescription} placeholder="Describe the outcome, context, and expected behaviour." /></Field>
-          {type === 'Epic' && <Field label="Acceptance criteria"><RichTextEditor value={details.acceptanceCriteria ?? ''} onChange={(html) => patch({ acceptanceCriteria: html || null })} placeholder="Define the acceptance criteria. Use the table button (\u229e) in the toolbar to insert a table." /></Field>}
+          {type === 'Epic' && <Field label="Acceptance criteria"><RichTextEditor value={details.acceptanceCriteria ?? ''} onChange={(html) => patch({ acceptanceCriteria: html || null })} placeholder="Define the acceptance criteria. Use the table button (⊞) in the toolbar to insert a table." /></Field>}
           {type === 'Bug' && <Field label="Steps to conduct action"><textarea value={details.stepsToConduct ?? ''} onChange={(event) => patch({ stepsToConduct: event.target.value || null })} maxLength={32000} rows={4} placeholder="Numbered reproduction steps and expected versus actual result." /></Field>}
 
           <div className="form-row">
@@ -247,24 +255,8 @@ export function CreateWorkItemDialog({
             </Field>
           )}
 
-          {type !== 'Bug' && type !== 'Initiative' && type !== 'Epic' && (
-            <Field label="Story points">
-              <input
-                type="number"
-                min="0"
-                max="10000"
-                step="0.5"
-                value={details.storyPoints ?? ''}
-                onChange={(event) =>
-                  patch({
-                    storyPoints: event.target.value ? Number(event.target.value) : null,
-                  })
-                }
-              />
-            </Field>
-          )}
-
-          {type === 'Bug' && <>
+          {/* Sprints and Estimation for all relevant work item types */}
+          {type !== 'Initiative' && type !== 'Epic' && (
             <div className="form-row">
               <Field label="Sprint">
                 <SearchableSelect
@@ -287,26 +279,95 @@ export function CreateWorkItemDialog({
                   </div>
                 )}
               </Field>
-              <Field label="Identified on"><input value={details.identifiedOn ?? ''} onChange={(event) => patch({ identifiedOn: event.target.value || null })} maxLength={255} placeholder="Production, staging, device…" /></Field>
-            </div>
-            <div className="form-row">
-              <Field label="Developer">
-                <SearchableSelect
-                  size="xl"
-                  value={details.developerUserId ?? ''}
-                  onChange={(val) => patch({ developerUserId: val || null })}
-                  options={[
-                    { value: '', label: 'Unassigned' },
-                    ...(profile ? [{ value: profile.userId, label: profile.displayName }] : []),
-                  ]}
-                  placeholder="Unassigned"
-                  searchPlaceholder="Search developers…"
+              <Field label="Story points">
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  step="0.5"
+                  value={details.storyPoints ?? ''}
+                  onChange={(event) =>
+                    patch({
+                      storyPoints: event.target.value ? Number(event.target.value) : null,
+                    })
+                  }
                 />
               </Field>
-              <Field label="Story points"><input type="number" min="0" max="10000" step="0.5" value={details.storyPoints ?? ''} onChange={(event) => patch({ storyPoints: event.target.value ? Number(event.target.value) : null })} /></Field>
             </div>
-            <fieldset className="rounded-lg border border-gray-200 p-3"><legend className="px-1 text-xs font-semibold text-gray-600">Countries</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{countries.map((country) => <label key={country} className="country-option"><input type="checkbox" checked={details.countries.includes(country)} onChange={(event) => patch({ countries: event.target.checked ? [...details.countries, country] : details.countries.filter((value) => value !== country) })} /> {country}</label>)}</div></fieldset>
-          </>}
+          )}
+
+          <div className="form-row">
+            <Field label="Team">
+              <SearchableSelect
+                size="xl"
+                value={details.teamId ?? ''}
+                onChange={(val) => patch({ teamId: val || null })}
+                options={[
+                  { value: '', label: 'No team' },
+                  ...teams.map((team) => ({ value: team.id, label: team.name })),
+                ]}
+                placeholder="No team"
+                searchPlaceholder="Search teams…"
+              />
+            </Field>
+            <Field label="Start date">
+              <input
+                type="date"
+                lang="en-GB"
+                value={details.startDate ?? ''}
+                onChange={(event) => patch({ startDate: event.target.value || null })}
+              />
+            </Field>
+          </div>
+
+          {type === 'Bug' && (
+            <>
+              <div className="form-row">
+                <Field label="Developer">
+                  <SearchableSelect
+                    size="xl"
+                    value={details.developerUserId ?? ''}
+                    onChange={(val) => patch({ developerUserId: val || null })}
+                    options={[
+                      { value: '', label: 'Unassigned' },
+                      ...(profile ? [{ value: profile.userId, label: profile.displayName }] : []),
+                    ]}
+                    placeholder="Unassigned"
+                    searchPlaceholder="Search developers…"
+                  />
+                </Field>
+                <Field label="Identified on">
+                  <input
+                    value={details.identifiedOn ?? ''}
+                    onChange={(event) => patch({ identifiedOn: event.target.value || null })}
+                    maxLength={255}
+                    placeholder="Production, staging, device…"
+                  />
+                </Field>
+              </div>
+              <fieldset className="rounded-lg border border-gray-200 p-3 mb-4">
+                <legend className="px-1 text-xs font-semibold text-gray-600">Countries</legend>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {countries.map((country) => (
+                    <label key={country} className="country-option">
+                      <input
+                        type="checkbox"
+                        checked={details.countries.includes(country)}
+                        onChange={(event) =>
+                          patch({
+                            countries: event.target.checked
+                              ? [...details.countries, country]
+                              : details.countries.filter((value) => value !== country),
+                          })
+                        }
+                      />{' '}
+                      {country}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </>
+          )}
 
           {type === 'Spike' && (
             <Field label="Product owner">

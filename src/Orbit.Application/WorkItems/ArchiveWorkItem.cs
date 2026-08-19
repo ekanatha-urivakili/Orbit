@@ -19,7 +19,9 @@ public sealed class ArchiveWorkItemValidator : AbstractValidator<ArchiveWorkItem
 
 public sealed class ArchiveWorkItemHandler(
     ITenantContext tenantContext,
+    ICurrentPrincipal principal,
     IWorkItemRepository workItems,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<ArchiveWorkItemCommand, WorkItemDto>
 {
@@ -34,7 +36,12 @@ public sealed class ArchiveWorkItemHandler(
             throw new ConcurrencyException("The work item changed after it was loaded.");
         }
 
-        workItem.Archive(timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        workItem.Archive(now);
+
+        await WorkItemHistoryRecorder.RecordAsync(
+            history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
+            ("Archived", "No", "Yes"));
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);
@@ -54,7 +61,9 @@ public sealed class UnarchiveWorkItemValidator : AbstractValidator<UnarchiveWork
 
 public sealed class UnarchiveWorkItemHandler(
     ITenantContext tenantContext,
+    ICurrentPrincipal principal,
     IWorkItemRepository workItems,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UnarchiveWorkItemCommand, WorkItemDto>
 {
@@ -69,7 +78,12 @@ public sealed class UnarchiveWorkItemHandler(
             throw new ConcurrencyException("The work item changed after it was loaded.");
         }
 
-        workItem.Unarchive(timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        workItem.Unarchive(now);
+
+        await WorkItemHistoryRecorder.RecordAsync(
+            history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
+            ("Archived", "Yes", "No"));
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);

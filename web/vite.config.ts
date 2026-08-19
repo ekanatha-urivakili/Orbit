@@ -45,6 +45,23 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('@tiptap') || id.includes('prosemirror')) {
+            return 'vendor-tiptap'
+          }
+          if (id.includes('lucide-react')) {
+            return 'vendor-icons'
+          }
+          if (id.includes('@tanstack/react-query')) {
+            return 'vendor-query'
+          }
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

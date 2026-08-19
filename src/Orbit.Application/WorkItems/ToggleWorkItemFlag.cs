@@ -20,7 +20,9 @@ public sealed class ToggleWorkItemFlagValidator : AbstractValidator<ToggleWorkIt
 
 public sealed class ToggleWorkItemFlagHandler(
     ITenantContext tenantContext,
+    ICurrentPrincipal principal,
     IWorkItemRepository workItems,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<ToggleWorkItemFlagCommand, WorkItemDto>
 {
@@ -35,7 +37,13 @@ public sealed class ToggleWorkItemFlagHandler(
             throw new ConcurrencyException("The work item changed after it was loaded.");
         }
 
-        workItem.SetFlagged(request.Flagged, timeProvider.GetUtcNow());
+        var previousFlagged = workItem.IsFlagged;
+        var now = timeProvider.GetUtcNow();
+        workItem.SetFlagged(request.Flagged, now);
+
+        await WorkItemHistoryRecorder.RecordAsync(
+            history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
+            ("Flagged", previousFlagged ? "Yes" : "No", request.Flagged ? "Yes" : "No"));
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);

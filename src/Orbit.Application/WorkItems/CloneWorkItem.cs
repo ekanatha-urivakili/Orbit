@@ -16,8 +16,10 @@ public sealed class CloneWorkItemValidator : AbstractValidator<CloneWorkItemComm
 
 public sealed class CloneWorkItemHandler(
     ITenantContext tenantContext,
+    ICurrentPrincipal principal,
     IProjectRepository projects,
     IWorkItemRepository workItems,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<CloneWorkItemCommand, WorkItemDto>
 {
@@ -53,12 +55,20 @@ public sealed class CloneWorkItemHandler(
             productOwnerUserId: null,
             sprintName: null,
             identifiedOn: source.IdentifiedOn,
+            startDate: source.StartDate,
+            teamId: source.TeamId,
             storyPoints: source.StoryPoints,
             labels: source.Labels,
             countries: source.Countries,
             attachmentNames: null);
 
         await workItems.AddAsync(clone, cancellationToken);
+
+        await history.AddAsync(
+            WorkItemHistoryEntry.Create(
+                tenantContext.TenantId, clone.Id, principal.MembershipId, "Ticket", null, $"Cloned from {source.Key}", now),
+            cancellationToken);
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(clone);
     }

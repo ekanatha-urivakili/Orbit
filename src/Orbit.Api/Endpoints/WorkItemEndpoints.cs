@@ -44,6 +44,8 @@ public static class WorkItemEndpoints
                 request.ProductOwnerUserId,
                 request.SprintName,
                 request.IdentifiedOn,
+                request.StartDate,
+                request.TeamId,
                 request.StoryPoints,
                 request.Labels,
                 request.Countries,
@@ -81,6 +83,8 @@ public static class WorkItemEndpoints
                 request.ProductOwnerUserId,
                 request.SprintName,
                 request.IdentifiedOn,
+                request.StartDate,
+                request.TeamId,
                 request.StoryPoints,
                 request.Labels,
                 request.Countries,
@@ -282,6 +286,17 @@ public static class WorkItemEndpoints
             return Results.NoContent();
         })
             .WithName("DeleteWorkItemComment")
+            .WithTags("Work items");
+
+        group.MapGet("/work-items/{workItemId:guid}/history", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await sender.Send(new ListWorkItemHistoryQuery(workItemId), cancellationToken);
+            return Results.Ok(result);
+        })
+            .WithName("ListWorkItemHistory")
             .WithTags("Work items");
 
         // ------------------------------------------------------------------
@@ -641,6 +656,8 @@ public static class WorkItemEndpoints
         Guid? ProductOwnerUserId,
         string? SprintName,
         string? IdentifiedOn,
+        DateOnly? StartDate,
+        Guid? TeamId,
         decimal? StoryPoints,
         string[]? Labels,
         string[]? Countries,
@@ -659,6 +676,8 @@ public static class WorkItemEndpoints
         Guid? ProductOwnerUserId,
         string? SprintName,
         string? IdentifiedOn,
+        DateOnly? StartDate,
+        Guid? TeamId,
         decimal? StoryPoints,
         string[]? Labels,
         string[]? Countries,

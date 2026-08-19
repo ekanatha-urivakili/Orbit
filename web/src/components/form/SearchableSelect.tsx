@@ -106,11 +106,17 @@ export function SearchableSelect<T extends string = string>({
     const spaceAbove = rect.top
     const menuHeight = 280
     const openUpward = spaceBelow < menuHeight && spaceAbove > spaceBelow
+    const margin = 8
+    const width = Math.min(
+      Math.max(rect.width, size === 'xl' ? 320 : 220),
+      window.innerWidth - margin * 2,
+    )
+    const left = Math.min(Math.max(rect.left, margin), window.innerWidth - width - margin)
 
     setMenuPosition({
       top: openUpward ? rect.top : rect.bottom,
-      left: rect.left,
-      width: Math.max(rect.width, size === 'xl' ? 320 : 220),
+      left,
+      width,
       openUpward,
     })
   }, [size])

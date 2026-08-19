@@ -31,6 +31,7 @@ public sealed class ChangeWorkItemStatusHandler(
     ISprintScopeFactRepository sprintScopeFacts,
     ISettingsRepository settings,
     IOutboxRepository outbox,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : IRequestHandler<ChangeWorkItemStatusCommand, WorkItemDto>
@@ -78,6 +79,10 @@ public sealed class ChangeWorkItemStatusHandler(
         {
             await NotifyOwnersAsync(workItem, previousStatus, request.Status, now, cancellationToken);
         }
+
+        await WorkItemHistoryRecorder.RecordAsync(
+            history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
+            ("Status", previousStatus.ToString(), workItem.Status.ToString()));
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);

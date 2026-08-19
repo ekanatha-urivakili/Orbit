@@ -589,6 +589,20 @@ public interface IWorkItemCommentRepository
         CancellationToken cancellationToken);
 }
 
+public interface IWorkItemHistoryRepository
+{
+    Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns all history entries for a work item ordered by <c>ChangedAt ASC</c> then <c>Id</c>.
+    /// The caller must have verified work-item visibility.
+    /// </summary>
+    Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
+        Guid tenantId,
+        Guid workItemId,
+        CancellationToken cancellationToken);
+}
+
 public interface IAttachmentRepository
 {
     Task AddAsync(Attachment attachment, CancellationToken cancellationToken);

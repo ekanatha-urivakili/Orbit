@@ -21,8 +21,10 @@ public sealed class MoveWorkItemValidator : AbstractValidator<MoveWorkItemComman
 
 public sealed class MoveWorkItemHandler(
     ITenantContext tenantContext,
+    ICurrentPrincipal principal,
     IProjectRepository projects,
     IWorkItemRepository workItems,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<MoveWorkItemCommand, WorkItemDto>
 {
@@ -42,6 +44,7 @@ public sealed class MoveWorkItemHandler(
             return WorkItemDto.From(workItem);
         }
 
+        var sourceProjectKey = workItem.Key.Split('-')[0];
         var targetProject = await projects.GetAsync(
             tenantContext.TenantId, request.TargetProjectId, ProjectPermission.Administer, cancellationToken)
             ?? throw new NotFoundException("Target project was not found.");
@@ -49,6 +52,10 @@ public sealed class MoveWorkItemHandler(
         var now = timeProvider.GetUtcNow();
         var sequence = targetProject.AllocateItemSequence(now);
         workItem.MoveToProject(targetProject.Id, sequence, targetProject.Key, now);
+
+        await WorkItemHistoryRecorder.RecordAsync(
+            history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
+            ("Project", sourceProjectKey, targetProject.Key));
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);

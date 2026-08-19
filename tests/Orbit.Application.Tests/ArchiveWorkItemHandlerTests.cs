@@ -16,24 +16,57 @@ public sealed class ArchiveWorkItemHandlerTests
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Archive this card", null, WorkItemType.Task, Priority.Medium,
             DateTimeOffset.UtcNow);
+        var history = new WorkItemHistoryRepositoryStub();
         var archiveHandler = new ArchiveWorkItemHandler(
-            new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem), new UnitOfWorkStub(),
+            new TenantContextStub(tenantId), new CurrentPrincipalStub(),
+            new WorkItemRepositoryStub(workItem), history, new UnitOfWorkStub(),
             TimeProvider.System);
 
         var archived = await archiveHandler.Handle(
             new ArchiveWorkItemCommand(workItem.Id, workItem.Version), CancellationToken.None);
         Assert.True(archived.IsArchived);
+        Assert.Single(history.Entries);
+        Assert.Equal("Archived", history.Entries[0].FieldName);
+        Assert.Equal("Yes", history.Entries[0].NewValue);
 
         var unarchiveHandler = new UnarchiveWorkItemHandler(
-            new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem), new UnitOfWorkStub(),
+            new TenantContextStub(tenantId), new CurrentPrincipalStub(),
+            new WorkItemRepositoryStub(workItem), history, new UnitOfWorkStub(),
             TimeProvider.System);
         var unarchived = await unarchiveHandler.Handle(
             new UnarchiveWorkItemCommand(workItem.Id, archived.Version), CancellationToken.None);
 
         Assert.False(unarchived.IsArchived);
+        Assert.Equal(2, history.Entries.Count);
+        Assert.Equal("Archived", history.Entries[1].FieldName);
+        Assert.Equal("No", history.Entries[1].NewValue);
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
+
+    private sealed class CurrentPrincipalStub : ICurrentPrincipal
+    {
+        public Guid? UserId => null;
+        public Guid? SessionId => null;
+        public Guid MembershipId => Guid.NewGuid();
+        public PrincipalType PrincipalType => PrincipalType.User;
+        public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
+        public bool IsDevelopmentBypass => true;
+    }
+
+    private sealed class WorkItemHistoryRepositoryStub : IWorkItemHistoryRepository
+    {
+        public List<WorkItemHistoryEntry> Entries { get; } = [];
+        public Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken)
+        {
+            Entries.Add(entry);
+            return Task.CompletedTask;
+        }
+        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>(Entries);
+    }
 
     private sealed class WorkItemRepositoryStub(WorkItem workItem) : IWorkItemRepository
     {

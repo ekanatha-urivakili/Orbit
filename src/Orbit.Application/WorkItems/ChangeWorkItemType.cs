@@ -22,7 +22,9 @@ public sealed class ChangeWorkItemTypeValidator : AbstractValidator<ChangeWorkIt
 
 public sealed class ChangeWorkItemTypeHandler(
     ITenantContext tenantContext,
+    ICurrentPrincipal principal,
     IWorkItemRepository workItems,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<ChangeWorkItemTypeCommand, WorkItemDto>
 {
@@ -37,7 +39,13 @@ public sealed class ChangeWorkItemTypeHandler(
             throw new ConcurrencyException("The work item changed after it was loaded.");
         }
 
-        workItem.ChangeType(request.NewType, timeProvider.GetUtcNow());
+        var previousType = workItem.Type;
+        var now = timeProvider.GetUtcNow();
+        workItem.ChangeType(request.NewType, now);
+
+        await WorkItemHistoryRecorder.RecordAsync(
+            history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
+            ("Type", previousType.ToString(), workItem.Type.ToString()));
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);

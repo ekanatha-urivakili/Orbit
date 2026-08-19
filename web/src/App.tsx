@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { orbitApi } from './api/client'
 import * as auth from './api/auth'
@@ -187,7 +187,7 @@ function App() {
     queryFn: () => orbitApi.listProjects(),
     enabled: bootstrapQuery.data?.initializationRequired === false,
   })
-  const projects = projectsQuery.data?.items ?? []
+  const projects = useMemo(() => projectsQuery.data?.items ?? [], [projectsQuery.data?.items])
   const choicesQuery = useQuery({ queryKey: ['choices'], queryFn: orbitApi.getChoices, staleTime: Infinity })
   const itemTypesQuery = useQuery({
     queryKey: ['work-item-types'],
@@ -225,7 +225,7 @@ function App() {
     queryFn: orbitApi.listMemberships,
     enabled: bootstrapQuery.data?.initializationRequired === false,
   })
-  const members = membersQuery.data ?? []
+  const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data])
   const accountWorkspacesQuery = useQuery({
     queryKey: ['account-workspaces'],
     queryFn: orbitApi.listAccountWorkspaces,
@@ -330,7 +330,7 @@ function App() {
     queryFn: () => orbitApi.listWorkItems(selectedProjectId ?? ''),
     enabled: Boolean(selectedProjectId),
   })
-  const workItems = workItemsQuery.data?.items ?? []
+  const workItems = useMemo(() => workItemsQuery.data?.items ?? [], [workItemsQuery.data?.items])
   const workItemsTruncated = (workItemsQuery.data?.totalCount ?? 0) > workItems.length
 
   useEffect(() => {

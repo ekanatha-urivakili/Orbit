@@ -52,6 +52,8 @@ public sealed class WorkItem
     public Guid? ProductOwnerUserId { get; private set; }
     public string? SprintName { get; private set; }
     public string? IdentifiedOn { get; private set; }
+    public DateOnly? StartDate { get; private set; }
+    public Guid? TeamId { get; private set; }
     public decimal? StoryPoints { get; private set; }
     public string[] Labels { get; private set; } = [];
     public string[] Countries { get; private set; } = [];
@@ -114,6 +116,8 @@ public sealed class WorkItem
         Guid? productOwnerUserId,
         string? sprintName,
         string? identifiedOn,
+        DateOnly? startDate,
+        Guid? teamId,
         decimal? storyPoints,
         IEnumerable<string>? labels,
         IEnumerable<string>? countries,
@@ -143,6 +147,8 @@ public sealed class WorkItem
         ProductOwnerUserId = productOwnerUserId;
         SprintName = Normalize(sprintName, 255, "Sprint");
         IdentifiedOn = Normalize(identifiedOn, 255, "Identified on");
+        StartDate = startDate;
+        TeamId = teamId;
         StoryPoints = storyPoints;
         Labels = NormalizeValues(labels, 50, 100, "Label");
         Countries = NormalizeValues(countries, 50, 100, "Country");
@@ -192,6 +198,8 @@ public sealed class WorkItem
         Guid? productOwnerUserId,
         string? sprintName,
         string? identifiedOn,
+        DateOnly? startDate,
+        Guid? teamId,
         decimal? storyPoints,
         IEnumerable<string>? labels,
         IEnumerable<string>? countries,
@@ -223,6 +231,8 @@ public sealed class WorkItem
             productOwnerUserId,
             sprintName,
             identifiedOn,
+            startDate,
+            teamId,
             storyPoints,
             labels,
             countries,

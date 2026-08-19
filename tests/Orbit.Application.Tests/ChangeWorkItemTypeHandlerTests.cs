@@ -19,7 +19,9 @@ public sealed class ChangeWorkItemTypeHandlerTests
             Priority.Medium, DateTimeOffset.UtcNow);
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -32,6 +34,32 @@ public sealed class ChangeWorkItemTypeHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ValidTypeChange_RecordsHistoryEntry()
+    {
+        var tenantId = Guid.NewGuid();
+        var workItem = WorkItem.Create(
+            tenantId, Guid.NewGuid(), 1, "ORB", "Reclassify this card", null, WorkItemType.Task,
+            Priority.Medium, DateTimeOffset.UtcNow);
+        var history = new WorkItemHistoryRepositoryStub();
+        var handler = new ChangeWorkItemTypeHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(),
+            new WorkItemRepositoryStub(workItem),
+            history,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new ChangeWorkItemTypeCommand(workItem.Id, WorkItemType.Bug, workItem.Version),
+            CancellationToken.None);
+
+        var entry = Assert.Single(history.Added);
+        Assert.Equal("Type", entry.FieldName);
+        Assert.Equal("Task", entry.OldValue);
+        Assert.Equal("Bug", entry.NewValue);
+    }
+
+    [Fact]
     public async Task Handle_StaleVersion_ThrowsConcurrencyException()
     {
         var tenantId = Guid.NewGuid();
@@ -40,7 +68,9 @@ public sealed class ChangeWorkItemTypeHandlerTests
             Priority.Medium, DateTimeOffset.UtcNow);
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -60,7 +90,9 @@ public sealed class ChangeWorkItemTypeHandlerTests
             Priority.Medium, DateTimeOffset.UtcNow);
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -80,7 +112,9 @@ public sealed class ChangeWorkItemTypeHandlerTests
             Priority.Medium, DateTimeOffset.UtcNow);
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemHistoryRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -92,6 +126,17 @@ public sealed class ChangeWorkItemTypeHandlerTests
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
+
+    private sealed class CurrentPrincipalStub : ICurrentPrincipal
+    {
+        public Guid? UserId => null;
+        public Guid? SessionId => null;
+        public Guid MembershipId => Guid.NewGuid();
+        public PrincipalType PrincipalType => PrincipalType.User;
+        public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
+        public bool IsDevelopmentBypass => true;
+    }
 
     private sealed class WorkItemRepositoryStub(WorkItem workItem) : IWorkItemRepository
     {
@@ -124,5 +169,20 @@ public sealed class ChangeWorkItemTypeHandlerTests
     private sealed class UnitOfWorkStub : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken) => Task.FromResult(1);
+    }
+
+    private sealed class WorkItemHistoryRepositoryStub : IWorkItemHistoryRepository
+    {
+        public List<WorkItemHistoryEntry> Added { get; } = [];
+
+        public Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken)
+        {
+            Added.Add(entry);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>([]);
     }
 }

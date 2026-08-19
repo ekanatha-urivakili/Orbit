@@ -212,6 +212,8 @@ export const orbitApi = {
     request<void>(`/work-items/${encodeURIComponent(workItemId)}/votes/me`, { method: 'PUT' }),
   removeWorkItemVote: (workItemId: string) =>
     request<void>(`/work-items/${encodeURIComponent(workItemId)}/votes/me`, { method: 'DELETE' }),
+  listWorkItemHistory: (workItemId: string) =>
+    request<import('./types').WorkItemHistoryEntry[]>(`/work-items/${encodeURIComponent(workItemId)}/history`),
   listWorklogs: (workItemId: string) =>
     request<import('./types').WorkItemWorklog[]>(`/work-items/${encodeURIComponent(workItemId)}/worklogs`),
   addWorklog: (workItemId: string, input: { minutesSpent: number; workDate: string; description: string | null }) =>

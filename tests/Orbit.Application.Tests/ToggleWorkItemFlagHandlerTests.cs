@@ -16,9 +16,12 @@ public sealed class ToggleWorkItemFlagHandlerTests
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Flag this card", null, WorkItemType.Task,
             Priority.Medium, DateTimeOffset.UtcNow);
+        var history = new WorkItemHistoryRepositoryStub();
         var handler = new ToggleWorkItemFlagHandler(
             new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(),
             new WorkItemRepositoryStub(workItem),
+            history,
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -26,9 +29,37 @@ public sealed class ToggleWorkItemFlagHandlerTests
             new ToggleWorkItemFlagCommand(workItem.Id, true, workItem.Version), CancellationToken.None);
 
         Assert.True(result.IsFlagged);
+        Assert.Single(history.Entries);
+        Assert.Equal("Flagged", history.Entries[0].FieldName);
+        Assert.Equal("No", history.Entries[0].OldValue);
+        Assert.Equal("Yes", history.Entries[0].NewValue);
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
+
+    private sealed class CurrentPrincipalStub : ICurrentPrincipal
+    {
+        public Guid? UserId => null;
+        public Guid? SessionId => null;
+        public Guid MembershipId => Guid.NewGuid();
+        public PrincipalType PrincipalType => PrincipalType.User;
+        public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
+        public bool IsDevelopmentBypass => true;
+    }
+
+    private sealed class WorkItemHistoryRepositoryStub : IWorkItemHistoryRepository
+    {
+        public List<WorkItemHistoryEntry> Entries { get; } = [];
+        public Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken)
+        {
+            Entries.Add(entry);
+            return Task.CompletedTask;
+        }
+        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>(Entries);
+    }
 
     private sealed class WorkItemRepositoryStub(WorkItem workItem) : IWorkItemRepository
     {

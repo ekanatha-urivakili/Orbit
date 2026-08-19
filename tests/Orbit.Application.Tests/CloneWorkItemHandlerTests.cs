@@ -19,10 +19,12 @@ public sealed class CloneWorkItemHandlerTests
             tenantId, project.Id, 1, "ORB", "Investigate latency", "Some detail", WorkItemType.Bug, Priority.High,
             DateTimeOffset.UtcNow);
         source.SetDetails(
-            null, null, "AC", null, Guid.NewGuid(), null, null, null, null, 5, ["backend"], [], []);
+            null, null, "AC", null, Guid.NewGuid(), null, null, null, null, null, null, 5, ["backend"], [], []);
         var workItems = new WorkItemRepositoryStub(source);
+        var history = new WorkItemHistoryRepositoryStub();
         var handler = new CloneWorkItemHandler(
-            new TenantContextStub(tenantId), new ProjectRepositoryStub(project), workItems, new UnitOfWorkStub(),
+            new TenantContextStub(tenantId), new CurrentPrincipalStub(),
+            new ProjectRepositoryStub(project), workItems, history, new UnitOfWorkStub(),
             TimeProvider.System);
 
         var clone = await handler.Handle(new CloneWorkItemCommand(source.Id), CancellationToken.None);
@@ -31,9 +33,36 @@ public sealed class CloneWorkItemHandlerTests
         Assert.Equal("ORB-1", clone.Key);
         Assert.Null(clone.AssigneeUserId);
         Assert.NotNull(workItems.Added);
+        Assert.Single(history.Entries);
+        Assert.Equal("Ticket", history.Entries[0].FieldName);
+        Assert.Equal("Cloned from ORB-1", history.Entries[0].NewValue);
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
+
+    private sealed class CurrentPrincipalStub : ICurrentPrincipal
+    {
+        public Guid? UserId => null;
+        public Guid? SessionId => null;
+        public Guid MembershipId => Guid.NewGuid();
+        public PrincipalType PrincipalType => PrincipalType.User;
+        public TenantRole TenantRole => TenantRole.Owner;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
+        public bool IsDevelopmentBypass => true;
+    }
+
+    private sealed class WorkItemHistoryRepositoryStub : IWorkItemHistoryRepository
+    {
+        public List<WorkItemHistoryEntry> Entries { get; } = [];
+        public Task AddAsync(WorkItemHistoryEntry entry, CancellationToken cancellationToken)
+        {
+            Entries.Add(entry);
+            return Task.CompletedTask;
+        }
+        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>(Entries);
+    }
 
     private sealed class ProjectRepositoryStub(Project project) : IProjectRepository
     {

@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Edit2, CornerDownRight, Reply } from 'lucide-react'
 import { orbitApi } from '../../api/client'
-import { RichTextEditor, isRichTextEmpty } from '../../components/form/RichTextEditor'
+import { RichTextEditor } from '../../components/form/RichTextEditor'
+import { isRichTextEmpty } from '../../components/form/editorConstants'
 import { RichTextView } from '../../components/form/RichTextView'
-import type { Profile, TenantMembership } from '../../api/types'
+import type { Profile, TenantMembership, WorkItem } from '../../api/types'
 
 type ActivityTab = 'all' | 'comments' | 'history' | 'log'
 
@@ -20,10 +21,12 @@ export function WorkItemComments({
   workItemId,
   profile,
   members = [],
+  workItems = [],
 }: {
   workItemId: string
   profile?: Profile
   members?: TenantMembership[]
+  workItems?: WorkItem[]
 }) {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<ActivityTab>('comments')
@@ -41,9 +44,16 @@ export function WorkItemComments({
     queryKey: ['work-item-attachments', workItemId],
     queryFn: () => orbitApi.listWorkItemAttachments(workItemId),
   })
+  const historyQuery = useQuery({
+    queryKey: ['work-item-history', workItemId],
+    queryFn: () => orbitApi.listWorkItemHistory(workItemId),
+    enabled: activeTab === 'history' || activeTab === 'all',
+  })
 
   const comments = commentsQuery.data ?? []
   const attachments = attachmentsQuery.data ?? []
+  // API returns ascending; show newest first, like the comment feed.
+  const history = [...(historyQuery.data ?? [])].reverse()
 
   const addMutation = useMutation({
     mutationFn: (body: string) => orbitApi.addWorkItemComment(workItemId, body),
@@ -125,8 +135,44 @@ export function WorkItemComments({
       {/* History section */}
       {showHistory && (
         <div className="activity-section">
-          {activeTab === 'all' && <p className="activity-section-label">History</p>}
-          <p className="activity-empty-text">No history recorded yet.</p>
+          {activeTab === 'all' && history.length > 0 && <p className="activity-section-label">History</p>}
+          {historyQuery.isPending ? (
+            <p className="text-sm text-gray-500">Loading history...</p>
+          ) : history.length === 0 ? (
+            <p className="activity-empty-text">No history recorded yet.</p>
+          ) : (
+            <ul className="history-feed">
+              {history.map((entry) => (
+                <li key={entry.id} className="history-feed-item">
+                  <div className="history-feed-avatar">
+                    {entry.changedByDisplayName ? entry.changedByDisplayName.charAt(0).toUpperCase() : '?'}
+                  </div>
+                  <div className="history-feed-body">
+                    <p className="history-feed-line">
+                      <span className="history-feed-actor">{entry.changedByDisplayName}</span>{' '}
+                      {entry.fieldName === 'Ticket' ? (
+                        'created this ticket'
+                      ) : (
+                        <>
+                          updated the <span className="history-feed-field">{entry.fieldName}</span>
+                        </>
+                      )}
+                      <span className="history-feed-time">
+                        {new Date(entry.changedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                      </span>
+                    </p>
+                    {entry.fieldName !== 'Ticket' && (
+                      <p className="history-feed-diff">
+                        <span className="history-feed-old">{entry.oldValue ?? 'None'}</span>
+                        <span className="history-feed-arrow">→</span>
+                        <span className="history-feed-new">{entry.newValue ?? 'None'}</span>
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -169,9 +215,11 @@ export function WorkItemComments({
                   <RichTextEditor
                     value={newCommentBody}
                     onChange={setNewCommentBody}
-                    placeholder="Add a comment... (Type ticket number like TST-1 to auto-link)"
+                    placeholder="Add a comment... (Type @ to mention someone or a ticket key like TST-1 to auto-link)"
                     minHeight={70}
                     workItemId={workItemId}
+                    members={members}
+                    workItems={workItems}
                     onAttachmentUploaded={() => queryClient.invalidateQueries({ queryKey: ['work-item-attachments', workItemId] })}
                   />
                 </div>
@@ -259,7 +307,7 @@ export function WorkItemComments({
                       <p className="text-gray-500 italic flex items-center gap-1.5"><Trash2 size={12} /> This comment was deleted.</p>
                     ) : editingCommentId === comment.id ? (
                       <div className="mt-2">
-                        <RichTextEditor value={editBody} onChange={setEditBody} minHeight={80} workItemId={workItemId} attachments={attachments} onAttachmentUploaded={() => queryClient.invalidateQueries({ queryKey: ['work-item-attachments', workItemId] })} />
+                        <RichTextEditor value={editBody} onChange={setEditBody} minHeight={80} workItemId={workItemId} attachments={attachments} members={members} workItems={workItems} onAttachmentUploaded={() => queryClient.invalidateQueries({ queryKey: ['work-item-attachments', workItemId] })} />
                         <div className="mt-2 flex items-center justify-end gap-2">
                           <button type="button" onClick={() => setEditingCommentId(null)} className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1">Cancel</button>
                           <button 

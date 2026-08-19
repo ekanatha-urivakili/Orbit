@@ -90,6 +90,28 @@ export function WorkItemDetailView({
   const [epicPopupOpen, setEpicPopupOpen] = useState(false)
   const [epicMenuOpen, setEpicMenuOpen] = useState(false)
   const [epicSearch, setEpicSearch] = useState('')
+  const typeMenuRef = useRef<HTMLDivElement>(null)
+  const epicPopupRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!typeMenuOpen && !epicMenuOpen && !epicPopupOpen) return
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (typeMenuOpen && typeMenuRef.current && !typeMenuRef.current.contains(target)) {
+        setTypeMenuOpen(false)
+      }
+      if (
+        (epicMenuOpen || epicPopupOpen) &&
+        epicPopupRef.current &&
+        !epicPopupRef.current.contains(target)
+      ) {
+        setEpicMenuOpen(false)
+        setEpicPopupOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [typeMenuOpen, epicMenuOpen, epicPopupOpen])
   const [summary, setSummary] = useState(item.summary)
   const [editingSummary, setEditingSummary] = useState(false)
   const [description, setDescription] = useState(item.description ?? '')
@@ -104,6 +126,8 @@ export function WorkItemDetailView({
     productOwnerUserId: string | null
     sprintName: string | null
     identifiedOn: string | null
+    startDate: string | null
+    teamId: string | null
     storyPoints: number | null
     countries: string[]
     attachmentNames: string[]
@@ -117,6 +141,8 @@ export function WorkItemDetailView({
     productOwnerUserId: item.productOwnerUserId,
     sprintName: item.sprintName,
     identifiedOn: item.identifiedOn,
+    startDate: item.startDate,
+    teamId: item.teamId,
     storyPoints: item.storyPoints,
     countries: item.countries,
     attachmentNames: item.attachmentNames,
@@ -178,6 +204,12 @@ export function WorkItemDetailView({
     queryKey: ['work-item-types'],
     queryFn: () => orbitApi.listWorkItemTypes(),
   })
+
+  const teamsQuery = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => orbitApi.listTeams(),
+  })
+  const teams = teamsQuery.data ?? []
   const availableWorkTypes = (typeDefinitionsQuery.data ?? [])
     .filter((definition) => definition.enabled && !structuralTypes.includes(definition.id))
     .sort((a, b) => a.order - b.order)
@@ -311,7 +343,7 @@ export function WorkItemDetailView({
         {/* Breadcrumb Add Epic / Epic badge (Matching Jira Screenshot 3) */}
         {currentType !== 'Initiative' && currentType !== 'Epic' && (
           <>
-            <div className="relative inline-flex items-center gap-0.5">
+            <div className="relative inline-flex items-center gap-0.5" ref={epicPopupRef}>
               {parentEpic ? (
                 <>
                   <button
@@ -430,7 +462,7 @@ export function WorkItemDetailView({
         )}
 
         {/* Breadcrumb Interactive Type Icon */}
-        <div className="relative inline-flex items-center">
+        <div className="relative inline-flex items-center" ref={typeMenuRef}>
           <button
             type="button"
             onClick={() => setTypeMenuOpen(!typeMenuOpen)}
@@ -597,6 +629,8 @@ export function WorkItemDetailView({
               placeholder="Describe the outcome, context, and expected behaviour."
               workItemId={item.id}
               attachments={attachments}
+              members={members}
+              workItems={workItems}
               onAttachmentUploaded={() =>
                 queryClient.invalidateQueries({
                   queryKey: ['work-item-attachments', item.id],
@@ -614,6 +648,8 @@ export function WorkItemDetailView({
               placeholder="Define the acceptance criteria, scenarios and expected outcomes. Use the table button (⊞) in the toolbar to insert a table."
               workItemId={item.id}
               attachments={attachments}
+              members={members}
+              workItems={workItems}
               onAttachmentUploaded={() =>
                 queryClient.invalidateQueries({
                   queryKey: ['work-item-attachments', item.id],
@@ -694,12 +730,12 @@ export function WorkItemDetailView({
             members={members}
             currentMembershipId={members.find((member) => member.userId === profile?.userId)?.id}
           />
-          <WorkItemComments workItemId={item.id} profile={profile} members={members} />
+          <WorkItemComments workItemId={item.id} profile={profile} members={members} workItems={workItems} />
         </div>
 
         {/* Sidebar Details Panel (Pure White background) */}
         <aside className="work-item-detail-sidebar">
-          <label className="work-item-detail-status">
+          <label className={`work-item-detail-status work-item-detail-status--${statusMeta[item.status].tone}`}>
             <span className="sr-only">Status</span>
             <select
               value={item.status}
@@ -738,6 +774,23 @@ export function WorkItemDetailView({
                 placeholder="Unassigned"
                 searchPlaceholder="Search members…"
               />
+            </Field>
+
+            <Field variant="panel" label="Reporter">
+              <span className="wid-reporter">
+                <span className="wid-reporter-avatar">
+                  {(
+                    membersById.get(profile?.userId ?? '')?.displayName ??
+                    profile?.displayName ??
+                    '?'
+                  )
+                    .charAt(0)
+                    .toUpperCase()}
+                </span>
+                {membersById.get(profile?.userId ?? '')?.displayName ??
+                  profile?.displayName ??
+                  'Unknown'}
+              </span>
             </Field>
 
             <Field variant="panel" label="Priority">
@@ -789,6 +842,53 @@ export function WorkItemDetailView({
               </Field>
             )}
 
+            {currentType !== 'Initiative' && currentType !== 'Epic' && (
+              <Field variant="panel" label="Sprint">
+                <SearchableSelect
+                  size="xl"
+                  value={selectedSprintId}
+                  onChange={(val) => setSelectedSprintId(val)}
+                  options={sprintOptions}
+                  placeholder="No Sprint"
+                />
+                {selectedSprintId === '__new_sprint__' && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="New Sprint Name"
+                      value={newSprintName}
+                      onChange={(e) => setNewSprintName(e.target.value)}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                )}
+              </Field>
+            )}
+
+            <Field variant="panel" label="Team">
+              <SearchableSelect
+                size="xl"
+                value={details.teamId ?? ''}
+                onChange={(val) => patch({ teamId: val || null })}
+                options={[
+                  { value: '', label: 'No team' },
+                  ...teams.map((team) => ({ value: team.id, label: team.name })),
+                ]}
+                placeholder="No team"
+                searchPlaceholder="Search teams…"
+              />
+            </Field>
+
+            <Field variant="panel" label="Start date">
+              <input
+                type="date"
+                lang="en-GB"
+                value={details.startDate ?? ''}
+                onChange={(event) => patch({ startDate: event.target.value || null })}
+              />
+            </Field>
+
             {currentType === 'Bug' && (
               <>
                 <Field variant="panel" label="Developer">
@@ -803,27 +903,6 @@ export function WorkItemDetailView({
                     placeholder="Unassigned"
                     searchPlaceholder="Search developers…"
                   />
-                </Field>
-                <Field variant="panel" label="Sprint">
-                  <SearchableSelect
-                    size="xl"
-                    value={selectedSprintId}
-                    onChange={(val) => setSelectedSprintId(val)}
-                    options={sprintOptions}
-                    placeholder="No Sprint"
-                  />
-                  {selectedSprintId === '__new_sprint__' && (
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        required
-                        placeholder="New Sprint Name"
-                        value={newSprintName}
-                        onChange={(e) => setNewSprintName(e.target.value)}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  )}
                 </Field>
                 <Field variant="panel" label="Identified on">
                   <input
@@ -857,23 +936,6 @@ export function WorkItemDetailView({
             </Field>
 
             <div className="work-item-detail-meta">
-              <div>
-                <span>Reporter</span>
-                <span className="wid-reporter">
-                  <span className="wid-reporter-avatar">
-                    {(
-                      membersById.get(profile?.userId ?? '')?.displayName ??
-                      profile?.displayName ??
-                      '?'
-                    )
-                      .charAt(0)
-                      .toUpperCase()}
-                  </span>
-                  {membersById.get(profile?.userId ?? '')?.displayName ??
-                    profile?.displayName ??
-                    'Unknown'}
-                </span>
-              </div>
               <div>
                 <span>Created</span>
                 <span>{new Date(item.createdAt).toLocaleDateString()}</span>

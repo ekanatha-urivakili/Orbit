@@ -58,12 +58,13 @@ The PWA can also be reached over HTTPS at `https://www.orbit-local.com`, proxied
    mkcert -install
    ```
 
-2. Generate a certificate for the local domain (kept outside the repo):
+2. Generate a certificate for the local domain (kept outside the repo), and copy the bundled offline page next to it so nginx can serve it without proxying to a downed dev server:
 
    ```bash
    mkdir -p ~/.local/orbit-nginx-certs
    cd ~/.local/orbit-nginx-certs
    mkcert -cert-file orbit-local.com.crt -key-file orbit-local.com.key www.orbit-local.com orbit-local.com
+   cp /path/to/Orbit/deploy/local/offline.html ~/.local/orbit-nginx-certs/offline.html
    ```
 
 3. Point the hostname at localhost:
@@ -89,6 +90,12 @@ The PWA can also be reached over HTTPS at `https://www.orbit-local.com`, proxied
        ssl_certificate_key /Users/<you>/.local/orbit-nginx-certs/orbit-local.com.key;
        ssl_protocols TLSv1.2 TLSv1.3;
 
+       # Served directly (no proxy_pass) so it still renders when the dev server is down.
+       location = /offline.html {
+           root /Users/<you>/.local/orbit-nginx-certs;
+           internal;
+       }
+
        location / {
            proxy_pass http://localhost:5800/;
            proxy_http_version 1.1;
@@ -98,9 +105,13 @@ The PWA can also be reached over HTTPS at `https://www.orbit-local.com`, proxied
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_intercept_errors on;
+           error_page 502 503 504 = /offline.html;
        }
    }
    ```
+
+   With this in place, stopping `./scripts/start-dev.sh` (or the dev server not being up yet) shows the branded "Orbit is starting up" page instead of nginx's raw 502, and it polls in the background and reloads itself automatically once `localhost:5800` responds again.
 
 5. Start nginx (binding ports 80/443 requires root) and the dev stack:
 
