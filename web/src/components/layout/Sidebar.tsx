@@ -19,6 +19,7 @@ export function Sidebar({
   onHomeClick,
   onOpenSettings,
   onCreateProject,
+  workspaceName,
 }: {
   mobileMenuOpen: boolean
   setMobileMenuOpen: (open: boolean) => void
@@ -29,6 +30,7 @@ export function Sidebar({
   onHomeClick?: () => void
   onOpenSettings?: (section: SettingsSection) => void
   onCreateProject?: () => void
+  workspaceName?: string
 }) {
   return (
     <>
@@ -37,6 +39,12 @@ export function Sidebar({
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
+        {workspaceName && (
+          <div className="px-4 py-3 border-b border-gray-200">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Workspace</p>
+            <p className="truncate text-sm font-semibold text-gray-800">{workspaceName}</p>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
           <nav className="px-3 space-y-1">
             <button

@@ -56,6 +56,17 @@ public interface ITenantMembershipRepository
         Guid tenantId,
         IReadOnlyCollection<Guid> membershipIds,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the subset of <paramref name="userIds"/> that currently hold an active membership
+    /// in the tenant. Used to filter notification recipients so a deactivated member's stale
+    /// <see cref="WorkItemWatcher"/> row or a comment mention of them no longer resolves to a sent
+    /// email.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken);
 }
 
 public interface ISettingsRepository
@@ -66,6 +77,15 @@ public interface ISettingsRepository
         CancellationToken cancellationToken);
     Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken);
     Task<NotificationPreference?> GetNotificationPreferenceAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Bulk variant of <see cref="GetNotificationPreferenceAsync"/> for fan-out notification
+    /// triggers (comment mentions/watchers, sprint start/complete) that would otherwise issue one
+    /// query per recipient.
+    /// </summary>
+    Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken);
     Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(Guid tenantId, CancellationToken cancellationToken);
@@ -148,13 +168,13 @@ public interface IGoogleOAuthClient
 
 /// <summary>
 /// Signs/verifies the OAuth <c>state</c> parameter as a compact, storage-free token (mode + nonce +
-/// expiry), since the callback runs before any session or database row identifies the in-flight
+/// expiry + returnUrl), since the callback runs before any session or database row identifies the in-flight
 /// request.
 /// </summary>
 public interface IOAuthStateCodec
 {
-    string Encode(string mode, DateTimeOffset now, TimeSpan lifetime);
-    bool TryDecode(string state, DateTimeOffset now, out string mode);
+    string Encode(string mode, DateTimeOffset now, TimeSpan lifetime, string? returnUrl = null);
+    bool TryDecode(string state, DateTimeOffset now, out string mode, out string? returnUrl);
 }
 
 public interface IAccessTokenIssuer
@@ -334,6 +354,20 @@ public interface IWorkspaceProvisioningRepository
         Organization organization,
         Workspace workspace,
         OrganizationMembership organizationMembership,
+        TenantMembership ownerMembership,
+        Guid currentTenantId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Looks up the caller's membership in the organization that owns <paramref name="workspaceTenantId"/>,
+    /// used to authorize adding a second workspace to an existing organization (as opposed to
+    /// <see cref="AddAsync"/>'s site-super-admin path, which always creates a brand-new organization).
+    /// </summary>
+    Task<OrganizationMembership?> GetOrganizationMembershipAsync(
+        Guid workspaceTenantId, Guid userId, CancellationToken cancellationToken);
+
+    Task AddWorkspaceToOrganizationAsync(
+        Workspace workspace,
         TenantMembership ownerMembership,
         Guid currentTenantId,
         CancellationToken cancellationToken);
@@ -574,6 +608,19 @@ public interface IAttachmentRepository
         CancellationToken cancellationToken);
 
     Task RemoveAsync(Attachment attachment, CancellationToken cancellationToken);
+}
+
+public interface IWorkItemWatcherRepository
+{
+    Task AddAsync(WorkItemWatcher watcher, CancellationToken cancellationToken);
+
+    Task<WorkItemWatcher?> GetAsync(
+        Guid tenantId, Guid workItemId, Guid userId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<WorkItemWatcher>> ListByWorkItemAsync(
+        Guid tenantId, Guid workItemId, CancellationToken cancellationToken);
+
+    Task RemoveAsync(WorkItemWatcher watcher, CancellationToken cancellationToken);
 }
 
 public interface ITenantOwnerLock

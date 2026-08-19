@@ -51,6 +51,9 @@ public sealed class UpdateWorkItemHandler(
     IWorkItemRepository workItems,
     ISprintMembershipRepository sprintMemberships,
     ISprintScopeFactRepository sprintScopeFacts,
+    ITenantMembershipRepository tenantMemberships,
+    ISettingsRepository settings,
+    IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UpdateWorkItemCommand, WorkItemDto>
 {
@@ -65,14 +68,16 @@ public sealed class UpdateWorkItemHandler(
             throw new ConcurrencyException("The work item changed after it was loaded.");
         }
 
-        WorkItemRelations.ValidateOwners(
-            request.AssigneeUserId, request.DeveloperUserId, request.ProductOwnerUserId, principal.UserId);
+        await WorkItemRelations.ValidateOwnersAsync(
+            tenantMemberships, tenantContext.TenantId, request.AssigneeUserId, request.DeveloperUserId,
+            request.ProductOwnerUserId, cancellationToken);
         var parent = await WorkItemRelations.GetRelatedItemAsync(
             workItems, tenantContext.TenantId, request.ParentId, workItem.ProjectId, "Parent", cancellationToken);
         WorkItemRelations.ValidateParentType(workItem.Type, parent);
 
         var previousStoryPoints = workItem.StoryPoints;
         var previousStatus = workItem.Status;
+        var previousAssigneeUserId = workItem.AssigneeUserId;
         var now = timeProvider.GetUtcNow();
         workItem.Update(
             request.Summary,
@@ -108,6 +113,12 @@ public sealed class UpdateWorkItemHandler(
                         delta, now, now),
                     cancellationToken);
             }
+        }
+
+        if (workItem.AssigneeUserId is { } assigneeUserId && assigneeUserId != previousAssigneeUserId)
+        {
+            await WorkItemRelations.NotifyAssigneeAsync(
+                principal, settings, outbox, workItem, assigneeUserId, now, cancellationToken);
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

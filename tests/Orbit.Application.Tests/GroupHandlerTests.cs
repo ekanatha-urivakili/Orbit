@@ -295,6 +295,10 @@ public sealed class GroupHandlerTests
         public Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
             Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>([]);
+
+        public Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private sealed class SettingsRepositoryStub(Workspace workspace) : ISettingsRepository
@@ -312,6 +316,10 @@ public sealed class GroupHandlerTests
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
+
+        public Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<NotificationPreference>>([]);
 
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult(workspace.Id == tenantId ? workspace : null);

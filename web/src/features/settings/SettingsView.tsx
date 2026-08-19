@@ -6,6 +6,7 @@ import * as auth from '../../api/auth'
 import { useIsAuthenticated } from '../../hooks/useIsAuthenticated'
 import { LoginForm } from '../auth/LoginView'
 import { setStoredLogoUrl } from '../../lib/branding'
+import { applyTheme } from '../../lib/theme'
 import { getOidcConfig, startOidcLogin } from '../auth/oidcPkce'
 import { Field, Hint, SubmitRow } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
@@ -140,7 +141,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
     mutationFn: () => orbitApi.updatePreferences(profile, { locale, timeZone, theme, density, reduceMotion, highContrast }),
     onSuccess: (updated) => {
       client.setQueryData(['profile'], updated)
-      document.documentElement.dataset.theme = updated.theme.toLowerCase()
+      applyTheme(updated.theme.toLowerCase())
       document.documentElement.dataset.density = updated.density.toLowerCase()
     },
   })

@@ -191,7 +191,8 @@
       "Bash(python3)",
       "Bash(node verify.js)",
       "Bash(node verify2.js)",
-      "Bash(dotnet user-secrets *)"
+      "Bash(dotnet user-secrets *)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "/private/tmp/claude-501/-Users-ekanathareddyurivakili-Documents-GitHub-Orbit/a4a72212-7f19-4b42-bed9-a90b14b889cf/scratchpad"

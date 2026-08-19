@@ -27,7 +27,7 @@ public sealed class ApiContractTests : IClassFixture<OrbitApiFactory>
         Assert.Contains(choices!.WorkItemStatuses, choice => choice.Value == "InProgress");
         Assert.Contains(choices.Priorities, choice => choice.Value == "Highest");
         Assert.Equal(
-            ["Initiative", "Epic", "Task", "Story", "Bug", "Spike", "Test", "Feature", "Request"],
+            ["Initiative", "Epic", "Task", "Story", "Bug", "Spike", "Test", "Feature", "Request", "Subtask"],
             choices.WorkItemTypes.Where(choice => choice.Enabled).Select(choice => choice.Value));
     }
 

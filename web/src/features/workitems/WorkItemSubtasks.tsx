@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { ChevronDown, Plus, Search, CornerDownLeft } from 'lucide-react'
+import { ChevronDown, Plus, Search } from 'lucide-react'
 import { WorkItemTypeIcon } from './typeIcons'
 import { allStatuses, statusMeta } from '../board/constants'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { orbitApi } from '../../api/client'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Project, TenantMembership, WorkItem, WorkItemStatus, WorkItemType } from '../../api/types'
 
 export function WorkItemSubtasks({
@@ -60,21 +60,23 @@ export function WorkItemSubtasks({
     )
   }
 
-  const handleLinkExisting = async (existingId: string) => {
-    if (!existingId) return
-    const existing = workItems.find((w) => w.id === existingId)
-    if (!existing) return
-
-    await orbitApi.updateWorkItem(existing, {
-      summary: existing.summary,
-      description: existing.description,
-      priority: existing.priority,
-      parentId: parent.id,
-    })
-    queryClient.invalidateQueries({ queryKey: ['work-items', project.id] })
-    setChooseExistingOpen(false)
-    setSelectedExistingId('')
-  }
+  const linkExistingMutation = useMutation({
+    mutationFn: (existingId: string) => {
+      const existing = workItems.find((w) => w.id === existingId)
+      if (!existing) return Promise.reject(new Error('Work item not found.'))
+      return orbitApi.updateWorkItem(existing, {
+        summary: existing.summary,
+        description: existing.description,
+        priority: existing.priority,
+        parentId: parent.id,
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['work-items', project.id] })
+      setChooseExistingOpen(false)
+      setSelectedExistingId('')
+    },
+  })
 
   // Work items that can be linked as subtasks (exclude self, already subtasks of self, and parents)
   const linkableCandidates = workItems.filter(
@@ -192,8 +194,8 @@ export function WorkItemSubtasks({
                       handleCreateSubtask()
                     }
                   }}
-                  placeholder="Name this subtask"
-                  className="flex-1 text-sm text-[#172b4d] placeholder-gray-400 focus:outline-none px-2 py-1"
+                  placeholder="What needs to be done?"
+                  className="flex-1 text-sm text-[#172b4d] dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-transparent focus:outline-none px-2 py-1"
                 />
 
                 {/* Subtask Type Selector Chip */}
@@ -201,7 +203,7 @@ export function WorkItemSubtasks({
                   <button
                     type="button"
                     onClick={() => setTypeDropdownOpen(!typeDropdownOpen)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#f4f5f7] hover:bg-[#ebecf0] text-xs font-semibold text-[#42526e] border border-[#dfe1e6] transition-colors"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#f4f5f7] dark:bg-[#22272b] hover:bg-[#ebecf0] dark:hover:bg-[#2a2f35] text-xs font-semibold text-[#42526e] dark:text-gray-300 border border-[#dfe1e6] dark:border-[#394047] transition-colors"
                   >
                     <WorkItemTypeIcon type={subtaskType} size={14} />
                     <span>{subtaskType}</span>
@@ -209,7 +211,7 @@ export function WorkItemSubtasks({
                   </button>
 
                   {typeDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#dfe1e6] shadow-xl rounded-lg py-1 z-50 animate-in fade-in">
+                    <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-[#1e2327] border border-[#dfe1e6] dark:border-[#394047] shadow-xl rounded-lg py-1 z-50 animate-in fade-in">
                       {(['Subtask', 'Task', 'Bug'] as WorkItemType[]).map((t) => (
                         <button
                           key={t}
@@ -218,7 +220,7 @@ export function WorkItemSubtasks({
                             setSubtaskType(t)
                             setTypeDropdownOpen(false)
                           }}
-                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#f4f5f7] flex items-center gap-2 text-[#172b4d]"
+                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#f4f5f7] dark:hover:bg-[#2a2f35] flex items-center gap-2 text-[#172b4d] dark:text-gray-200"
                         >
                           <WorkItemTypeIcon type={t} size={14} />
                           <span>{t}</span>
@@ -233,12 +235,17 @@ export function WorkItemSubtasks({
                   type="button"
                   onClick={handleCreateSubtask}
                   disabled={!subtaskSummary.trim() || createMutation.isPending}
-                  className="p-1.5 rounded bg-[#f4f5f7] hover:bg-[#deebff] text-gray-600 hover:text-[#0052cc] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1 bg-[#0052cc] hover:bg-[#0065ff] text-white text-xs font-semibold rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1 shrink-0"
                   title="Create subtask (Enter)"
                 >
-                  <CornerDownLeft size={15} />
+                  <Plus size={13} />
+                  <span>{createMutation.isPending ? 'Creating…' : 'Create'}</span>
                 </button>
               </div>
+
+              {createMutation.isError && (
+                <p className="text-xs text-red-600 dark:text-red-400">{createMutation.error.message}</p>
+              )}
 
               {/* Bottom Action Row */}
               <div className="flex items-center justify-between pt-1 border-t border-gray-100 text-xs">
@@ -280,13 +287,17 @@ export function WorkItemSubtasks({
                   </select>
                   <button
                     type="button"
-                    disabled={!selectedExistingId}
-                    onClick={() => handleLinkExisting(selectedExistingId)}
+                    disabled={!selectedExistingId || linkExistingMutation.isPending}
+                    onClick={() => linkExistingMutation.mutate(selectedExistingId)}
                     className="px-3 py-1 bg-[#0052cc] hover:bg-[#0065ff] text-white text-xs font-semibold rounded disabled:opacity-50"
                   >
-                    Link
+                    {linkExistingMutation.isPending ? 'Linking…' : 'Link'}
                   </button>
                 </div>
+              )}
+
+              {linkExistingMutation.isError && (
+                <p className="text-xs text-red-600">{linkExistingMutation.error.message}</p>
               )}
             </div>
           ) : (

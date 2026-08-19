@@ -96,3 +96,60 @@ public sealed class CreateWorkspaceHandler(
             ownerMembership.Role);
     }
 }
+
+public sealed record CreateWorkspaceInOrganizationCommand(string Name) : ICommand<CreatedWorkspaceDto>;
+
+public sealed class CreateWorkspaceInOrganizationValidator : AbstractValidator<CreateWorkspaceInOrganizationCommand>
+{
+    public CreateWorkspaceInOrganizationValidator() =>
+        RuleFor(command => command.Name).NotEmpty().Length(2, 120);
+}
+
+/// <summary>
+/// Adds a second (or later) workspace to the caller's existing organization, the follow-up to
+/// <see cref="CreateWorkspaceHandler"/> flagged as deferred in v1.24 (§13.5.4): that handler always
+/// mints a brand-new same-named organization, so an organization owner had no way to grow beyond the
+/// one workspace created at signup/bootstrap.
+/// </summary>
+public sealed class CreateWorkspaceInOrganizationHandler(
+    ITenantContext tenantContext,
+    ICurrentPrincipal principal,
+    IWorkspaceProvisioningRepository repository,
+    TimeProvider timeProvider)
+    : IRequestHandler<CreateWorkspaceInOrganizationCommand, CreatedWorkspaceDto>
+{
+    public async Task<CreatedWorkspaceDto> Handle(
+        CreateWorkspaceInOrganizationCommand request,
+        CancellationToken cancellationToken)
+    {
+        var userId = PrincipalGuards.RequireUser(principal);
+        var membership = await repository.GetOrganizationMembershipAsync(
+            tenantContext.TenantId, userId, cancellationToken);
+        if (membership is null || membership.Role != OrganizationRole.Owner)
+        {
+            throw new AccessDeniedException("Only the organization owner can add a workspace.");
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var workspace = Workspace.Create(membership.OrganizationId, request.Name, now);
+        if (await repository.SlugExistsAsync(workspace.Slug, cancellationToken))
+        {
+            throw new ConflictException("A workspace with this URL slug already exists.");
+        }
+
+        var ownerMembership = TenantMembership.CreateForUser(
+            workspace.Id,
+            userId,
+            TenantRole.Owner,
+            now);
+        await repository.AddWorkspaceToOrganizationAsync(
+            workspace, ownerMembership, tenantContext.TenantId, cancellationToken);
+
+        return new CreatedWorkspaceDto(
+            workspace.Id,
+            workspace.Slug,
+            workspace.Name,
+            ownerMembership.Id,
+            ownerMembership.Role);
+    }
+}

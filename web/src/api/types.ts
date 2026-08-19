@@ -451,3 +451,8 @@ export interface ExternalIdentitySummary {
   subject: string
   createdAt: string
 }
+
+export interface WorkItemWatchers {
+  isWatching: boolean
+  count: number
+}

@@ -87,11 +87,78 @@ public sealed class WorkspaceProvisioningHandlerTests
         Assert.True(result.CanCreateWorkspace);
     }
 
+    [Fact]
+    public async Task CreateWorkspaceInOrganization_AddsWorkspaceUnderCallersOrganization()
+    {
+        var userId = Guid.NewGuid();
+        var currentTenantId = Guid.NewGuid();
+        var organizationId = Guid.NewGuid();
+        var repository = new WorkspaceProvisioningRepositoryStub
+        {
+            CallerOrganizationMembership = OrganizationMembership.Create(
+                organizationId, userId, OrganizationRole.Owner, DateTimeOffset.UtcNow)
+        };
+        var handler = new CreateWorkspaceInOrganizationHandler(
+            new TenantContextStub(currentTenantId),
+            new PrincipalStub(userId),
+            repository,
+            TimeProvider.System);
+
+        var result = await handler.Handle(
+            new CreateWorkspaceInOrganizationCommand("Growth Team"), CancellationToken.None);
+
+        Assert.Equal("growth-team", result.Slug);
+        Assert.Equal(TenantRole.Owner, result.Role);
+        Assert.Equal(organizationId, repository.Workspace!.OrganizationId);
+        Assert.Equal(userId, repository.OwnerMembership!.UserId);
+        Assert.Equal(currentTenantId, repository.CurrentTenantId);
+    }
+
+    [Fact]
+    public async Task CreateWorkspaceInOrganization_RejectsCallerWithNoOrganizationMembership()
+    {
+        var repository = new WorkspaceProvisioningRepositoryStub();
+        var handler = new CreateWorkspaceInOrganizationHandler(
+            new TenantContextStub(Guid.NewGuid()),
+            new PrincipalStub(Guid.NewGuid()),
+            repository,
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            new CreateWorkspaceInOrganizationCommand("Growth Team"), CancellationToken.None);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(action);
+        Assert.Null(repository.Workspace);
+    }
+
+    [Fact]
+    public async Task CreateWorkspaceInOrganization_RejectsNonOwnerOrganizationMember()
+    {
+        var userId = Guid.NewGuid();
+        var repository = new WorkspaceProvisioningRepositoryStub
+        {
+            CallerOrganizationMembership = OrganizationMembership.Create(
+                Guid.NewGuid(), userId, OrganizationRole.Member, DateTimeOffset.UtcNow)
+        };
+        var handler = new CreateWorkspaceInOrganizationHandler(
+            new TenantContextStub(Guid.NewGuid()),
+            new PrincipalStub(userId),
+            repository,
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            new CreateWorkspaceInOrganizationCommand("Growth Team"), CancellationToken.None);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(action);
+        Assert.Null(repository.Workspace);
+    }
+
     private sealed class WorkspaceProvisioningRepositoryStub : IWorkspaceProvisioningRepository
     {
         public bool IsSiteSuperAdministrator { get; init; }
         public bool SlugExists { get; init; }
         public int SlugCheckCount { get; private set; }
+        public OrganizationMembership? CallerOrganizationMembership { get; init; }
         public Organization? Organization { get; private set; }
         public Workspace? Workspace { get; private set; }
         public OrganizationMembership? OrganizationMembership { get; private set; }
@@ -120,6 +187,22 @@ public sealed class WorkspaceProvisioningHandlerTests
             Organization = organization;
             Workspace = workspace;
             OrganizationMembership = organizationMembership;
+            OwnerMembership = ownerMembership;
+            CurrentTenantId = currentTenantId;
+            return Task.CompletedTask;
+        }
+
+        public Task<OrganizationMembership?> GetOrganizationMembershipAsync(
+            Guid workspaceTenantId, Guid userId, CancellationToken cancellationToken) =>
+            Task.FromResult(CallerOrganizationMembership);
+
+        public Task AddWorkspaceToOrganizationAsync(
+            Workspace workspace,
+            TenantMembership ownerMembership,
+            Guid currentTenantId,
+            CancellationToken cancellationToken)
+        {
+            Workspace = workspace;
             OwnerMembership = ownerMembership;
             CurrentTenantId = currentTenantId;
             return Task.CompletedTask;

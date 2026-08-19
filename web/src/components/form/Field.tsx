@@ -16,13 +16,18 @@ export function Field({
 }) {
   if (variant === 'panel') {
     return (
-      <label className="block text-sm font-medium text-gray-700">
+      <div className="block text-sm font-medium text-gray-700">
         <span className="mb-1.5 block">{renderLabel(label)}</span>
         <span className="settings-control block">{children}</span>
-      </label>
+      </div>
     )
   }
-  return <label><span>{renderLabel(label)}</span>{children}</label>
+  return (
+    <div className="form-field">
+      <span>{renderLabel(label)}</span>
+      {children}
+    </div>
+  )
 }
 
 export function Hint({ children, variant = 'plain' }: { children: ReactNode; variant?: 'plain' | 'panel' }) {

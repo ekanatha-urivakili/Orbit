@@ -181,6 +181,12 @@ export const orbitApi = {
     request<void>(`/work-items/${encodeURIComponent(workItemId)}/attachments/${encodeURIComponent(attachmentId)}`, {
       method: 'DELETE',
     }),
+  getWorkItemWatchers: (workItemId: string) =>
+    request<import('./types').WorkItemWatchers>(`/work-items/${encodeURIComponent(workItemId)}/watchers`),
+  watchWorkItem: (workItemId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/watchers/me`, { method: 'PUT' }),
+  unwatchWorkItem: (workItemId: string) =>
+    request<void>(`/work-items/${encodeURIComponent(workItemId)}/watchers/me`, { method: 'DELETE' }),
   // Direct PUT to the presigned object-storage URL — bypasses the Orbit API wrapper entirely,
   // since the file bytes go straight to MinIO/S3, not through the Orbit backend.
   uploadAttachmentFile: async (uploadUrl: string, file: File) => {
@@ -196,6 +202,11 @@ export const orbitApi = {
   getSiteCapabilities: () => request<SiteCapabilities>('/me/site-capabilities'),
   createWorkspace: (name: string) =>
     request<CreatedWorkspace>('/workspaces', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  createWorkspaceInOrganization: (name: string) =>
+    request<CreatedWorkspace>('/organization/workspaces', {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),

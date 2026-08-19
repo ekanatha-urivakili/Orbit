@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Edit2, CornerDownRight } from 'lucide-react'
+import { Trash2, Edit2, CornerDownRight, Reply } from 'lucide-react'
 import { orbitApi } from '../../api/client'
 import { RichTextEditor, isRichTextEmpty } from '../../components/form/RichTextEditor'
 import { RichTextView } from '../../components/form/RichTextView'
@@ -87,6 +87,22 @@ export function WorkItemComments({
   const showHistory = activeTab === 'history' || activeTab === 'all'
   const showLog = activeTab === 'log' || activeTab === 'all'
 
+  // Sort comments newest first
+  const sortedComments = [...comments].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+
+  const handleReplyTo = (comment: { authorDisplayName?: string | null; body?: string | null }) => {
+    const author = comment.authorDisplayName ?? 'Member'
+    const cleanSnippet = comment.body
+      ? comment.body.replace(/<[^>]*>/g, ' ').slice(0, 100).trim()
+      : ''
+    const quoteHtml = cleanSnippet
+      ? `<blockquote><p><strong>${author}:</strong> "${cleanSnippet}..."</p></blockquote><p>@${author}&nbsp;</p>`
+      : `<p>@${author}&nbsp;</p>`
+    setNewCommentBody((prev) => (isRichTextEmpty(prev) ? quoteHtml : `${prev}${quoteHtml}`))
+  }
+
   return (
     <div className="mt-8 border-t border-gray-200 pt-5">
       {/* Activity header + tabs */}
@@ -127,89 +143,8 @@ export function WorkItemComments({
         <div className="activity-section">
           {activeTab === 'all' && comments.length > 0 && <p className="activity-section-label">Comments</p>}
 
-          <div className="space-y-4 mb-6">
-            {commentsQuery.isPending ? (
-              <p className="text-sm text-gray-500">Loading comments...</p>
-            ) : comments.length === 0 ? (
-              <p className="activity-empty-text">No comments yet. Be the first to start the conversation.</p>
-            ) : (
-              comments.map((comment) => (
-                <div key={comment.id} className={`flex gap-3 text-sm ${comment.isDeleted ? 'opacity-50' : ''}`}>
-                  <div className="flex-shrink-0 pt-1">
-                    {comment.authorAvatarUrl ? (
-                      <img src={comment.authorAvatarUrl} alt={comment.authorDisplayName ?? 'Author'} className="w-8 h-8 rounded-full bg-gray-100 object-cover" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs uppercase">
-                        {comment.authorDisplayName ? comment.authorDisplayName.charAt(0) : '?'}
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0 bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <div className="font-medium text-gray-900 truncate">
-                        {comment.authorDisplayName ?? 'Member'}
-                      </div>
-                      <div className="text-xs text-gray-500 flex-shrink-0 flex items-center gap-2">
-                        <span>{new Date(comment.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                        {comment.lastEditedAt && !comment.isDeleted && <span className="text-gray-400 font-medium">(edited)</span>}
-                      </div>
-                    </div>
-
-                    {comment.isDeleted ? (
-                      <p className="text-gray-500 italic flex items-center gap-1.5"><Trash2 size={12} /> This comment was deleted.</p>
-                    ) : editingCommentId === comment.id ? (
-                      <div className="mt-2">
-                        <RichTextEditor value={editBody} onChange={setEditBody} minHeight={80} workItemId={workItemId} attachments={attachments} onAttachmentUploaded={() => queryClient.invalidateQueries({ queryKey: ['work-item-attachments', workItemId] })} />
-                        <div className="mt-2 flex items-center justify-end gap-2">
-                          <button type="button" onClick={() => setEditingCommentId(null)} className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1">Cancel</button>
-                          <button 
-                            type="button" 
-                            onClick={() => editMutation.mutate({ commentId: comment.id, body: editBody, version: comment.version })}
-                            disabled={editMutation.isPending || isRichTextEmpty(editBody)}
-                            className="text-xs font-medium bg-blue-600 text-white rounded px-3 py-1.5 hover:bg-blue-700 disabled:opacity-50"
-                          >
-                            {editMutation.isPending ? 'Saving...' : 'Save'}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <RichTextView className="text-gray-700 break-words" html={comment.body ?? ''} attachments={attachments} />
-                        
-                        {/* Actions - only visible to author */}
-                        {isAuthor(comment) && (
-                          <div className="mt-2 flex items-center gap-3">
-                            <button 
-                              type="button" 
-                              onClick={() => { setEditingCommentId(comment.id); setEditBody(comment.body ?? ''); }}
-                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-900"
-                            >
-                              <Edit2 size={12} /> Edit
-                            </button>
-                            <button 
-                              type="button" 
-                              onClick={() => {
-                                if (window.confirm('Are you sure you want to delete this comment?')) {
-                                  deleteMutation.mutate({ commentId: comment.id, version: comment.version })
-                                }
-                              }}
-                              className="flex items-center gap-1 text-xs font-medium text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 size={12} /> Delete
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* New comment composer (Matching Screenshot 1) */}
-          <div className="flex gap-3 items-start">
+          {/* New comment composer AT THE TOP (Matching user request & Jira style) */}
+          <div className="flex gap-3 items-start mb-6">
             <div className="flex-shrink-0 pt-1">
               {profile?.avatarUrl ? (
                 <img src={profile.avatarUrl} alt={profile.displayName} className="w-8 h-8 rounded-full bg-gray-100 object-cover" />
@@ -234,7 +169,7 @@ export function WorkItemComments({
                   <RichTextEditor
                     value={newCommentBody}
                     onChange={setNewCommentBody}
-                    placeholder="Add a comment..."
+                    placeholder="Add a comment... (Type ticket number like TST-1 to auto-link)"
                     minHeight={70}
                     workItemId={workItemId}
                     onAttachmentUploaded={() => queryClient.invalidateQueries({ queryKey: ['work-item-attachments', workItemId] })}
@@ -288,6 +223,97 @@ export function WorkItemComments({
               </div>
               {addMutation.isError && <p className="text-red-600 text-xs mt-1">{addMutation.error.message}</p>}
             </div>
+          </div>
+
+          {/* Existing comments list - Newest first */}
+          <div className="space-y-4 mb-6">
+            {commentsQuery.isPending ? (
+              <p className="text-sm text-gray-500">Loading comments...</p>
+            ) : sortedComments.length === 0 ? (
+              <p className="activity-empty-text">No comments yet. Be the first to start the conversation.</p>
+            ) : (
+              sortedComments.map((comment) => (
+                <div key={comment.id} className={`flex gap-3 text-sm ${comment.isDeleted ? 'opacity-50' : ''}`}>
+                  <div className="flex-shrink-0 pt-1">
+                    {comment.authorAvatarUrl ? (
+                      <img src={comment.authorAvatarUrl} alt={comment.authorDisplayName ?? 'Author'} className="w-8 h-8 rounded-full bg-gray-100 object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs uppercase">
+                        {comment.authorDisplayName ? comment.authorDisplayName.charAt(0) : '?'}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex-1 min-w-0 bg-white border border-gray-100 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="font-medium text-gray-900 truncate">
+                        {comment.authorDisplayName ?? 'Member'}
+                      </div>
+                      <div className="text-xs text-gray-500 flex-shrink-0 flex items-center gap-2">
+                        <span>{new Date(comment.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                        {comment.lastEditedAt && !comment.isDeleted && <span className="text-gray-400 font-medium">(edited)</span>}
+                      </div>
+                    </div>
+
+                    {comment.isDeleted ? (
+                      <p className="text-gray-500 italic flex items-center gap-1.5"><Trash2 size={12} /> This comment was deleted.</p>
+                    ) : editingCommentId === comment.id ? (
+                      <div className="mt-2">
+                        <RichTextEditor value={editBody} onChange={setEditBody} minHeight={80} workItemId={workItemId} attachments={attachments} onAttachmentUploaded={() => queryClient.invalidateQueries({ queryKey: ['work-item-attachments', workItemId] })} />
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          <button type="button" onClick={() => setEditingCommentId(null)} className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1">Cancel</button>
+                          <button 
+                            type="button" 
+                            onClick={() => editMutation.mutate({ commentId: comment.id, body: editBody, version: comment.version })}
+                            disabled={editMutation.isPending || isRichTextEmpty(editBody)}
+                            className="text-xs font-medium bg-blue-600 text-white rounded px-3 py-1.5 hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {editMutation.isPending ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <RichTextView className="text-gray-700 break-words" html={comment.body ?? ''} attachments={attachments} />
+                        
+                        {/* Action buttons: Reply, Edit, Delete */}
+                        <div className="mt-2 flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleReplyTo(comment)}
+                            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0052cc] transition-colors"
+                          >
+                            <Reply size={12} /> Reply
+                          </button>
+                          {isAuthor(comment) && (
+                            <>
+                              <button 
+                                type="button" 
+                                onClick={() => { setEditingCommentId(comment.id); setEditBody(comment.body ?? ''); }}
+                                className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-900"
+                              >
+                                <Edit2 size={12} /> Edit
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  if (window.confirm('Are you sure you want to delete this comment?')) {
+                                    deleteMutation.mutate({ commentId: comment.id, version: comment.version })
+                                  }
+                                }}
+                                className="flex items-center gap-1 text-xs font-medium text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 size={12} /> Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

@@ -55,6 +55,9 @@ public sealed class CreateWorkItemHandler(
     IProjectRepository projects,
     IWorkItemTypeRepository workItemTypes,
     IWorkItemRepository workItems,
+    ITenantMembershipRepository tenantMemberships,
+    ISettingsRepository settings,
+    IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : IRequestHandler<CreateWorkItemCommand, WorkItemDto>
@@ -75,8 +78,9 @@ public sealed class CreateWorkItemHandler(
             throw new ValidationException("The selected work item type is disabled.");
         }
 
-        WorkItemRelations.ValidateOwners(
-            request.AssigneeUserId, request.DeveloperUserId, request.ProductOwnerUserId, principal.UserId);
+        await WorkItemRelations.ValidateOwnersAsync(
+            tenantMemberships, tenantContext.TenantId, request.AssigneeUserId, request.DeveloperUserId,
+            request.ProductOwnerUserId, cancellationToken);
         var parent = await WorkItemRelations.GetRelatedItemAsync(
             workItems, tenantContext.TenantId, request.ParentId, project.Id, "Parent", cancellationToken);
         WorkItemRelations.ValidateParentType(request.Type, parent);
@@ -105,6 +109,12 @@ public sealed class CreateWorkItemHandler(
             request.Labels,
             request.Countries,
             request.AttachmentNames);
+
+        if (request.AssigneeUserId is { } assigneeUserId)
+        {
+            await WorkItemRelations.NotifyAssigneeAsync(
+                principal, settings, outbox, workItem, assigneeUserId, now, cancellationToken);
+        }
 
         await workItems.AddAsync(workItem, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);

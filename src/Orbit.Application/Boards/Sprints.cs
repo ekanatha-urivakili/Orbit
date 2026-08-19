@@ -6,6 +6,8 @@ using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
 using Orbit.Domain.Common;
+using Orbit.Domain.Messaging;
+using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.Boards;
 
@@ -114,6 +116,10 @@ public sealed class StartSprintHandler(
     IProjectRepository projects,
     ISprintRepository sprints,
     ISprintMembershipRepository memberships,
+    IWorkItemRepository workItems,
+    ICurrentPrincipal principal,
+    ISettingsRepository settings,
+    IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<StartSprintCommand, SprintDto>
 {
@@ -135,10 +141,19 @@ public sealed class StartSprintHandler(
             throw new DomainException("This project already has an active sprint.");
         }
 
-        sprint.Start(request.Goal, request.StartDate, request.EndDate, timeProvider.GetUtcNow());
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        sprint.Start(request.Goal, request.StartDate, request.EndDate, now);
 
         var members = await memberships.ListCurrentBySprintAsync(tenant.TenantId, sprint.Id, cancellationToken);
+        if (members.Count > 0)
+        {
+            var memberWorkItems = await workItems.ListByIdsAsync(
+                tenant.TenantId, [.. members.Select(member => member.WorkItemId)], ProjectPermission.View, cancellationToken);
+            await SprintNotifications.NotifyAsync(
+                principal, settings, outbox, sprint, "started", memberWorkItems, now, cancellationToken);
+        }
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return SprintDto.From(sprint, [.. members.Select(member => member.WorkItemId)]);
     }
 }
@@ -169,6 +184,9 @@ public sealed class CompleteSprintHandler(
     ISprintCompletionOperationRepository completionOperations,
     ISprintScopeFactRepository facts,
     IWorkItemRepository workItems,
+    ICurrentPrincipal principal,
+    ISettingsRepository settings,
+    IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<CompleteSprintCommand, SprintDto>
 {
@@ -264,8 +282,72 @@ public sealed class CompleteSprintHandler(
         await facts.AddAsync(
             SprintScopeFact.Create(tenant.TenantId, sprint.Id, null, AgileFactType.SprintCompleted, null, now, now),
             cancellationToken);
+        await SprintNotifications.NotifyAsync(
+            principal, settings, outbox, sprint, "completed", workItemsById.Values, now, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SprintDto.From(sprint, remaining);
+    }
+}
+
+/// <summary>
+/// Fires the §10.5 "sprint started/completed" notification: the sprint's member work items'
+/// owner fields (Assignee/Developer/ProductOwner, deduplicated) are the recipient set, gated by
+/// each recipient's <see cref="Domain.Settings.NotificationPreference"/> the same way as the
+/// comment-mention (v1.25) and status-transition (v1.26) triggers.
+/// </summary>
+internal static class SprintNotifications
+{
+    public static async Task NotifyAsync(
+        ICurrentPrincipal principal,
+        ISettingsRepository settings,
+        IOutboxRepository outbox,
+        Sprint sprint,
+        string eventLabel,
+        IReadOnlyCollection<WorkItem> workItems,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var recipientIds = workItems
+            .SelectMany(workItem => new[] { workItem.AssigneeUserId, workItem.DeveloperUserId, workItem.ProductOwnerUserId })
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToArray();
+        if (recipientIds.Length == 0)
+        {
+            return;
+        }
+
+        var accounts = (await settings.GetUserAccountsAsync(recipientIds, cancellationToken))
+            .ToDictionary(account => account.Id);
+        var preferences = (await settings.GetNotificationPreferencesAsync(recipientIds, cancellationToken))
+            .ToDictionary(preference => preference.UserId);
+
+        foreach (var userId in recipientIds)
+        {
+            if (!accounts.TryGetValue(userId, out var account))
+            {
+                continue;
+            }
+
+            preferences.TryGetValue(userId, out var preference);
+            var emailEnabled = preference?.EmailEnabled ?? true;
+            var selfNotify = preference?.SelfNotify ?? false;
+            if (!emailEnabled || (userId == principal.UserId && !selfNotify))
+            {
+                continue;
+            }
+
+            var email = OutboxEmailMessage.Create(
+                account.NormalizedEmail,
+                $"Sprint '{sprint.Name}' {eventLabel}",
+                $"""
+                <p>Hi {System.Net.WebUtility.HtmlEncode(account.DisplayName)},</p>
+                <p>Sprint <strong>{System.Net.WebUtility.HtmlEncode(sprint.Name)}</strong> has {eventLabel}.</p>
+                """,
+                now);
+            await outbox.AddAsync(email, cancellationToken);
+        }
     }
 }
 

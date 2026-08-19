@@ -1,18 +1,20 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronLeft,
   ChevronDown,
   Check,
-  Table,
   Plus,
   Settings,
   Edit,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { orbitApi } from '../../api/client'
 import { useUpdateWorkItem } from '../../hooks/useUpdateWorkItem'
 import { Field, Hint } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { LabelsInput } from '../../components/form/LabelsInput'
 import { WorkItemComments } from './WorkItemComments'
 import { WorkItemAttachments } from './WorkItemAttachments'
 import { WorkItemSubtasks } from './WorkItemSubtasks'
@@ -50,11 +52,8 @@ const availableWorkTypes: Array<{ type: WorkItemType; label: string }> = [
   { type: 'Bug', label: 'Bug' },
 ]
 
-const default5x3TableMarkdown = `| Scenario | Given | When | Then | Expected Result |
-| --- | --- | --- | --- | --- |
-| 1. User Authentication | Valid credentials provided | User submits login | Token issued | Dashboard opens |
-| 2. Input Validation | Required field missing | User saves changes | Form validates | Warning displayed |
-| 3. State Persistence | Item fields modified | User clicks Save changes | Mutation completes | Saved successfully badge shown |`
+// Empty initial value for rich text acceptance criteria
+const emptyAcceptanceCriteria = ''
 
 export function WorkItemDetailView({
   item,
@@ -66,6 +65,7 @@ export function WorkItemDetailView({
   onBack,
   onStatusChange,
   onOpenWorkItem,
+  onNavigateHome,
   sprints = [],
 }: {
   item: WorkItem
@@ -77,11 +77,14 @@ export function WorkItemDetailView({
   onBack: () => void
   onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
   onOpenWorkItem: (workItem: WorkItem) => void
+  onNavigateHome?: () => void
   sprints?: Sprint[]
 }) {
   const queryClient = useQueryClient()
   const [currentType, setCurrentType] = useState<WorkItemType>(item.type)
   const [typeMenuOpen, setTypeMenuOpen] = useState(false)
+  const [epicPopupOpen, setEpicPopupOpen] = useState(false)
+  const [epicSearch, setEpicSearch] = useState('')
   const [summary, setSummary] = useState(item.summary)
   const [editingSummary, setEditingSummary] = useState(false)
   const [description, setDescription] = useState(item.description ?? '')
@@ -102,7 +105,7 @@ export function WorkItemDetailView({
   }>({
     parentId: item.parentId,
     epicName: item.epicName,
-    acceptanceCriteria: item.acceptanceCriteria ?? default5x3TableMarkdown,
+    acceptanceCriteria: item.acceptanceCriteria ?? emptyAcceptanceCriteria,
     stepsToConduct: item.stepsToConduct,
     assigneeUserId: item.assigneeUserId,
     developerUserId: item.developerUserId,
@@ -113,7 +116,7 @@ export function WorkItemDetailView({
     countries: item.countries,
     attachmentNames: item.attachmentNames,
   })
-  const [labelsText, setLabelsText] = useState(item.labels.join(', '))
+  const [labels, setLabels] = useState<string[]>(item.labels)
   const [selectedSprintId, setSelectedSprintId] = useState(() => {
     const s = sprints.find((sp) => sp.name === item.sprintName)
     return s?.id ?? ''
@@ -134,6 +137,21 @@ export function WorkItemDetailView({
   }
   const mutation = useUpdateWorkItem(item.projectId)
 
+  const epics = workItems.filter((w) => w.type === 'Epic' && w.id !== item.id)
+  const parentEpic = workItems.find((w) => w.id === details.parentId && w.type === 'Epic')
+  const filteredEpics = epics.filter((e) =>
+    e.summary.toLowerCase().includes(epicSearch.toLowerCase()) ||
+    e.key.toLowerCase().includes(epicSearch.toLowerCase())
+  )
+
+  const handleSelectEpic = (epicId: string | null) => {
+    const selectedEpic = epicId ? epics.find((e) => e.id === epicId) : null
+    patch({
+      parentId: epicId,
+      epicName: selectedEpic ? selectedEpic.summary : null,
+    })
+  }
+
   const attachmentsQuery = useQuery({
     queryKey: ['work-item-attachments', item.id],
     queryFn: () => orbitApi.listWorkItemAttachments(item.id),
@@ -143,34 +161,20 @@ export function WorkItemDetailView({
   const handleChangeType = (newType: WorkItemType) => {
     setCurrentType(newType)
     setTypeMenuOpen(false)
-    setSaveSuccess(false)
-
-    mutation.mutate(
-      {
-        workItem: item,
-        input: {
-          summary,
-          description: description || null,
-          priority,
-          ...details,
-          labels: labelsText
-            .split(',')
-            .map((label) => label.trim())
-            .filter(Boolean),
-        },
-      },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['work-items', item.projectId] })
-          setSaveSuccess(true)
-          if (successTimerRef.current) clearTimeout(successTimerRef.current)
-          successTimerRef.current = setTimeout(() => {
-            setSaveSuccess(false)
-          }, 4000)
-        },
-      }
-    )
   }
+
+  const watchersQuery = useQuery({
+    queryKey: ['work-item-watchers', item.id],
+    queryFn: () => orbitApi.getWorkItemWatchers(item.id),
+  })
+  const watchers = watchersQuery.data ?? { isWatching: false, count: 0 }
+
+  const watchMutation = useMutation({
+    mutationFn: () => (watchers.isWatching ? orbitApi.unwatchWorkItem(item.id) : orbitApi.watchWorkItem(item.id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['work-item-watchers', item.id] })
+    },
+  })
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -199,10 +203,7 @@ export function WorkItemDetailView({
           priority,
           ...details,
           sprintName: targetSprintName,
-          labels: labelsText
-            .split(',')
-            .map((label) => label.trim())
-            .filter(Boolean),
+          labels,
         },
       },
       {
@@ -232,6 +233,7 @@ export function WorkItemDetailView({
     if (currentType === 'Subtask') return candidate.type !== 'Initiative'
     return candidate.type === 'Epic' || candidate.type === 'Initiative'
   })
+
   const membersById = new Map(members.map((member) => [member.userId, member]))
 
   const openSprints = sprints.filter((s) => s.state !== 'Closed')
@@ -247,22 +249,123 @@ export function WorkItemDetailView({
 
   return (
     <div className="work-item-detail">
-      {/* Breadcrumb row */}
+      {/* Breadcrumb row (Clickable navigation & Add Epic popup like Jira) */}
       <div className="work-item-detail-breadcrumb flex items-center gap-2">
         <button type="button" className="icon-button" onClick={onBack} aria-label="Back">
           <ChevronLeft size={18} />
         </button>
-        <span className="text-gray-600 font-medium">Spaces</span>
+        <button
+          type="button"
+          onClick={onNavigateHome ?? onBack}
+          className="hover:underline text-gray-600 dark:text-gray-400 font-medium cursor-pointer"
+        >
+          Spaces
+        </button>
         <span className="work-item-detail-breadcrumb-sep">/</span>
-        <span>{project?.name ?? 'Space'}</span>
+        <button
+          type="button"
+          onClick={onBack}
+          className="hover:underline text-gray-800 dark:text-gray-200 font-semibold flex items-center gap-1.5 cursor-pointer"
+        >
+          <span className="flex h-4 w-4 items-center justify-center rounded bg-blue-600 text-[10px] font-bold text-white">
+            {project?.key ? project.key.slice(0, 1) : 'P'}
+          </span>
+          {project?.name ?? 'Space'}
+        </button>
         <span className="work-item-detail-breadcrumb-sep">/</span>
+
+        {/* Breadcrumb Add Epic / Epic badge (Matching Jira Screenshot 3) */}
+        {currentType !== 'Initiative' && currentType !== 'Epic' && (
+          <>
+            <div className="relative inline-flex items-center">
+              <button
+                type="button"
+                onClick={() => setEpicPopupOpen(!epicPopupOpen)}
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors"
+                title={parentEpic ? `Parent Epic: ${parentEpic.summary} (Click to change)` : 'Add epic'}
+              >
+                {parentEpic ? (
+                  <>
+                    <WorkItemTypeIcon type="Epic" size={13} />
+                    <span className="truncate max-w-[140px] text-purple-700 dark:text-purple-400 font-semibold">
+                      {parentEpic.summary}
+                    </span>
+                    <Edit size={11} className="text-gray-400" />
+                  </>
+                ) : (
+                  <>
+                    <Edit size={12} className="text-gray-400" />
+                    <span>Add epic</span>
+                  </>
+                )}
+              </button>
+
+              {/* Epic Search / Selection floating popup */}
+              {epicPopupOpen && (
+                <div className="absolute left-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl p-2.5 z-50 animate-in fade-in">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Select Epic
+                    </span>
+                    {parentEpic && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSelectEpic(null)
+                          setEpicPopupOpen(false)
+                        }}
+                        className="text-[11px] text-red-600 hover:underline font-medium"
+                      >
+                        Remove epic
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Search epics..."
+                    value={epicSearch}
+                    onChange={(e) => setEpicSearch(e.target.value)}
+                    className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 mb-2 focus:outline-none focus:border-blue-500 dark:bg-[#22272b] dark:text-white"
+                  />
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {filteredEpics.slice(0, 5).map((epic) => (
+                      <button
+                        key={epic.id}
+                        type="button"
+                        onClick={() => {
+                          handleSelectEpic(epic.id)
+                          setEpicPopupOpen(false)
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors ${
+                          details.parentId === epic.id
+                            ? 'bg-purple-100 dark:bg-purple-900/40 font-semibold text-purple-900 dark:text-purple-300'
+                            : 'text-gray-800 dark:text-gray-200'
+                        }`}
+                      >
+                        <WorkItemTypeIcon type="Epic" size={13} />
+                        <span className="font-semibold text-gray-600 dark:text-gray-400">{epic.key}</span>
+                        <span className="truncate flex-1">{epic.summary}</span>
+                        {details.parentId === epic.id && <Check size={13} className="text-purple-600 ml-auto" />}
+                      </button>
+                    ))}
+                    {filteredEpics.length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-2">No epics found</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <span className="work-item-detail-breadcrumb-sep">/</span>
+          </>
+        )}
 
         {/* Breadcrumb Interactive Type Icon */}
         <div className="relative inline-flex items-center">
           <button
             type="button"
             onClick={() => setTypeMenuOpen(!typeMenuOpen)}
-            className="flex items-center gap-1.5 p-1 rounded hover:bg-gray-100 font-semibold text-gray-700 text-xs transition-colors"
+            className="flex items-center gap-1.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] font-semibold text-gray-700 dark:text-gray-200 text-xs transition-colors"
             title={`${currentType} - Click to change work type`}
           >
             <WorkItemTypeIcon type={currentType} size={16} />
@@ -318,6 +421,27 @@ export function WorkItemDetailView({
               </button>
             </div>
           )}
+        </div>
+
+        {/* Watcher action toggle */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => watchMutation.mutate()}
+            disabled={watchMutation.isPending}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+              watchers.isWatching
+                ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+            title={watchers.isWatching ? 'Stop watching this work item' : 'Watch this work item for updates'}
+          >
+            {watchers.isWatching ? <EyeOff size={13} /> : <Eye size={13} />}
+            <span>{watchers.isWatching ? 'Watching' : 'Watch'}</span>
+            <span className="ml-0.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">
+              {watchers.count}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -381,32 +505,20 @@ export function WorkItemDetailView({
             />
           </section>
 
-          {/* Acceptance Criteria Section with 5 Columns x 3 Rows Table */}
+          {/* Acceptance Criteria Section */}
           <section className="work-item-detail-section">
-            <div className="flex items-center justify-between mb-2">
-              <h2>Acceptance criteria</h2>
-              <button
-                type="button"
-                onClick={() =>
-                  patch({
-                    acceptanceCriteria: default5x3TableMarkdown,
-                  })
-                }
-                className="text-xs font-semibold text-[#0052cc] hover:underline flex items-center gap-1"
-                title="Insert 5x3 standard acceptance criteria table"
-              >
-                <Table size={13} /> Insert 5x3 Table
-              </button>
-            </div>
-            <textarea
+            <h2>Acceptance criteria</h2>
+            <RichTextEditor
               value={details.acceptanceCriteria ?? ''}
-              onChange={(event) =>
-                patch({ acceptanceCriteria: event.target.value || null })
+              onChange={(html) => patch({ acceptanceCriteria: html || null })}
+              placeholder="Define the acceptance criteria, scenarios and expected outcomes. Use the table button (⊞) in the toolbar to insert a table."
+              workItemId={item.id}
+              attachments={attachments}
+              onAttachmentUploaded={() =>
+                queryClient.invalidateQueries({
+                  queryKey: ['work-item-attachments', item.id],
+                })
               }
-              placeholder="Provide scenario-based criteria or table..."
-              maxLength={32000}
-              rows={6}
-              className="font-mono text-[13px] leading-relaxed"
             />
           </section>
 
@@ -553,7 +665,7 @@ export function WorkItemDetailView({
               </Field>
             )}
 
-            {(currentType === 'Task' || currentType === 'Story' || currentType === 'Bug') && (
+            {currentType !== 'Initiative' && currentType !== 'Epic' && (
               <Field variant="panel" label="Story points">
                 <input
                   type="number"
@@ -634,11 +746,7 @@ export function WorkItemDetailView({
             )}
 
             <Field variant="panel" label="Labels">
-              <input
-                value={labelsText}
-                onChange={(event) => setLabelsText(event.target.value)}
-                placeholder="frontend, customer-impact"
-              />
+              <LabelsInput value={labels} onChange={setLabels} />
             </Field>
 
             <div className="work-item-detail-meta">

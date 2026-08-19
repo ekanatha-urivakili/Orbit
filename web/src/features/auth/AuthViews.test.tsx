@@ -31,7 +31,7 @@ describe('LoginView and LoginForm', () => {
     expect(defaultLogo).toBeInTheDocument()
 
     // Title centered
-    const heading = screen.getByRole('heading', { level: 3, name: /Sign in to Orbit/i })
+    const heading = screen.getByRole('heading', { level: 1, name: /Sign in to Orbit/i })
     expect(heading).toBeInTheDocument()
     expect(heading.className).toContain('text-center')
     expect(heading.className).toContain('mb-6')

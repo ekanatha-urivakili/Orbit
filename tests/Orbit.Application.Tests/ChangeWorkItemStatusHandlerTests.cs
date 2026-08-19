@@ -254,6 +254,11 @@ public sealed class ChangeWorkItemStatusHandlerTests
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult(preferences.SingleOrDefault(p => p.UserId == userId));
 
+        public Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<NotificationPreference>>(
+                preferences.Where(p => userIds.Contains(p.UserId)).ToArray());
+
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<Workspace?>(null);
 

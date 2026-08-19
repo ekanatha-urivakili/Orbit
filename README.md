@@ -46,7 +46,70 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. The browser creates a local development tenant id and sends it through `X-Tenant-Id`. This bypass is enabled only by local configuration. Production requires a validated bearer token with a `tenant_id` claim and an active membership matching the token issuer and subject; service accounts additionally use `principal_type=service_account` and `client_id` or `azp` claims.
+Open `http://localhost:5800`. The browser creates a local development tenant id and sends it through `X-Tenant-Id`. This bypass is enabled only by local configuration. Production requires a validated bearer token with a `tenant_id` claim and an active membership matching the token issuer and subject; service accounts additionally use `principal_type=service_account` and `client_id` or `azp` claims.
+
+### Optional: HTTPS via `https://www.orbit-local.com`
+
+The PWA can also be reached over HTTPS at `https://www.orbit-local.com`, proxied by a local nginx instance to `http://localhost:5800`. This is a local-only convenience (e.g. for testing PWA install prompts and service-worker behavior that require a secure context on a stable hostname); it is not part of the deployed stack and nothing here is pushed to source control.
+
+1. Install [mkcert](https://github.com/FiloSottile/mkcert) and [nginx](https://nginx.org) (`brew install mkcert nginx`), then trust the local CA once:
+
+   ```bash
+   mkcert -install
+   ```
+
+2. Generate a certificate for the local domain (kept outside the repo):
+
+   ```bash
+   mkdir -p ~/.local/orbit-nginx-certs
+   cd ~/.local/orbit-nginx-certs
+   mkcert -cert-file orbit-local.com.crt -key-file orbit-local.com.key www.orbit-local.com orbit-local.com
+   ```
+
+3. Point the hostname at localhost:
+
+   ```bash
+   sudo sh -c 'printf "127.0.0.1 orbit-local.com\n127.0.0.1 www.orbit-local.com\n" >> /etc/hosts'
+   ```
+
+4. Add an nginx server block (Homebrew nginx auto-includes `$(brew --prefix)/etc/nginx/servers/*`) at `$(brew --prefix)/etc/nginx/servers/orbit-local.conf`:
+
+   ```nginx
+   server {
+       listen 80;
+       server_name orbit-local.com www.orbit-local.com;
+       return 301 https://$host$request_uri;
+   }
+
+   server {
+       listen 443 ssl;
+       server_name orbit-local.com www.orbit-local.com;
+
+       ssl_certificate     /Users/<you>/.local/orbit-nginx-certs/orbit-local.com.crt;
+       ssl_certificate_key /Users/<you>/.local/orbit-nginx-certs/orbit-local.com.key;
+       ssl_protocols TLSv1.2 TLSv1.3;
+
+       location / {
+           proxy_pass http://localhost:5800/;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+   ```
+
+5. Start nginx (binding ports 80/443 requires root) and the dev stack:
+
+   ```bash
+   sudo nginx
+   ./scripts/start-dev.sh
+   ```
+
+`Cors:Origins` and `Frontend:BaseUrl` in [src/Orbit.Api/appsettings.Development.json](src/Orbit.Api/appsettings.Development.json) already allow both `http://localhost:5800` and `https://www.orbit-local.com`.
 
 Self-service accounts do not require the installation bootstrap. Anyone can register their own organization, first workspace, and owner account directly:
 

@@ -95,7 +95,9 @@ export async function login(email: string, password: string, rememberMe = false)
 /** Full-page navigation target for "Sign in with Google" - the backend brokers the OAuth code
  * exchange server-side, so this is a real redirect, not a fetch. */
 export function googleOAuthStartUrl(mode: 'login' | 'register'): string {
-  return `${apiUrl}/auth/google/start?mode=${mode}`
+  const returnUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const returnParam = returnUrl ? `&returnUrl=${encodeURIComponent(returnUrl)}` : ''
+  return `${apiUrl}/auth/google/start?mode=${mode}${returnParam}`
 }
 
 export async function exchangeGoogleHandoff(code: string): Promise<AuthSession> {

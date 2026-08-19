@@ -262,6 +262,40 @@ public static class WorkItemEndpoints
             .WithTags("Work items");
 
         // ------------------------------------------------------------------
+        // Watchers
+        // ------------------------------------------------------------------
+
+        group.MapGet("/work-items/{workItemId:guid}/watchers", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new GetWorkItemWatchersQuery(workItemId), cancellationToken)))
+            .WithName("GetWorkItemWatchers")
+            .WithTags("Work items");
+
+        group.MapPut("/work-items/{workItemId:guid}/watchers/me", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new WatchWorkItemCommand(workItemId), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("WatchWorkItem")
+            .WithTags("Work items");
+
+        group.MapDelete("/work-items/{workItemId:guid}/watchers/me", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new UnwatchWorkItemCommand(workItemId), cancellationToken);
+            return Results.NoContent();
+        })
+            .WithName("UnwatchWorkItem")
+            .WithTags("Work items");
+
+        // ------------------------------------------------------------------
         // Attachments
         // ------------------------------------------------------------------
 

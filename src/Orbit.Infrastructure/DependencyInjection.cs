@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkItemLinkRepository, WorkItemLinkRepository>();
         services.AddScoped<IWorkItemCommentRepository, WorkItemCommentRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
+        services.AddScoped<IWorkItemWatcherRepository, WorkItemWatcherRepository>();
         services.AddScoped<ITenantMembershipRepository, TenantMembershipRepository>();
         services.AddScoped<IProjectRoleRepository, ProjectRoleRepository>();
         services.AddScoped<ITeamRepository, TeamRepository>();

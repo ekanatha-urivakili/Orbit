@@ -41,7 +41,7 @@ internal sealed class GoogleIdTokenValidator : IGoogleIdTokenValidator
             var result = await _handler.ValidateTokenAsync(idToken, new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuers = [metadata.Issuer, GoogleAuthority],
+                ValidIssuers = [metadata.Issuer, GoogleAuthority, "accounts.google.com"],
                 ValidateAudience = true,
                 ValidAudience = clientId,
                 ValidateIssuerSigningKey = true,

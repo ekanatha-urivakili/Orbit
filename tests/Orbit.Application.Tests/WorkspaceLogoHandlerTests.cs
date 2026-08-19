@@ -142,6 +142,10 @@ public sealed class WorkspaceLogoHandlerTests
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
 
+        public Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<NotificationPreference>>([]);
+
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult(Workspace);
 

@@ -28,7 +28,7 @@ internal static class HandoffCodeCodec
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(code)));
 }
 
-public sealed record GoogleOAuthStartQuery(string Mode) : IQuery<GoogleOAuthStartDto>;
+public sealed record GoogleOAuthStartQuery(string Mode, string? ReturnUrl = null) : IQuery<GoogleOAuthStartDto>;
 
 public sealed record GoogleOAuthStartDto(string AuthorizeUrl);
 
@@ -46,14 +46,14 @@ public sealed class GoogleOAuthStartHandler(
 {
     public Task<GoogleOAuthStartDto> Handle(GoogleOAuthStartQuery request, CancellationToken cancellationToken)
     {
-        var state = stateCodec.Encode(request.Mode, timeProvider.GetUtcNow(), TimeSpan.FromMinutes(10));
+        var state = stateCodec.Encode(request.Mode, timeProvider.GetUtcNow(), TimeSpan.FromMinutes(10), request.ReturnUrl);
         return Task.FromResult(new GoogleOAuthStartDto(client.BuildAuthorizeUrl(state)));
     }
 }
 
 public sealed record HandleGoogleCallbackCommand(string Code, string State) : ICommand<GoogleCallbackResultDto>;
 
-public sealed record GoogleCallbackResultDto(string HandoffCode);
+public sealed record GoogleCallbackResultDto(string HandoffCode, string? ReturnUrl = null);
 
 public sealed class HandleGoogleCallbackValidator : AbstractValidator<HandleGoogleCallbackCommand>
 {
@@ -85,7 +85,7 @@ public sealed class HandleGoogleCallbackHandler(
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        if (!stateCodec.TryDecode(request.State, now, out var mode))
+        if (!stateCodec.TryDecode(request.State, now, out var mode, out var returnUrl))
         {
             throw new AuthenticationException("The sign-in request expired or is invalid. Please try again.");
         }
@@ -100,19 +100,31 @@ public sealed class HandleGoogleCallbackHandler(
         {
             var tenantId = await SelectTenantAsync(existingIdentity.UserId, cancellationToken);
             return new GoogleCallbackResultDto(
-                await CreateHandoffAsync(existingIdentity.UserId, tenantId, now, cancellationToken));
+                await CreateHandoffAsync(existingIdentity.UserId, tenantId, now, cancellationToken),
+                returnUrl);
         }
 
-        if (mode == "login")
+        if (identity.Email is not null && identity.EmailVerified)
         {
-            var (userId, tenantId) = await LinkToExistingAccountAsync(identity, now, cancellationToken);
-            return new GoogleCallbackResultDto(await CreateHandoffAsync(userId, tenantId, now, cancellationToken));
+            var normalizedEmail = UserAccount.NormalizeEmail(identity.Email);
+            var existingAccount = await authenticationRepository.GetUserAccountByEmailAsync(normalizedEmail, cancellationToken);
+            if (existingAccount is not null)
+            {
+                var externalIdentity = ExternalIdentity.Create(existingAccount.Id, GoogleOAuthConstants.Issuer, identity.Subject, now);
+                await authenticationRepository.AddExternalIdentityAsync(externalIdentity, cancellationToken);
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+
+                var tenantId = await SelectTenantAsync(existingAccount.Id, cancellationToken);
+                return new GoogleCallbackResultDto(
+                    await CreateHandoffAsync(existingAccount.Id, tenantId, now, cancellationToken),
+                    returnUrl);
+            }
         }
 
-        // Register mode: ProvisionNewAccountAsync persists its own handoff row in the same
-        // transaction as the new organization/workspace, since only ISignUpRepository's transaction
-        // performs the RLS tenant-context switch those inserts need.
-        return new GoogleCallbackResultDto(await ProvisionNewAccountAsync(identity, now, cancellationToken));
+        // Auto-provision brand-new account, organization, and workspace when no matching account exists yet.
+        return new GoogleCallbackResultDto(
+            await ProvisionNewAccountAsync(identity, now, cancellationToken),
+            returnUrl);
     }
 
     private async Task<Guid> SelectTenantAsync(Guid userId, CancellationToken cancellationToken)
@@ -121,29 +133,6 @@ public sealed class HandleGoogleCallbackHandler(
         var membership = MembershipSelection.Select(memberships, requestedWorkspaceId: null, currentTenantId: null)
             ?? throw new AccessDeniedException("Your account has no active workspace membership.");
         return membership.TenantId;
-    }
-
-    private async Task<(Guid UserId, Guid TenantId)> LinkToExistingAccountAsync(
-        VerifiedGoogleIdentity identity,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        if (identity.Email is null || !identity.EmailVerified)
-        {
-            throw new AuthenticationException("No Orbit account is linked to this Google account.");
-        }
-
-        var normalizedEmail = UserAccount.NormalizeEmail(identity.Email);
-        var account = await authenticationRepository.GetUserAccountByEmailAsync(normalizedEmail, cancellationToken)
-            ?? throw new AuthenticationException(
-                "No Orbit account is linked to this Google account. Create an account first.");
-
-        var externalIdentity = ExternalIdentity.Create(account.Id, GoogleOAuthConstants.Issuer, identity.Subject, now);
-        await authenticationRepository.AddExternalIdentityAsync(externalIdentity, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-
-        var tenantId = await SelectTenantAsync(account.Id, cancellationToken);
-        return (account.Id, tenantId);
     }
 
     private async Task<string> ProvisionNewAccountAsync(

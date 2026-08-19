@@ -29,6 +29,8 @@ public sealed class WorkItemCommentHandlerTests
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
             new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(),
+            new TenantMembershipRepositoryStub(),
             settings,
             outbox,
             new UnitOfWorkStub(),
@@ -59,6 +61,8 @@ public sealed class WorkItemCommentHandlerTests
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
             new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(),
+            new TenantMembershipRepositoryStub(),
             settings,
             outbox,
             new UnitOfWorkStub(),
@@ -84,6 +88,8 @@ public sealed class WorkItemCommentHandlerTests
             new CurrentPrincipalStub(authorAccount.Id),
             new WorkItemRepositoryStub(workItem),
             new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(),
+            new TenantMembershipRepositoryStub(),
             settings,
             outbox,
             new UnitOfWorkStub(),
@@ -91,6 +97,123 @@ public sealed class WorkItemCommentHandlerTests
 
         await handler.Handle(
             new AddWorkItemCommentCommand(workItem.Id, $"Note to self @{{{authorAccount.Id}}}"),
+            CancellationToken.None);
+
+        Assert.Empty(outbox.Messages);
+    }
+
+    [Fact]
+    public async Task Handle_CommentOnWatchedItem_NotifiesWatcher()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var watcherAccount = UserAccount.Create("watcher@example.com", "Watcher", DateTimeOffset.UtcNow);
+        var workItem = CreateWorkItem(tenantId);
+        var settings = new SettingsRepositoryStub([watcherAccount], preferences: []);
+        var outbox = new OutboxRepositoryStub();
+        var handler = new AddWorkItemCommentHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(authorUserId),
+            new WorkItemRepositoryStub(workItem),
+            new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(
+                WorkItemWatcher.Create(tenantId, workItem.Id, watcherAccount.Id, DateTimeOffset.UtcNow)),
+            new TenantMembershipRepositoryStub(),
+            settings,
+            outbox,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new AddWorkItemCommentCommand(workItem.Id, "No mentions here, just an update"),
+            CancellationToken.None);
+
+        var email = Assert.Single(outbox.Messages);
+        Assert.Equal(watcherAccount.NormalizedEmail, email.ToEmail);
+        Assert.Contains(workItem.Key, email.Subject);
+    }
+
+    [Fact]
+    public async Task Handle_CommentMentioningTheWatcher_DoesNotSendADuplicateEmail()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var watcherAccount = UserAccount.Create("watcher@example.com", "Watcher", DateTimeOffset.UtcNow);
+        var workItem = CreateWorkItem(tenantId);
+        var settings = new SettingsRepositoryStub([watcherAccount], preferences: []);
+        var outbox = new OutboxRepositoryStub();
+        var handler = new AddWorkItemCommentHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(authorUserId),
+            new WorkItemRepositoryStub(workItem),
+            new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(
+                WorkItemWatcher.Create(tenantId, workItem.Id, watcherAccount.Id, DateTimeOffset.UtcNow)),
+            new TenantMembershipRepositoryStub(),
+            settings,
+            outbox,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new AddWorkItemCommentCommand(workItem.Id, $"Hey @{{{watcherAccount.Id}}}, take a look"),
+            CancellationToken.None);
+
+        Assert.Single(outbox.Messages);
+    }
+
+    [Fact]
+    public async Task Handle_MentioningADeactivatedMember_DoesNotEnqueueOutboxEmail()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var mentionedAccount = UserAccount.Create("mentioned@example.com", "Mentioned User", DateTimeOffset.UtcNow);
+        var workItem = CreateWorkItem(tenantId);
+        var settings = new SettingsRepositoryStub([mentionedAccount], preferences: []);
+        var outbox = new OutboxRepositoryStub();
+        var handler = new AddWorkItemCommentHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(authorUserId),
+            new WorkItemRepositoryStub(workItem),
+            new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(),
+            new TenantMembershipRepositoryStub(mentionedAccount.Id),
+            settings,
+            outbox,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new AddWorkItemCommentCommand(workItem.Id, $"Hey @{{{mentionedAccount.Id}}}, take a look"),
+            CancellationToken.None);
+
+        Assert.Empty(outbox.Messages);
+    }
+
+    [Fact]
+    public async Task Handle_CommentOnWatchedItem_DeactivatedWatcherDoesNotReceiveEmail()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var watcherAccount = UserAccount.Create("watcher@example.com", "Watcher", DateTimeOffset.UtcNow);
+        var workItem = CreateWorkItem(tenantId);
+        var settings = new SettingsRepositoryStub([watcherAccount], preferences: []);
+        var outbox = new OutboxRepositoryStub();
+        var handler = new AddWorkItemCommentHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(authorUserId),
+            new WorkItemRepositoryStub(workItem),
+            new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(
+                WorkItemWatcher.Create(tenantId, workItem.Id, watcherAccount.Id, DateTimeOffset.UtcNow)),
+            new TenantMembershipRepositoryStub(watcherAccount.Id),
+            settings,
+            outbox,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new AddWorkItemCommentCommand(workItem.Id, "No mentions here, just an update"),
             CancellationToken.None);
 
         Assert.Empty(outbox.Messages);
@@ -150,6 +273,56 @@ public sealed class WorkItemCommentHandlerTests
             Task.FromResult<IReadOnlyList<WorkItemComment>>([]);
     }
 
+    private sealed class WorkItemWatcherRepositoryStub(params WorkItemWatcher[] watchers) : IWorkItemWatcherRepository
+    {
+        public Task AddAsync(WorkItemWatcher watcher, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<WorkItemWatcher?> GetAsync(
+            Guid tenantId, Guid workItemId, Guid userId, CancellationToken cancellationToken) =>
+            Task.FromResult(watchers.SingleOrDefault(
+                watcher => watcher.TenantId == tenantId && watcher.WorkItemId == workItemId && watcher.UserId == userId));
+
+        public Task<IReadOnlyList<WorkItemWatcher>> ListByWorkItemAsync(
+            Guid tenantId, Guid workItemId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemWatcher>>(
+                [.. watchers.Where(watcher => watcher.TenantId == tenantId && watcher.WorkItemId == workItemId)]);
+
+        public Task RemoveAsync(WorkItemWatcher watcher, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class TenantMembershipRepositoryStub(params Guid[] inactiveUserIds) : ITenantMembershipRepository
+    {
+        public Task AddAsync(TenantMembership membership, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<TenantMembership?> GetActiveAsync(
+            Guid tenantId, string issuer, string subject, CancellationToken cancellationToken) =>
+            Task.FromResult<TenantMembership?>(null);
+
+        public Task<TenantMembership?> GetActiveByUserAsync(
+            Guid tenantId, Guid userId, CancellationToken cancellationToken) =>
+            Task.FromResult<TenantMembership?>(null);
+
+        public Task<TenantMembership?> GetActiveAsync(
+            Guid tenantId, Guid membershipId, CancellationToken cancellationToken) =>
+            Task.FromResult<TenantMembership?>(null);
+
+        public Task<TenantMembership?> GetOwnerAsync(Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<TenantMembership?>(null);
+
+        public Task<IReadOnlyList<TenantMembership>> ListAsync(
+            Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TenantMembership>>([]);
+
+        public Task<IReadOnlyList<TenantMembership>> ListByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TenantMembership>>([]);
+
+        public Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>(
+                [.. userIds.Where(id => !inactiveUserIds.Contains(id))]);
+    }
+
     private sealed class SettingsRepositoryStub(
         IReadOnlyList<UserAccount> accounts,
         IReadOnlyList<NotificationPreference> preferences) : ISettingsRepository
@@ -168,6 +341,11 @@ public sealed class WorkItemCommentHandlerTests
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult(preferences.SingleOrDefault(p => p.UserId == userId));
+
+        public Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<NotificationPreference>>(
+                preferences.Where(p => userIds.Contains(p.UserId)).ToArray());
 
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult<Workspace?>(null);

@@ -237,6 +237,13 @@ public sealed class ServiceAccountHandlerTests
             Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>(
                 Memberships.Where(m => m.TenantId == tenantId && membershipIds.Contains(m.Id)).ToArray());
+
+        public Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>(
+                [.. Memberships
+                    .Where(m => m.TenantId == tenantId && m.UserId.HasValue && userIds.Contains(m.UserId.Value) && m.IsActive)
+                    .Select(m => m.UserId!.Value)]);
     }
 
     private sealed class AuthenticationRepositoryStub(List<TenantMembership> memberships) : IAuthenticationRepository

@@ -72,4 +72,20 @@ internal sealed class TenantMembershipRepository(OrbitDbContext dbContext) : ITe
             .Where(membership => membership.TenantId == tenantId && membershipIds.Contains(membership.Id))
             .ToArrayAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0) return [];
+        return await dbContext.TenantMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TenantId == tenantId
+                && membership.UserId != null
+                && userIds.Contains(membership.UserId!.Value)
+                && membership.IsActive)
+            .Select(membership => membership.UserId!.Value)
+            .ToArrayAsync(cancellationToken);
+    }
 }

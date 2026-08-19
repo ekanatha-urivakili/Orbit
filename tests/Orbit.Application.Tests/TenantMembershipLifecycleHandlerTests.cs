@@ -191,6 +191,13 @@ public sealed class TenantMembershipLifecycleHandlerTests
             Guid tenantId, IReadOnlyCollection<Guid> membershipIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TenantMembership>>(
                 memberships.Where(m => membershipIds.Contains(m.Id)).ToList());
+
+        public Task<IReadOnlyList<Guid>> ListActiveUserIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>(
+                [.. memberships
+                    .Where(m => m.UserId.HasValue && userIds.Contains(m.UserId.Value) && m.IsActive)
+                    .Select(m => m.UserId!.Value)]);
     }
 
     private sealed class SettingsRepositoryStub(Workspace workspace) : ISettingsRepository
@@ -208,6 +215,10 @@ public sealed class TenantMembershipLifecycleHandlerTests
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
+
+        public Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<NotificationPreference>>([]);
 
         public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
             Task.FromResult(workspace.Id == tenantId ? workspace : null);

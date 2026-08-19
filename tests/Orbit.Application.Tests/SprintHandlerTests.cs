@@ -5,8 +5,12 @@ using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
 using Orbit.Domain.Common;
+using Orbit.Domain.Identity;
+using Orbit.Domain.Messaging;
 using Orbit.Domain.Projects;
+using Orbit.Domain.Settings;
 using Orbit.Domain.WorkItems;
+using Orbit.Domain.Workspaces;
 
 namespace Orbit.Application.Tests;
 
@@ -96,6 +100,10 @@ public sealed class SprintHandlerTests
             new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
             new SprintRepositoryStub(sprint),
             new SprintMembershipRepositoryStub(),
+            new WorkItemRepositoryStub(),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -117,6 +125,10 @@ public sealed class SprintHandlerTests
             new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
             new SprintRepositoryStub(sprint),
             new SprintMembershipRepositoryStub(),
+            new WorkItemRepositoryStub(),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -139,6 +151,10 @@ public sealed class SprintHandlerTests
             new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
             new SprintRepositoryStub(activeSprint, futureSprint),
             new SprintMembershipRepositoryStub(),
+            new WorkItemRepositoryStub(),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -146,6 +162,41 @@ public sealed class SprintHandlerTests
             new StartSprintCommand(futureSprint.Id, null, null, null, futureSprint.Version), CancellationToken.None);
 
         await Assert.ThrowsAsync<DomainException>(action);
+    }
+
+    [Fact]
+    public async Task StartSprint_NotifiesMemberOwners()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
+        var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
+        var item = NewItem(tenantId, project.Id, WorkItemStatus.Backlog, 1);
+        item.SetDetails(
+            parentId: null, epicName: null, acceptanceCriteria: null, stepsToConduct: null,
+            assigneeUserId: assigneeAccount.Id, developerUserId: null, productOwnerUserId: null,
+            sprintName: null, identifiedOn: null, storyPoints: null, labels: null, countries: null,
+            attachmentNames: null);
+        var membership = SprintMembership.Create(tenantId, sprint.Id, item.Id, DateTimeOffset.UtcNow);
+        var outbox = new OutboxRepositoryStub();
+        var handler = new StartSprintHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
+            new SprintRepositoryStub(sprint),
+            new SprintMembershipRepositoryStub(membership),
+            new WorkItemRepositoryStub(item),
+            new CurrentPrincipalStub(authorUserId),
+            new SettingsRepositoryStub([assigneeAccount], []),
+            outbox,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(new StartSprintCommand(sprint.Id, null, null, null, sprint.Version), CancellationToken.None);
+
+        var email = Assert.Single(outbox.Messages);
+        Assert.Equal(assigneeAccount.NormalizedEmail, email.ToEmail);
+        Assert.Contains(sprint.Name, email.Subject);
     }
 
     [Fact]
@@ -171,6 +222,9 @@ public sealed class SprintHandlerTests
             new SprintCompletionOperationRepositoryStub(),
             facts,
             workItems,
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
             unitOfWork,
             TimeProvider.System);
 
@@ -185,6 +239,44 @@ public sealed class SprintHandlerTests
         Assert.Contains(facts.Added, fact => fact.FactType == AgileFactType.SprintCompleted && fact.WorkItemId is null);
         Assert.Equal(1, workItems.ListByIdsCount);
         Assert.Equal(1, unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task CompleteSprint_NotifiesMemberOwners()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
+        sprint.Start(null, null, null, DateTimeOffset.UtcNow);
+        var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
+        var doneItem = NewItem(tenantId, project.Id, WorkItemStatus.Done, 1);
+        doneItem.SetDetails(
+            parentId: null, epicName: null, acceptanceCriteria: null, stepsToConduct: null,
+            assigneeUserId: assigneeAccount.Id, developerUserId: null, productOwnerUserId: null,
+            sprintName: null, identifiedOn: null, storyPoints: null, labels: null, countries: null,
+            attachmentNames: null);
+        var doneMembership = SprintMembership.Create(tenantId, sprint.Id, doneItem.Id, DateTimeOffset.UtcNow);
+        var outbox = new OutboxRepositoryStub();
+        var handler = new CompleteSprintHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
+            new SprintRepositoryStub(sprint),
+            new SprintMembershipRepositoryStub(doneMembership),
+            new SprintCompletionOperationRepositoryStub(),
+            new SprintScopeFactRepositoryStub(),
+            new WorkItemRepositoryStub(doneItem),
+            new CurrentPrincipalStub(authorUserId),
+            new SettingsRepositoryStub([assigneeAccount], []),
+            outbox,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(new CompleteSprintCommand(sprint.Id, sprint.Version, null), CancellationToken.None);
+
+        var email = Assert.Single(outbox.Messages);
+        Assert.Equal(assigneeAccount.NormalizedEmail, email.ToEmail);
+        Assert.Contains(sprint.Name, email.Subject);
     }
 
     [Fact]
@@ -208,6 +300,9 @@ public sealed class SprintHandlerTests
             new SprintCompletionOperationRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new WorkItemRepositoryStub(doneItem, todoItem),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -237,6 +332,9 @@ public sealed class SprintHandlerTests
             new SprintCompletionOperationRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new WorkItemRepositoryStub(),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -274,6 +372,9 @@ public sealed class SprintHandlerTests
             operations,
             new SprintScopeFactRepositoryStub(),
             new WorkItemRepositoryStub(doneItem, alreadyRemovedItem, stillPendingItem),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -307,6 +408,9 @@ public sealed class SprintHandlerTests
             new SprintCompletionOperationRepositoryStub(operation),
             new SprintScopeFactRepositoryStub(),
             new WorkItemRepositoryStub(),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -648,6 +752,84 @@ public sealed class SprintHandlerTests
         {
             SaveCount++;
             return Task.FromResult(1);
+        }
+    }
+
+    private sealed class CurrentPrincipalStub(Guid? userId) : ICurrentPrincipal
+    {
+        public Guid? UserId => userId;
+        public Guid? SessionId => null;
+        public Guid MembershipId => Guid.NewGuid();
+        public PrincipalType PrincipalType => PrincipalType.User;
+        public TenantRole TenantRole => TenantRole.Member;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
+        public bool IsDevelopmentBypass => true;
+    }
+
+    private sealed class SettingsRepositoryStub(
+        IReadOnlyList<UserAccount> accounts,
+        IReadOnlyList<NotificationPreference> preferences) : ISettingsRepository
+    {
+        public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
+            Task.FromResult(accounts.SingleOrDefault(a => a.Id == userId));
+
+        public Task<IReadOnlyList<UserAccount>> GetUserAccountsAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserAccount>>(
+                accounts.Where(a => userIds.Contains(a.Id)).ToArray());
+
+        public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
+            Task.FromResult<UserPreference?>(null);
+
+        public Task<NotificationPreference?> GetNotificationPreferenceAsync(
+            Guid userId, CancellationToken cancellationToken) =>
+            Task.FromResult(preferences.SingleOrDefault(p => p.UserId == userId));
+
+        public Task<IReadOnlyList<NotificationPreference>> GetNotificationPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<NotificationPreference>>(
+                preferences.Where(p => userIds.Contains(p.UserId)).ToArray());
+
+        public Task<Workspace?> GetWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<Workspace?>(null);
+
+        public Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkspaceSetting?>(null);
+
+        public Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(
+            Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkspaceTypographySetting?>(null);
+
+        public Task<ProjectSetting?> GetProjectSettingAsync(
+            Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<ProjectSetting?>(null);
+
+        public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddNotificationPreferenceAsync(
+            NotificationPreference preference, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddWorkspaceTypographySettingAsync(
+            WorkspaceTypographySetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class OutboxRepositoryStub : IOutboxRepository
+    {
+        public List<OutboxEmailMessage> Messages { get; } = [];
+
+        public Task AddAsync(OutboxEmailMessage message, CancellationToken cancellationToken)
+        {
+            Messages.Add(message);
+            return Task.CompletedTask;
         }
     }
 }

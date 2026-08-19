@@ -40,7 +40,9 @@ public sealed class PersistenceSecurityTests
             typeof(WorkspaceInvitation),
             typeof(WorkItemTypeDefinition),
             typeof(CustomFieldDefinition),
-            typeof(Attachment)
+            typeof(Attachment),
+            typeof(WorkItemComment),
+            typeof(WorkItemWatcher)
         ];
 
         foreach (var entity in tenantEntities)

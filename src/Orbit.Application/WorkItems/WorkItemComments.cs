@@ -65,6 +65,8 @@ public sealed class AddWorkItemCommentHandler(
     ICurrentPrincipal principal,
     IWorkItemRepository workItems,
     IWorkItemCommentRepository comments,
+    IWorkItemWatcherRepository watchers,
+    ITenantMembershipRepository memberships,
     ISettingsRepository settings,
     IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
@@ -97,10 +99,28 @@ public sealed class AddWorkItemCommentHandler(
             ? await settings.GetUserAccountAsync(principal.UserId.Value, cancellationToken)
             : null;
 
-        if (mentionedUserIds.Length > 0)
+        var watcherUserIds = (await watchers.ListByWorkItemAsync(
+                tenantContext.TenantId, request.WorkItemId, cancellationToken))
+            .Select(watcher => watcher.UserId)
+            .Where(userId => !mentionedUserIds.Contains(userId))
+            .ToArray();
+
+        // A deactivated member's mention/watcher rows must not resolve to a sent email.
+        var activeUserIds = new HashSet<Guid>(await memberships.ListActiveUserIdsAsync(
+            tenantContext.TenantId, [.. mentionedUserIds, .. watcherUserIds], cancellationToken));
+        var activeMentionedUserIds = mentionedUserIds.Where(activeUserIds.Contains).ToArray();
+        var activeWatcherUserIds = watcherUserIds.Where(activeUserIds.Contains).ToArray();
+
+        if (activeMentionedUserIds.Length > 0)
         {
             await NotifyMentionedUsersAsync(
-                mentionedUserIds, workItem, account?.DisplayName, cancellationToken);
+                activeMentionedUserIds, workItem, account?.DisplayName, cancellationToken);
+        }
+
+        // Watchers who were already notified as a mention don't get a second email.
+        if (activeWatcherUserIds.Length > 0)
+        {
+            await NotifyWatchersAsync(activeWatcherUserIds, workItem, account?.DisplayName, cancellationToken);
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -123,6 +143,8 @@ public sealed class AddWorkItemCommentHandler(
     {
         var mentionedAccounts = (await settings.GetUserAccountsAsync(mentionedUserIds, cancellationToken))
             .ToDictionary(a => a.Id);
+        var preferences = (await settings.GetNotificationPreferencesAsync(mentionedUserIds, cancellationToken))
+            .ToDictionary(p => p.UserId);
         var now = timeProvider.GetUtcNow();
 
         foreach (var userId in mentionedUserIds)
@@ -132,7 +154,7 @@ public sealed class AddWorkItemCommentHandler(
                 continue;
             }
 
-            var preference = await settings.GetNotificationPreferenceAsync(userId, cancellationToken);
+            preferences.TryGetValue(userId, out var preference);
             var emailEnabled = preference?.EmailEnabled ?? true;
             var selfNotify = preference?.SelfNotify ?? false;
             if (!emailEnabled || (userId == principal.UserId && !selfNotify))
@@ -147,6 +169,52 @@ public sealed class AddWorkItemCommentHandler(
                 <p>Hi {System.Net.WebUtility.HtmlEncode(mentionedAccount.DisplayName)},</p>
                 <p>{System.Net.WebUtility.HtmlEncode(authorDisplayName ?? "Someone")} mentioned you in a comment on
                 <strong>{System.Net.WebUtility.HtmlEncode(workItem.Key)}: {System.Net.WebUtility.HtmlEncode(workItem.Summary)}</strong>.</p>
+                """,
+                now);
+            await outbox.AddAsync(email, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Fires the §10.5 "comment on a watched item" notification for every current
+    /// <see cref="WorkItemWatcher"/> who wasn't already notified as a mention, using the same
+    /// <see cref="Domain.Settings.NotificationPreference"/>-gated pattern as the mention trigger.
+    /// </summary>
+    private async Task NotifyWatchersAsync(
+        Guid[] watcherUserIds,
+        WorkItem workItem,
+        string? authorDisplayName,
+        CancellationToken cancellationToken)
+    {
+        var watcherAccounts = (await settings.GetUserAccountsAsync(watcherUserIds, cancellationToken))
+            .ToDictionary(a => a.Id);
+        var preferences = (await settings.GetNotificationPreferencesAsync(watcherUserIds, cancellationToken))
+            .ToDictionary(p => p.UserId);
+        var now = timeProvider.GetUtcNow();
+
+        foreach (var userId in watcherUserIds)
+        {
+            if (!watcherAccounts.TryGetValue(userId, out var watcherAccount))
+            {
+                continue;
+            }
+
+            preferences.TryGetValue(userId, out var preference);
+            var emailEnabled = preference?.EmailEnabled ?? true;
+            var selfNotify = preference?.SelfNotify ?? false;
+            if (!emailEnabled || (userId == principal.UserId && !selfNotify))
+            {
+                continue;
+            }
+
+            var email = OutboxEmailMessage.Create(
+                watcherAccount.NormalizedEmail,
+                $"New comment on {workItem.Key}",
+                $"""
+                <p>Hi {System.Net.WebUtility.HtmlEncode(watcherAccount.DisplayName)},</p>
+                <p>{System.Net.WebUtility.HtmlEncode(authorDisplayName ?? "Someone")} commented on
+                <strong>{System.Net.WebUtility.HtmlEncode(workItem.Key)}: {System.Net.WebUtility.HtmlEncode(workItem.Summary)}</strong>,
+                which you're watching.</p>
                 """,
                 now);
             await outbox.AddAsync(email, cancellationToken);

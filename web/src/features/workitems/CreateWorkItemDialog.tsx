@@ -191,7 +191,7 @@ export function CreateWorkItemDialog({
           {type === 'Epic' && <Field label="Epic name *"><input required maxLength={255} value={details.epicName ?? ''} onChange={(event) => patch({ epicName: event.target.value || null })} /><Hint>Provide a short name to identify this epic.</Hint></Field>}
           <Field label="Summary *"><input autoFocus required minLength={3} maxLength={255} value={summary} onChange={(event) => setSummary(event.target.value)} /></Field>
           <Field label="Description"><RichTextEditor value={description} onChange={setDescription} placeholder="Describe the outcome, context, and expected behaviour." /></Field>
-          {type === 'Epic' && <Field label="Acceptance criteria"><textarea value={details.acceptanceCriteria ?? ''} onChange={(event) => patch({ acceptanceCriteria: event.target.value || null })} maxLength={32000} rows={4} /></Field>}
+          {type === 'Epic' && <Field label="Acceptance criteria"><RichTextEditor value={details.acceptanceCriteria ?? ''} onChange={(html) => patch({ acceptanceCriteria: html || null })} placeholder="Define the acceptance criteria. Use the table button (\u229e) in the toolbar to insert a table." /></Field>}
           {type === 'Bug' && <Field label="Steps to conduct action"><textarea value={details.stepsToConduct ?? ''} onChange={(event) => patch({ stepsToConduct: event.target.value || null })} maxLength={32000} rows={4} placeholder="Numbered reproduction steps and expected versus actual result." /></Field>}
 
           <div className="form-row">
@@ -244,6 +244,23 @@ export function CreateWorkItemDialog({
                 searchPlaceholder="Search parent work items…"
               />
               <Hint>Hierarchy rules restrict which parents can be selected.</Hint>
+            </Field>
+          )}
+
+          {type !== 'Bug' && type !== 'Initiative' && type !== 'Epic' && (
+            <Field label="Story points">
+              <input
+                type="number"
+                min="0"
+                max="10000"
+                step="0.5"
+                value={details.storyPoints ?? ''}
+                onChange={(event) =>
+                  patch({
+                    storyPoints: event.target.value ? Number(event.target.value) : null,
+                  })
+                }
+              />
             </Field>
           )}
 

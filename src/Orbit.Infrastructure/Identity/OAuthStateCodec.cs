@@ -15,20 +15,25 @@ namespace Orbit.Infrastructure.Identity;
 /// </summary>
 internal sealed class OAuthStateCodec(IOptions<LocalTokenOptions> localTokenOptions) : IOAuthStateCodec
 {
-    private sealed record StatePayload(string Mode, string Nonce, long ExpiresAtUnixSeconds);
+    private sealed record StatePayload(string Mode, string Nonce, long ExpiresAtUnixSeconds, string? ReturnUrl = null);
 
-    public string Encode(string mode, DateTimeOffset now, TimeSpan lifetime)
+    public string Encode(string mode, DateTimeOffset now, TimeSpan lifetime, string? returnUrl = null)
     {
-        var payload = new StatePayload(mode, Convert.ToHexString(RandomNumberGenerator.GetBytes(8)), now.Add(lifetime).ToUnixTimeSeconds());
+        var payload = new StatePayload(
+            mode,
+            Convert.ToHexString(RandomNumberGenerator.GetBytes(8)),
+            now.Add(lifetime).ToUnixTimeSeconds(),
+            returnUrl);
         var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
         var payloadSegment = Base64UrlEncode(payloadBytes);
         var signature = Base64UrlEncode(Sign(payloadBytes));
         return $"{payloadSegment}.{signature}";
     }
 
-    public bool TryDecode(string state, DateTimeOffset now, out string mode)
+    public bool TryDecode(string state, DateTimeOffset now, out string mode, out string? returnUrl)
     {
         mode = string.Empty;
+        returnUrl = null;
         var parts = state.Split('.', 2);
         if (parts.Length != 2)
         {
@@ -68,6 +73,7 @@ internal sealed class OAuthStateCodec(IOptions<LocalTokenOptions> localTokenOpti
         }
 
         mode = payload.Mode;
+        returnUrl = payload.ReturnUrl;
         return true;
     }
 

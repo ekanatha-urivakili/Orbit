@@ -10,6 +10,7 @@ import { RegisterView } from './features/auth/RegisterView'
 
 import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus } from './api/types'
 import { getStoredLogoUrl, setStoredLogoUrl } from './lib/branding'
+import { applyTheme } from './lib/theme'
 
 import './App.css'
 
@@ -235,7 +236,14 @@ function App() {
   })
 
   useEffect(() => {
-    if (profileQuery.data) document.documentElement.dataset.theme = profileQuery.data.theme.toLowerCase()
+    const preference = profileQuery.data?.theme.toLowerCase()
+    if (!preference) return
+    applyTheme(preference)
+    if (preference !== 'system') return
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const listener = () => applyTheme(preference)
+    media.addEventListener('change', listener)
+    return () => media.removeEventListener('change', listener)
   }, [profileQuery.data])
 
   useEffect(() => {
@@ -243,6 +251,60 @@ function App() {
   }, [projectsQuery.data, selectedProjectId])
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId)
+
+  // Deep linking and URL navigation: e.g. /browse/TST-1 or /browse/SCRUM-2
+  const [urlWorkItemKey, setUrlWorkItemKey] = useState<string | null>(() => {
+    const path = window.location.pathname
+    if (path.startsWith('/browse/')) {
+      return path.slice(8).toUpperCase()
+    }
+    const params = new URLSearchParams(window.location.search)
+    return params.get('item')?.toUpperCase() ?? null
+  })
+
+  // Sync route on popstate (browser back/forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname
+      if (path.startsWith('/browse/')) {
+        const key = path.slice(8).toUpperCase()
+        setUrlWorkItemKey(key)
+      } else {
+        setUrlWorkItemKey(null)
+        setEditingWorkItemId(null)
+        if (path === '/') {
+          setActiveView('project')
+        }
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  // Listen for custom ticket link clicks from RichTextView / comments / description
+  useEffect(() => {
+    const handleOpenTicketEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ key?: string }>
+      const key = customEvent.detail?.key?.toUpperCase()
+      if (key) {
+        setUrlWorkItemKey(key)
+        window.history.pushState({ key }, '', `/browse/${key}`)
+      }
+    }
+    window.addEventListener('orbit:open-ticket', handleOpenTicketEvent)
+    return () => window.removeEventListener('orbit:open-ticket', handleOpenTicketEvent)
+  }, [])
+
+  // When urlWorkItemKey is set, match to project and item
+  useEffect(() => {
+    if (!urlWorkItemKey || !projects.length) return
+    const keyPrefix = urlWorkItemKey.split('-')[0]
+    const matchedProject = projects.find((p) => p.key.toUpperCase() === keyPrefix)
+    if (matchedProject && matchedProject.id !== selectedProjectId) {
+      setSelectedProjectId(matchedProject.id)
+    }
+  }, [urlWorkItemKey, projects, selectedProjectId])
+
   const workItemsQuery = useQuery({
     queryKey: ['work-items', selectedProjectId],
     queryFn: () => orbitApi.listWorkItems(selectedProjectId ?? ''),
@@ -250,6 +312,36 @@ function App() {
   })
   const workItems = workItemsQuery.data?.items ?? []
   const workItemsTruncated = (workItemsQuery.data?.totalCount ?? 0) > workItems.length
+
+  useEffect(() => {
+    if (!urlWorkItemKey || !workItems.length) return
+    const matchedItem = workItems.find((item) => item.key.toUpperCase() === urlWorkItemKey)
+    if (matchedItem) {
+      setEditingWorkItemId(matchedItem.id)
+      setActiveView('workitem')
+    }
+  }, [urlWorkItemKey, workItems])
+
+  const handleOpenWorkItem = (workItem: WorkItem) => {
+    setEditingWorkItemId(workItem.id)
+    setUrlWorkItemKey(workItem.key)
+    setActiveView('workitem')
+    window.history.pushState({ workItemId: workItem.id, key: workItem.key }, '', `/browse/${workItem.key}`)
+  }
+
+  const handleBackFromWorkItem = () => {
+    setEditingWorkItemId(null)
+    setUrlWorkItemKey(null)
+    setActiveView('project')
+    window.history.pushState(null, '', '/')
+  }
+
+  const handleNavigateHome = () => {
+    setEditingWorkItemId(null)
+    setUrlWorkItemKey(null)
+    setActiveView('home')
+    window.history.pushState(null, '', '/')
+  }
   const projectSettingQuery = useQuery({
     queryKey: ['project-settings', selectedProjectId],
     queryFn: () => orbitApi.getProjectSettings(selectedProjectId ?? ''),
@@ -360,7 +452,7 @@ function App() {
     },
     onSuccess: (profile) => {
       queryClient.setQueryData(['profile'], profile)
-      document.documentElement.dataset.theme = profile.theme.toLowerCase()
+      applyTheme(profile.theme.toLowerCase())
     },
   })
 
@@ -398,14 +490,9 @@ function App() {
         profile={profileQuery.data}
         logoUrl={workspaceSettingsQuery.data?.logoUrl}
         onCreateClick={selectedProject ? () => setCreateOpen(true) : undefined}
-        onHomeClick={() => setActiveView('home')}
+        onHomeClick={handleNavigateHome}
         onOpenSettings={(section) => { setSettingsSection(section); setActiveView('settings') }}
         onThemeChange={(theme) => themeMutation.mutate(theme)}
-        workspaces={accountWorkspacesQuery.data}
-        currentWorkspaceId={authSession?.workspaceId}
-        switchingWorkspace={workspaceSwitchMutation.isPending}
-        onWorkspaceChange={(workspaceId) => workspaceSwitchMutation.mutate(workspaceId)}
-        onCreateWorkspace={siteCapabilitiesQuery.data?.canCreateWorkspace ? () => setCreateWorkspaceOpen(true) : undefined}
       />
       {workspaceSwitchMutation.isError && (
         <div className="error-banner m-4">{workspaceSwitchMutation.error.message}</div>
@@ -436,16 +523,30 @@ function App() {
             setActiveView('project')
           }}
           activeView={activeView}
-          onHomeClick={() => setActiveView('home')}
+          onHomeClick={handleNavigateHome}
           onOpenSettings={(section) => {
             setSettingsSection(section)
             setActiveView('settings')
           }}
+          workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name}
         />
         
-        <main className="region-middle flex-1 lg:ml-[240px] min-h-[calc(100vh-48px)] bg-white relative">
+        <main className="region-middle flex-1 lg:ml-[240px] min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden">
           {projects.length === 0 ? <ProjectOnboarding /> : <>
-          {activeView === 'home' && <HomeView profile={profileQuery.data} projects={projects} workItems={workItems} onCreate={() => setCreateOpen(true)} onOpenProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }} />}
+          {activeView === 'home' && (
+            <HomeView
+              profile={profileQuery.data}
+              projects={projects}
+              workItems={workItems}
+              workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name ?? 'Orbit Workspace'}
+              workspaces={accountWorkspacesQuery.data}
+              currentWorkspaceId={authSession?.workspaceId}
+              onWorkspaceChange={(id) => workspaceSwitchMutation.mutate(id)}
+              onCreateWorkspace={siteCapabilitiesQuery.data?.canCreateWorkspace ? () => setCreateWorkspaceOpen(true) : undefined}
+              onCreate={() => setCreateOpen(true)}
+              onOpenProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }}
+            />
+          )}
           {activeView === 'settings' && selectedProject && (
             <SettingsView key={settingsSection} project={selectedProject} initialSection={settingsSection} onClose={() => setActiveView('project')} />
           )}
@@ -459,9 +560,10 @@ function App() {
                 profile={profileQuery.data}
                 members={members}
                 priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
-                onBack={() => { setActiveView('project'); setEditingWorkItemId(null) }}
+                onBack={handleBackFromWorkItem}
+                onNavigateHome={handleNavigateHome}
                 onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
-                onOpenWorkItem={(workItem) => setEditingWorkItemId(workItem.id)}
+                onOpenWorkItem={handleOpenWorkItem}
                 sprints={sprints}
               />
             ) : null
@@ -483,10 +585,7 @@ function App() {
                 workItems={workItems}
                 profile={profileQuery.data}
                 members={members}
-                onOpenWorkItem={(workItem) => {
-                  setEditingWorkItemId(workItem.id)
-                  setActiveView('workitem')
-                }}
+                onOpenWorkItem={handleOpenWorkItem}
                 onSwitchTab={(tab) => setActiveTab(tab)}
               />
             )}
@@ -504,7 +603,7 @@ function App() {
                 onReopenSprint={(sprint) => reopenSprintMutation.mutate(sprint)}
                 onAssignToSprint={(workItemId, sprintId) => assignToSprintMutation.mutate({ workItemId, sprintId })}
                 onRemoveFromSprint={(workItemId) => removeFromSprintMutation.mutate(workItemId)}
-                onOpenWorkItem={(workItem) => { setEditingWorkItemId(workItem.id); setActiveView('workitem') }}
+                onOpenWorkItem={handleOpenWorkItem}
                 error={
                   createSprintMutation.error?.message ??
                   startSprintMutation.error?.message ??
@@ -531,7 +630,7 @@ function App() {
                   workItemsLoading={workItemsQuery.isPending}
                   onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
                   onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
-                  onOpen={(workItem) => { setEditingWorkItemId(workItem.id); setActiveView('workitem') }}
+                  onOpen={handleOpenWorkItem}
                 />
               </div>
             )}

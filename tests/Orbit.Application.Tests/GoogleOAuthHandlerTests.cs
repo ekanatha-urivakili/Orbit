@@ -66,21 +66,25 @@ public sealed class GoogleOAuthHandlerTests
     }
 
     [Fact]
-    public async Task Callback_LoginMode_ThrowsWhenNoMatchingAccountExists()
+    public async Task Callback_LoginMode_AutoProvisions_WhenNoMatchingAccountExists()
     {
         var repository = new AuthRepositoryStub();
+        var signUpRepository = new SignUpRepositoryStub();
         var handler = new HandleGoogleCallbackHandler(
             new GoogleOAuthClientStub(),
             new GoogleIdTokenValidatorStub(new VerifiedGoogleIdentity("google-sub-3", "nobody@example.test", true, "Nobody")),
             new PassthroughStateCodec(),
             repository,
-            new SignUpRepositoryStub(),
+            signUpRepository,
             new UnitOfWorkStub(),
             TimeProvider.System);
 
-        var action = () => handler.Handle(new HandleGoogleCallbackCommand("code", "login"), CancellationToken.None);
+        var result = await handler.Handle(new HandleGoogleCallbackCommand("code", "login"), CancellationToken.None);
 
-        await Assert.ThrowsAsync<AuthenticationException>(action);
+        Assert.NotEmpty(result.HandoffCode);
+        Assert.NotNull(signUpRepository.Organization);
+        Assert.NotNull(signUpRepository.Workspace);
+        Assert.Equal("nobody@example.test", signUpRepository.Account!.NormalizedEmail);
     }
 
     [Fact]
@@ -149,6 +153,33 @@ public sealed class GoogleOAuthHandlerTests
         await Assert.ThrowsAsync<AuthenticationException>(action);
     }
 
+    [Fact]
+    public async Task Callback_WithReturnUrlInState_PreservesReturnUrlInResult()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var account = UserAccount.Create("member@example.test", "Member", now);
+        var workspace = Workspace.Create(Guid.CreateVersion7(), "Workspace", now);
+        var identity = ExternalIdentity.Create(account.Id, "https://accounts.google.com", "google-sub-ret", now);
+        var repository = new AuthRepositoryStub();
+        repository.Account = account;
+        repository.ExternalIdentities.Add(identity);
+        repository.Memberships.Add(TenantMembership.CreateForUser(workspace.Id, account.Id, TenantRole.Owner, now));
+
+        var handler = new HandleGoogleCallbackHandler(
+            new GoogleOAuthClientStub(),
+            new GoogleIdTokenValidatorStub(new VerifiedGoogleIdentity("google-sub-ret", "member@example.test", true, "Member")),
+            new PassthroughStateCodec(),
+            repository,
+            new SignUpRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(new HandleGoogleCallbackCommand("code", "login|http://localhost:5800"), CancellationToken.None);
+
+        Assert.NotEmpty(result.HandoffCode);
+        Assert.Equal("http://localhost:5800", result.ReturnUrl);
+    }
+
     private static string HandoffHashForTest(string plainCode)
     {
         using var sha256 = System.Security.Cryptography.SHA256.Create();
@@ -171,22 +202,26 @@ public sealed class GoogleOAuthHandlerTests
 
     private sealed class PassthroughStateCodec : IOAuthStateCodec
     {
-        public string Encode(string mode, DateTimeOffset now, TimeSpan lifetime) => mode;
+        public string Encode(string mode, DateTimeOffset now, TimeSpan lifetime, string? returnUrl = null) =>
+            returnUrl is null ? mode : $"{mode}|{returnUrl}";
 
-        public bool TryDecode(string state, DateTimeOffset now, out string mode)
+        public bool TryDecode(string state, DateTimeOffset now, out string mode, out string? returnUrl)
         {
-            mode = state;
+            var parts = state.Split('|', 2);
+            mode = parts[0];
+            returnUrl = parts.Length > 1 ? parts[1] : null;
             return true;
         }
     }
 
     private sealed class RejectingStateCodec : IOAuthStateCodec
     {
-        public string Encode(string mode, DateTimeOffset now, TimeSpan lifetime) => mode;
+        public string Encode(string mode, DateTimeOffset now, TimeSpan lifetime, string? returnUrl = null) => mode;
 
-        public bool TryDecode(string state, DateTimeOffset now, out string mode)
+        public bool TryDecode(string state, DateTimeOffset now, out string mode, out string? returnUrl)
         {
             mode = string.Empty;
+            returnUrl = null;
             return false;
         }
     }

@@ -248,24 +248,24 @@ export function SearchableSelect<T extends string = string>({
 
   // Variants and sizing
   const sizeClasses = {
-    sm: 'h-7 px-2 py-0.5 text-[10px] rounded-md',
-    md: 'min-h-[30px] px-2.5 py-1.5 text-xs rounded-lg',
-    lg: 'min-h-[34px] px-3 py-2 text-sm rounded-lg',
+    sm: 'h-8 px-2.5 py-1 text-xs rounded-md',
+    md: 'min-h-[34px] px-2.5 py-1.5 text-sm rounded-lg',
+    lg: 'min-h-[38px] px-3 py-2 text-sm rounded-lg',
     xl: 'min-h-[40px] px-3 py-2 text-sm rounded-lg',
   }[size]
 
   const menuTextClasses = {
-    sm: 'text-[10px]',
-    md: 'text-[10px]',
-    lg: 'text-xs',
-    xl: 'text-xs',
+    sm: 'text-xs',
+    md: 'text-sm',
+    lg: 'text-sm',
+    xl: 'text-sm',
   }[size]
 
   const menuDescriptionClasses = {
-    sm: 'text-[9px]',
-    md: 'text-[9px]',
-    lg: 'text-[10px]',
-    xl: 'text-[10px]',
+    sm: 'text-[11px]',
+    md: 'text-xs',
+    lg: 'text-xs',
+    xl: 'text-xs',
   }[size]
 
   const variantClasses = {
