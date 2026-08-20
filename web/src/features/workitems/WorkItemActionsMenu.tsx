@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   FileCode,
   FileJson,
+  FileText,
   MessageSquareShare,
 } from 'lucide-react'
 import { orbitApi } from '../../api/client'
@@ -250,6 +251,20 @@ export function WorkItemActionsMenu({
             onClick={() => closeAndRun(() => exportMutation.mutate('Json'))}
           >
             <FileJson size={15} className="text-gray-400" /> Export JSON
+          </button>
+          <button
+            type="button"
+            className="w-full text-left px-3.5 py-2 flex items-center gap-2.5 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a] text-[#172b4d] dark:text-gray-200 disabled:opacity-50"
+            onClick={() => closeAndRun(() => exportMutation.mutate('Xlsx'))}
+          >
+            <FileSpreadsheet size={15} className="text-gray-400" /> Export Excel (XLSX)
+          </button>
+          <button
+            type="button"
+            className="w-full text-left px-3.5 py-2 flex items-center gap-2.5 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a] text-[#172b4d] dark:text-gray-200 disabled:opacity-50"
+            onClick={() => closeAndRun(() => exportMutation.mutate('Docx'))}
+          >
+            <FileText size={15} className="text-gray-400" /> Export Word (DOCX)
           </button>
 
           <div className="my-1 border-t border-gray-100 dark:border-[#394047]" />
