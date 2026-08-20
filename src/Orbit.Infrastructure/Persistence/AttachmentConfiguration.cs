@@ -23,6 +23,10 @@ internal sealed class AttachmentConfiguration : IEntityTypeConfiguration<Attachm
         builder.Property(attachment => attachment.ObjectKey).HasColumnName("object_key").HasMaxLength(1024).IsRequired();
         builder.Property(attachment => attachment.UploadedByMembershipId).HasColumnName("uploaded_by_membership_id");
         builder.Property(attachment => attachment.UploadedAt).HasColumnName("uploaded_at");
+        builder.Property(attachment => attachment.ScanStatus)
+            .HasColumnName("scan_status").HasConversion<string>().HasMaxLength(16).IsRequired()
+            .HasDefaultValue(AttachmentScanStatus.Pending);
+        builder.Property(attachment => attachment.ScannedAt).HasColumnName("scanned_at");
 
         // Composite FK guards tenant isolation — an attachment cannot reference a work item in another tenant.
         builder.HasOne<WorkItem>()

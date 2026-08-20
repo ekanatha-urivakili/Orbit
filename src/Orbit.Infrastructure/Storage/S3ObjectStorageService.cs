@@ -90,5 +90,24 @@ internal sealed class S3ObjectStorageService : IObjectStorageService, IDisposabl
         }
     }
 
+    public async Task<Stream> OpenReadAsync(string objectKey, CancellationToken cancellationToken)
+    {
+        var response = await _client.GetObjectAsync(_bucketName, objectKey, cancellationToken);
+        return response.ResponseStream;
+    }
+
+    public async Task MoveToQuarantineAsync(string objectKey, CancellationToken cancellationToken)
+    {
+        var quarantineKey = $"quarantine/{objectKey}";
+        await _client.CopyObjectAsync(new CopyObjectRequest
+        {
+            SourceBucket = _bucketName,
+            SourceKey = objectKey,
+            DestinationBucket = _bucketName,
+            DestinationKey = quarantineKey,
+        }, cancellationToken);
+        await _client.DeleteObjectAsync(_bucketName, objectKey, cancellationToken);
+    }
+
     public void Dispose() => _client.Dispose();
 }

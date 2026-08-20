@@ -3,6 +3,7 @@ using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
+using Orbit.Domain.Messaging;
 using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.WorkItems;
@@ -110,7 +111,7 @@ public sealed class ConfirmWorkItemAttachmentHandler(
     ICurrentPrincipal principal,
     IWorkItemRepository workItems,
     IAttachmentRepository attachments,
-    IObjectStorageService storage,
+    IAttachmentScanRequestRepository scanRequests,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<ConfirmWorkItemAttachmentCommand, WorkItemAttachmentDto>
 {
@@ -130,6 +131,7 @@ public sealed class ConfirmWorkItemAttachmentHandler(
             throw new ValidationException("The object key does not belong to this work item.");
         }
 
+        var now = timeProvider.GetUtcNow();
         var attachment = Attachment.Create(
             tenantContext.TenantId,
             workItem.Id,
@@ -138,13 +140,19 @@ public sealed class ConfirmWorkItemAttachmentHandler(
             request.SizeBytes,
             request.ObjectKey,
             principal.MembershipId,
-            timeProvider.GetUtcNow());
+            now);
 
         await attachments.AddAsync(attachment, cancellationToken);
+
+        // Attachment starts Pending: the file is already in MinIO (the client PUT it directly), but
+        // it is not downloadable until AttachmentScanProcessor flips it to Clean.
+        var scanRequest = AttachmentScanRequest.Create(
+            tenantContext.TenantId, workItem.Id, attachment.Id, attachment.ObjectKey, now);
+        await scanRequests.AddAsync(scanRequest, cancellationToken);
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var downloadUrl = storage.CreatePresignedDownloadUrl(attachment.ObjectKey, TimeSpan.FromMinutes(15));
-        return WorkItemAttachmentDto.From(attachment, downloadUrl);
+        return WorkItemAttachmentDto.From(attachment, downloadUrl: null);
     }
 }
 
@@ -177,10 +185,69 @@ public sealed class ListWorkItemAttachmentsHandler(
         var workItemAttachments = await attachments.ListByWorkItemAsync(
             tenantContext.TenantId, request.WorkItemId, cancellationToken);
 
+        // Infected/Failed attachments are excluded outright rather than shown with a withheld
+        // download URL - callers should not learn that a malicious file was ever uploaded.
         return workItemAttachments
+            .Where(attachment => attachment.ScanStatus
+                is AttachmentScanStatus.Pending or AttachmentScanStatus.Clean)
             .Select(attachment => WorkItemAttachmentDto.From(
-                attachment, storage.CreatePresignedDownloadUrl(attachment.ObjectKey, TimeSpan.FromMinutes(15))))
+                attachment,
+                attachment.ScanStatus == AttachmentScanStatus.Clean
+                    ? storage.CreatePresignedDownloadUrl(attachment.ObjectKey, TimeSpan.FromMinutes(15))
+                    : null))
             .ToArray();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Download attachment
+// ---------------------------------------------------------------------------
+
+public sealed record GetWorkItemAttachmentDownloadUrlQuery(Guid WorkItemId, Guid AttachmentId)
+    : IQuery<WorkItemAttachmentDto>;
+
+public sealed class GetWorkItemAttachmentDownloadUrlValidator
+    : AbstractValidator<GetWorkItemAttachmentDownloadUrlQuery>
+{
+    public GetWorkItemAttachmentDownloadUrlValidator()
+    {
+        RuleFor(query => query.WorkItemId).NotEmpty();
+        RuleFor(query => query.AttachmentId).NotEmpty();
+    }
+}
+
+public sealed class GetWorkItemAttachmentDownloadUrlHandler(
+    ITenantContext tenantContext,
+    IWorkItemRepository workItems,
+    IAttachmentRepository attachments,
+    IObjectStorageService storage)
+    : IRequestHandler<GetWorkItemAttachmentDownloadUrlQuery, WorkItemAttachmentDto>
+{
+    public async Task<WorkItemAttachmentDto> Handle(
+        GetWorkItemAttachmentDownloadUrlQuery request, CancellationToken cancellationToken)
+    {
+        _ = await workItems.GetAsync(
+                tenantContext.TenantId, request.WorkItemId, ProjectPermission.View, cancellationToken)
+            ?? throw new NotFoundException("Work item was not found.");
+
+        var attachment = await attachments.GetAsync(
+                tenantContext.TenantId, request.WorkItemId, request.AttachmentId, cancellationToken)
+            ?? throw new NotFoundException("Attachment was not found.");
+
+        // Infected/Failed attachments existence-hide as 404, same as an attachment nobody uploaded -
+        // callers should not learn a malicious file was ever attached here.
+        if (attachment.ScanStatus is AttachmentScanStatus.Infected or AttachmentScanStatus.Failed)
+        {
+            throw new NotFoundException("Attachment was not found.");
+        }
+
+        if (attachment.ScanStatus == AttachmentScanStatus.Pending)
+        {
+            throw new ConflictException("This attachment is still being scanned for malware.");
+        }
+
+        var downloadUrl = storage.CreatePresignedDownloadUrl(attachment.ObjectKey, TimeSpan.FromMinutes(15));
+        return WorkItemAttachmentDto.From(attachment, downloadUrl);
     }
 }
 

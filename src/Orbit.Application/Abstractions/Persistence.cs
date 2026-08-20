@@ -684,6 +684,11 @@ public interface IAttachmentRepository
     Task RemoveAsync(Attachment attachment, CancellationToken cancellationToken);
 }
 
+public interface IAttachmentScanRequestRepository
+{
+    Task AddAsync(AttachmentScanRequest request, CancellationToken cancellationToken);
+}
+
 public interface IWorkItemWatcherRepository
 {
     Task AddAsync(WorkItemWatcher watcher, CancellationToken cancellationToken);

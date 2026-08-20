@@ -18,4 +18,18 @@ public interface IObjectStorageService
     string CreatePresignedDisplayUrl(string objectKey, TimeSpan expiresIn);
 
     Task DeleteAsync(string objectKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Server-side read of the object's bytes - unlike the presigned-URL methods above, this is
+    /// used only by <c>AttachmentScanProcessor</c> to stream the file into the malware scanner; no
+    /// other code path should read attachment bytes through the API/worker process.
+    /// </summary>
+    Task<Stream> OpenReadAsync(string objectKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Moves an object to the quarantine prefix (copy then delete of the original key) after a
+    /// malware scan flags it <c>Infected</c>. Quarantined objects are kept, not deleted outright,
+    /// so an operator can inspect what was uploaded.
+    /// </summary>
+    Task MoveToQuarantineAsync(string objectKey, CancellationToken cancellationToken);
 }

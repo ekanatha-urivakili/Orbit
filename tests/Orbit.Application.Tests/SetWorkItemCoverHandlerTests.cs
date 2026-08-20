@@ -19,6 +19,7 @@ public sealed class SetWorkItemCoverHandlerTests
             DateTimeOffset.UtcNow);
         var attachment = Attachment.Create(
             tenantId, workItem.Id, "cover.png", "image/png", 1024, "object-key", Guid.NewGuid(), DateTimeOffset.UtcNow);
+        attachment.MarkScanned(AttachmentScanStatus.Clean, DateTimeOffset.UtcNow);
         var handler = new SetWorkItemCoverHandler(
             new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem),
             new AttachmentRepositoryStub(attachment), new UnitOfWorkStub(), TimeProvider.System);
@@ -39,6 +40,25 @@ public sealed class SetWorkItemCoverHandlerTests
         var attachment = Attachment.Create(
             tenantId, workItem.Id, "notes.pdf", "application/pdf", 1024, "object-key", Guid.NewGuid(),
             DateTimeOffset.UtcNow);
+        var handler = new SetWorkItemCoverHandler(
+            new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem),
+            new AttachmentRepositoryStub(attachment), new UnitOfWorkStub(), TimeProvider.System);
+
+        var action = () => handler.Handle(
+            new SetWorkItemCoverCommand(workItem.Id, attachment.Id, workItem.Version), CancellationToken.None);
+
+        await Assert.ThrowsAsync<ValidationException>(action);
+    }
+
+    [Fact]
+    public async Task Handle_UnscannedImageAttachment_ThrowsValidationException()
+    {
+        var tenantId = Guid.NewGuid();
+        var workItem = WorkItem.Create(
+            tenantId, Guid.NewGuid(), 1, "ORB", "Cover this card", null, WorkItemType.Task, Priority.Medium,
+            DateTimeOffset.UtcNow);
+        var attachment = Attachment.Create(
+            tenantId, workItem.Id, "cover.png", "image/png", 1024, "object-key", Guid.NewGuid(), DateTimeOffset.UtcNow);
         var handler = new SetWorkItemCoverHandler(
             new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem),
             new AttachmentRepositoryStub(attachment), new UnitOfWorkStub(), TimeProvider.System);

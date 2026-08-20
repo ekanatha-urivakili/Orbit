@@ -52,6 +52,7 @@ public sealed class OrbitDbContext(
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<ServiceAccountCredential> ServiceAccountCredentials => Set<ServiceAccountCredential>();
     public DbSet<OutboxEmailMessage> OutboxEmailMessages => Set<OutboxEmailMessage>();
+    public DbSet<AttachmentScanRequest> AttachmentScanRequests => Set<AttachmentScanRequest>();
     public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
     public DbSet<WorkItemTypeDefinition> WorkItemTypeDefinitions => Set<WorkItemTypeDefinition>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();

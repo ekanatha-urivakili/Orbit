@@ -26,6 +26,33 @@ public sealed class AttachmentTests
         Assert.Equal("tenant/item/key-diagram.png", attachment.ObjectKey);
         Assert.Equal(uploaderId, attachment.UploadedByMembershipId);
         Assert.Equal(now, attachment.UploadedAt);
+        Assert.Equal(AttachmentScanStatus.Pending, attachment.ScanStatus);
+        Assert.Null(attachment.ScannedAt);
+    }
+
+    [Fact]
+    public void MarkScanned_TransitionsFromPendingOnce()
+    {
+        var (tenantId, workItemId, uploaderId) = NewIds();
+        var attachment = Attachment.Create(
+            tenantId, workItemId, "diagram.png", "image/png", 2048, "key", uploaderId, DateTimeOffset.UtcNow);
+        var scannedAt = DateTimeOffset.UtcNow;
+
+        attachment.MarkScanned(AttachmentScanStatus.Clean, scannedAt);
+
+        Assert.Equal(AttachmentScanStatus.Clean, attachment.ScanStatus);
+        Assert.Equal(scannedAt, attachment.ScannedAt);
+        Assert.Throws<DomainException>(() => attachment.MarkScanned(AttachmentScanStatus.Infected, scannedAt));
+    }
+
+    [Fact]
+    public void MarkScanned_RejectsPendingAsResult()
+    {
+        var (tenantId, workItemId, uploaderId) = NewIds();
+        var attachment = Attachment.Create(
+            tenantId, workItemId, "diagram.png", "image/png", 2048, "key", uploaderId, DateTimeOffset.UtcNow);
+
+        Assert.Throws<DomainException>(() => attachment.MarkScanned(AttachmentScanStatus.Pending, DateTimeOffset.UtcNow));
     }
 
     [Fact]

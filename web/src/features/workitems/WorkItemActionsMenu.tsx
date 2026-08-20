@@ -433,7 +433,7 @@ function CoverPickerDialog({
     queryFn: () => orbitApi.listWorkItemAttachments(item.id),
   })
   const images = (attachmentsQuery.data ?? []).filter((attachment: WorkItemAttachment) =>
-    attachment.contentType.startsWith('image/'),
+    attachment.contentType.startsWith('image/') && attachment.scanStatus === 'Clean',
   )
 
   const mutation = useMutation({

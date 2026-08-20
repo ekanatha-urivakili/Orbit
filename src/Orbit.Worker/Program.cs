@@ -12,6 +12,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ITenantContext, WorkerTenantContext>();
 builder.Services.AddScoped<ICurrentPrincipal, WorkerCurrentPrincipal>();
 builder.Services.AddHostedService<OutboxDispatchWorker>();
+builder.Services.AddHostedService<AttachmentScanDispatchWorker>();
 
 // §13.7.2 (ADR-023): exports to the orbit-otel Collector via OTLP. AddSource(OutboxEmailProcessor's
 // ActivitySource) picks up the outbox.email.dispatch spans re-parented under the API's trace via
