@@ -1,4 +1,5 @@
 using MediatR;
+using Orbit.Api.Idempotency;
 using Orbit.Application.Projects;
 
 namespace Orbit.Api.Endpoints;
@@ -30,7 +31,8 @@ public static class ProjectEndpoints
             return Results.Created($"/api/v1/projects/{project.Id}", project);
         })
         .WithName("CreateProject")
-        .WithTags("Projects");
+        .WithTags("Projects")
+        .AddEndpointFilter<IdempotencyKeyFilter>();
 
         return group;
     }

@@ -5,6 +5,7 @@ using Orbit.Domain.Boards;
 using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Idempotency;
 using Orbit.Domain.Messaging;
 using Orbit.Domain.Projects;
 using Orbit.Domain.Settings;
@@ -42,7 +43,8 @@ public sealed class PersistenceSecurityTests
             typeof(CustomFieldDefinition),
             typeof(Attachment),
             typeof(WorkItemComment),
-            typeof(WorkItemWatcher)
+            typeof(WorkItemWatcher),
+            typeof(IdempotencyRecord)
         ];
 
         foreach (var entity in tenantEntities)

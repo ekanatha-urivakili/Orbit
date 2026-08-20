@@ -1,4 +1,5 @@
 using MediatR;
+using Orbit.Api.Idempotency;
 using Orbit.Application.Boards;
 
 namespace Orbit.Api.Endpoints;
@@ -17,7 +18,8 @@ public static class SprintEndpoints
             return Results.Created($"/api/v1/sprints/{sprint.Id}", sprint);
         })
         .WithName("CreateSprint")
-        .WithTags("Sprints");
+        .WithTags("Sprints")
+        .AddEndpointFilter<IdempotencyKeyFilter>();
 
         group.MapGet("/projects/{projectId:guid}/sprints", async (
             Guid projectId,
