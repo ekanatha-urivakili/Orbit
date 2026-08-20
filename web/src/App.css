@@ -132,6 +132,19 @@ h1 { color: var(--ink); font-size: clamp(26px, 3vw, 34px); line-height: 1.15; le
 .move-control svg { width: 25px; height: 25px; padding: 5px; border-radius: 6px; color: #738097; background: #f1f3f7; }
 .empty-column { min-height: 64px; border: 1px dashed #d6dce7; border-radius: 9px; color: #99a2b3; display: grid; place-items: center; font-size: 12px; }
 .board-loading { min-height: 420px; display: grid; place-items: center; color: var(--muted); }
+
+.kanban--lane .kanban-column { min-height: 96px; }
+.kanban--lane .empty-column { min-height: 40px; }
+.swimlane { border: 1px solid #e1e5ed; border-radius: 13px; margin-bottom: 16px; overflow: hidden; }
+.swimlane-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f8f9fb; cursor: pointer; user-select: none; }
+.swimlane-header h3 { margin: 0; font-size: 13px; font-weight: 700; color: #33405c; }
+.swimlane-header .item-count { margin-left: 0; }
+.swimlane-chevron { transition: transform .15s ease; color: #738097; }
+.swimlane-chevron--collapsed { transform: rotate(-90deg); }
+.swimlane-body { padding: 12px; }
+html[data-theme='dark'] .swimlane { border-color: #394047; }
+html[data-theme='dark'] .swimlane-header { background: #22272b; }
+html[data-theme='dark'] .swimlane-header h3 { color: #d1d5db; }
 .error-banner { margin-bottom: 18px; padding: 11px 14px; border: 1px solid #ffc9c1; border-radius: 9px; color: #9d3024; background: #fff1ef; font-size: 13px; }
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 60; padding: 20px; display: grid; place-items: center; background: rgba(13, 20, 35, .52); backdrop-filter: blur(3px); }

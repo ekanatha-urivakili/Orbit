@@ -1,11 +1,15 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Kanban, Pencil, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Kanban, Pencil, Plus, User, X } from 'lucide-react'
 import type { Board, BoardColumn, BoardType, TenantMembership, WipLimitMode, WorkItem, WorkItemStatus } from '../../api/types'
 import { allStatuses, statusMeta } from './constants'
 import { KanbanBoard } from './KanbanBoard'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import { FilterBar } from '../../components/filters/FilterBar'
 import { useWorkItemFilters } from '../../hooks/useWorkItemFilters'
+import { getInitials } from '../../lib/initials'
+
+const UNASSIGNED_LANE = 'unassigned'
+type GroupBy = 'none' | 'assignee'
 
 const statusLabels = Object.fromEntries(
   Object.entries(statusMeta).map(([status, meta]) => [status, meta.label]),
@@ -47,6 +51,8 @@ export function BoardView({
   assigneeChangePending?: boolean
 }) {
   const [editing, setEditing] = useState(false)
+  const [groupBy, setGroupBy] = useState<GroupBy>('none')
+  const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({})
   const { searchTerm, setSearchTerm, fields, activeCount, clearAll, filteredItems: filteredWorkItems } = useWorkItemFilters(
     workItems,
     members,
@@ -55,6 +61,31 @@ export function BoardView({
   )
 
   if (loading || !board) return <div className="board-loading">Loading board…</div>
+
+  const toggleLane = (laneId: string) =>
+    setCollapsedLanes((current) => ({ ...current, [laneId]: !current[laneId] }))
+
+  const membersByUserId = new Map(
+    members.filter((member): member is TenantMembership & { userId: string } => Boolean(member.userId)).map((member) => [member.userId, member]),
+  )
+
+  const lanes =
+    groupBy === 'assignee'
+      ? (() => {
+          const byAssignee = new Map<string, WorkItem[]>()
+          for (const item of filteredWorkItems) {
+            const laneId = item.assigneeUserId ?? UNASSIGNED_LANE
+            const bucket = byAssignee.get(laneId)
+            if (bucket) bucket.push(item)
+            else byAssignee.set(laneId, [item])
+          }
+          const assigned = [...byAssignee.entries()]
+            .filter(([laneId]) => laneId !== UNASSIGNED_LANE)
+            .sort(([a], [b]) => (membersByUserId.get(a)?.displayName ?? '').localeCompare(membersByUserId.get(b)?.displayName ?? ''))
+          const unassigned = byAssignee.get(UNASSIGNED_LANE)
+          return [...assigned, ...(unassigned ? [[UNASSIGNED_LANE, unassigned] as const] : [])]
+        })()
+      : null
 
   const exists = board.version > 0
 
@@ -113,19 +144,77 @@ export function BoardView({
           activeCount={activeCount}
           onClearAll={clearAll}
         />
+        <div className="w-40">
+          <SearchableSelect
+            size="sm"
+            searchable={false}
+            value={groupBy}
+            onChange={(val) => setGroupBy(val as GroupBy)}
+            options={[
+              { value: 'none', label: 'No swimlanes' },
+              { value: 'assignee', label: 'Group by assignee' },
+            ]}
+            aria-label="Group board by"
+          />
+        </div>
       </div>
 
-      <KanbanBoard
-        columns={board.columns}
-        workItems={filteredWorkItems}
-        loading={workItemsLoading}
-        members={members}
-        onStatusChange={onStatusChange}
-        onReorder={onReorder}
-        onOpen={onOpen}
-        onAssigneeChange={onAssigneeChange}
-        assigneeChangePending={assigneeChangePending}
-      />
+      {lanes ? (
+        <div>
+          {lanes.map(([laneId, laneItems]) => {
+            const member = laneId === UNASSIGNED_LANE ? undefined : membersByUserId.get(laneId)
+            const laneName = laneId === UNASSIGNED_LANE ? 'Unassigned' : member?.displayName ?? 'Unknown member'
+            const isCollapsed = Boolean(collapsedLanes[laneId])
+            return (
+              <div key={laneId} className="swimlane">
+                <div className="swimlane-header" onClick={() => toggleLane(laneId)}>
+                  <ChevronDown size={16} className={`swimlane-chevron${isCollapsed ? ' swimlane-chevron--collapsed' : ''}`} />
+                  {laneId === UNASSIGNED_LANE ? (
+                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                      <User size={12} />
+                    </div>
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold" title={laneName}>
+                      {getInitials(laneName)}
+                    </div>
+                  )}
+                  <h3>{laneName}</h3>
+                  <span className="item-count">{laneItems.length}</span>
+                </div>
+                {!isCollapsed && (
+                  <div className="swimlane-body">
+                    <KanbanBoard
+                      columns={board.columns}
+                      workItems={laneItems}
+                      loading={workItemsLoading}
+                      members={members}
+                      onStatusChange={onStatusChange}
+                      onReorder={onReorder}
+                      onOpen={onOpen}
+                      onAssigneeChange={onAssigneeChange}
+                      assigneeChangePending={assigneeChangePending}
+                      compact
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {lanes.length === 0 && <div className="board-loading">No work items match the current filters.</div>}
+        </div>
+      ) : (
+        <KanbanBoard
+          columns={board.columns}
+          workItems={filteredWorkItems}
+          loading={workItemsLoading}
+          members={members}
+          onStatusChange={onStatusChange}
+          onReorder={onReorder}
+          onOpen={onOpen}
+          onAssigneeChange={onAssigneeChange}
+          assigneeChangePending={assigneeChangePending}
+        />
+      )}
     </>
   )
 }

@@ -1,0 +1,154 @@
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent, within } from '@testing-library/react'
+import { BoardView } from './BoardView'
+import type { Board, TenantMembership, WorkItem } from '../../api/types'
+
+function selectGroupBy(label: string) {
+  fireEvent.click(screen.getByLabelText('Group board by'))
+  fireEvent.click(screen.getByRole('option', { name: label }))
+}
+
+function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
+  return {
+    id: 'item-1',
+    projectId: 'project-1',
+    key: 'ORB-1',
+    summary: 'Build feature',
+    description: null,
+    parentId: null,
+    epicName: null,
+    acceptanceCriteria: null,
+    stepsToConduct: null,
+    assigneeUserId: null,
+    developerUserId: null,
+    productOwnerUserId: null,
+    sprintName: null,
+    identifiedOn: null,
+    startDate: null,
+    dueDate: null,
+    teamId: null,
+    storyPoints: null,
+    labels: [],
+    countries: [],
+    attachmentNames: [],
+    type: 'Story',
+    status: 'Backlog',
+    priority: 'High',
+    rank: 1024,
+    isFlagged: false,
+    coverAttachmentId: null,
+    isArchived: false,
+    archivedAt: null,
+    version: 1,
+    createdAt: '2026-08-11T00:00:00Z',
+    updatedAt: '2026-08-11T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function makeMember(overrides: Partial<TenantMembership> = {}): TenantMembership {
+  return {
+    id: 'member-1',
+    userId: 'user-1',
+    issuer: null,
+    subject: null,
+    principalType: 'User',
+    role: 'Member',
+    tier: 'Standard',
+    isActive: true,
+    createdAt: '2026-08-11T00:00:00Z',
+    displayName: 'Ada Lovelace',
+    avatarUrl: null,
+    ...overrides,
+  }
+}
+
+const board: Board = {
+  projectId: 'project-1',
+  name: 'Team Board',
+  type: 'Kanban',
+  version: 1,
+  columns: [
+    { status: 'Backlog', order: 0, wipLimit: null, wipLimitMode: 'Warn' },
+    { status: 'InProgress', order: 1, wipLimit: null, wipLimitMode: 'Warn' },
+    { status: 'Done', order: 2, wipLimit: null, wipLimitMode: 'Warn' },
+  ],
+}
+
+describe('BoardView swimlanes', () => {
+  it('renders a single board with no swimlanes by default', () => {
+    render(
+      <BoardView
+        projectName="Orbit"
+        board={board}
+        loading={false}
+        mutation={{ isPending: false, isError: false, error: null }}
+        onSave={vi.fn()}
+        workItems={[makeItem({ id: 'item-1', summary: 'Item 1' })]}
+        workItemsLoading={false}
+        onStatusChange={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Unassigned')).not.toBeInTheDocument()
+    expect(screen.getByText('Item 1')).toBeInTheDocument()
+  })
+
+  it('groups work items into per-assignee swimlanes, including an Unassigned lane', () => {
+    const ada = makeMember({ id: 'member-1', userId: 'user-1', displayName: 'Ada Lovelace' })
+    render(
+      <BoardView
+        projectName="Orbit"
+        board={board}
+        loading={false}
+        mutation={{ isPending: false, isError: false, error: null }}
+        onSave={vi.fn()}
+        workItems={[
+          makeItem({ id: 'item-1', summary: 'Assigned item', assigneeUserId: 'user-1' }),
+          makeItem({ id: 'item-2', summary: 'Unassigned item', assigneeUserId: null }),
+        ]}
+        workItemsLoading={false}
+        members={[ada]}
+        onStatusChange={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    selectGroupBy('Group by assignee')
+
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument()
+    expect(screen.getByText('Unassigned')).toBeInTheDocument()
+
+    const adaLane = screen.getByText('Ada Lovelace').closest<HTMLElement>('.swimlane')!
+    expect(within(adaLane).getByText('Assigned item')).toBeInTheDocument()
+    expect(within(adaLane).queryByText('Unassigned item')).not.toBeInTheDocument()
+
+    const unassignedLane = screen.getByText('Unassigned').closest<HTMLElement>('.swimlane')!
+    expect(within(unassignedLane).getByText('Unassigned item')).toBeInTheDocument()
+  })
+
+  it('collapses a swimlane body when its header is clicked', () => {
+    const ada = makeMember({ id: 'member-1', userId: 'user-1', displayName: 'Ada Lovelace' })
+    render(
+      <BoardView
+        projectName="Orbit"
+        board={board}
+        loading={false}
+        mutation={{ isPending: false, isError: false, error: null }}
+        onSave={vi.fn()}
+        workItems={[makeItem({ id: 'item-1', summary: 'Assigned item', assigneeUserId: 'user-1' })]}
+        workItemsLoading={false}
+        members={[ada]}
+        onStatusChange={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    selectGroupBy('Group by assignee')
+    expect(screen.getByText('Assigned item')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    expect(screen.queryByText('Assigned item')).not.toBeInTheDocument()
+  })
+})

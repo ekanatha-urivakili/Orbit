@@ -14,6 +14,7 @@ export function KanbanBoard({
   onOpen,
   onAssigneeChange,
   assigneeChangePending = false,
+  compact = false,
 }: {
   columns: readonly BoardColumn[]
   workItems: WorkItem[]
@@ -24,6 +25,7 @@ export function KanbanBoard({
   onOpen?: (workItem: WorkItem) => void
   onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
   assigneeChangePending?: boolean
+  compact?: boolean
 }) {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverColumnStatus, setDragOverColumnStatus] = useState<WorkItemStatus | null>(null)
@@ -57,7 +59,7 @@ export function KanbanBoard({
   }
 
   return (
-    <div className="kanban" aria-label="Kanban board">
+    <div className={`kanban${compact ? ' kanban--lane' : ''}`} aria-label="Kanban board">
       {orderedColumns.map((column) => {
         const columnItems = grouped.get(column.status) ?? []
         const meta = statusMeta[column.status]

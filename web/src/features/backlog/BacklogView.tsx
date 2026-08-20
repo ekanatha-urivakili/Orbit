@@ -87,6 +87,8 @@ export function BacklogView({
   const [backlogCollapsed, setBacklogCollapsed] = useState(false)
   const [closedSectionOpen, setClosedSectionOpen] = useState(false)
   const [reportSprint, setReportSprint] = useState<Sprint | null>(null)
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
   const { searchTerm, setSearchTerm, fields, activeCount, clearAll, matches } = useWorkItemFilters(
     workItems,
     members,
@@ -96,6 +98,51 @@ export function BacklogView({
 
   const toggleSprintCollapse = (sprintId: string) =>
     setCollapsedSprints((curr) => ({ ...curr, [sprintId]: !curr[sprintId] }))
+
+  const assignableSprintIds = new Set(assignableSprints.map((sprint) => sprint.id))
+
+  const handleItemDragStart = (e: React.DragEvent, itemId: string) => {
+    e.dataTransfer.setData('text/plain', itemId)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggedItemId(itemId)
+  }
+
+  const handleItemDragEnd = () => {
+    setDraggedItemId(null)
+    setDragOverTarget(null)
+  }
+
+  const handleSprintDragOver = (e: React.DragEvent, sprint: Sprint) => {
+    if (!draggedItemId || !assignableSprintIds.has(sprint.id) || sprint.workItemIds.includes(draggedItemId)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverTarget(sprint.id)
+  }
+
+  const handleSprintDrop = (e: React.DragEvent, sprint: Sprint) => {
+    e.preventDefault()
+    const itemId = e.dataTransfer.getData('text/plain') || draggedItemId
+    setDragOverTarget(null)
+    setDraggedItemId(null)
+    if (!itemId || !assignableSprintIds.has(sprint.id) || sprint.workItemIds.includes(itemId)) return
+    onAssignToSprint(itemId, sprint.id)
+  }
+
+  const handleBacklogDragOver = (e: React.DragEvent) => {
+    if (!draggedItemId || !assignedItemIds.has(draggedItemId)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverTarget('backlog')
+  }
+
+  const handleBacklogDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const itemId = e.dataTransfer.getData('text/plain') || draggedItemId
+    setDragOverTarget(null)
+    setDraggedItemId(null)
+    if (!itemId || !assignedItemIds.has(itemId)) return
+    onRemoveFromSprint(itemId)
+  }
 
   const matchesFilters = matches
 
@@ -197,8 +244,16 @@ export function BacklogView({
         const sprintStatusCounts = groupWorkItemsByStatus(trackedStatuses, sprintItems)
         const isCollapsed = Boolean(collapsedSprints[sprint.id])
 
+        const isDropTarget = dragOverTarget === sprint.id
+
         return (
-          <div key={sprint.id} className="bg-gray-50 rounded-lg border border-gray-200 mb-8 overflow-hidden">
+          <div
+            key={sprint.id}
+            onDragOver={(e) => handleSprintDragOver(e, sprint)}
+            onDragLeave={() => setDragOverTarget((curr) => (curr === sprint.id ? null : curr))}
+            onDrop={(e) => handleSprintDrop(e, sprint)}
+            className={`bg-gray-50 rounded-lg border mb-8 overflow-hidden transition-colors ${isDropTarget ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
+          >
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <button onClick={() => toggleSprintCollapse(sprint.id)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle sprint section">
@@ -271,7 +326,13 @@ export function BacklogView({
             {!isCollapsed && (
               <div className="bg-white">
                 {sprintItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group transition-colors">
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={(e) => handleItemDragStart(e, item.id)}
+                    onDragEnd={handleItemDragEnd}
+                    className={`flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group transition-colors cursor-grab active:cursor-grabbing ${draggedItemId === item.id ? 'opacity-40' : ''}`}
+                  >
                     <WorkItemTypeIcon type={item.type} size={18} />
                     <a {...openLink(item)} className="text-sm text-blue-700 w-16 hover:underline shrink-0">
                       {item.key}
@@ -302,7 +363,7 @@ export function BacklogView({
                   </div>
                 ))}
                 {sprintItems.length === 0 && (
-                  <div className="px-4 py-6 text-center text-gray-500 text-sm border-b border-gray-100">
+                  <div className={`px-4 py-6 text-center text-sm border-b border-gray-100 ${isDropTarget ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
                     Drag or move backlog items in to plan this sprint.
                   </div>
                 )}
@@ -348,7 +409,12 @@ export function BacklogView({
         </div>
       )}
 
-      <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+      <div
+        onDragOver={handleBacklogDragOver}
+        onDragLeave={() => setDragOverTarget((curr) => (curr === 'backlog' ? null : curr))}
+        onDrop={handleBacklogDrop}
+        className={`bg-gray-50 rounded-lg border overflow-hidden transition-colors ${dragOverTarget === 'backlog' ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
+      >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <button onClick={() => setBacklogCollapsed(!backlogCollapsed)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle backlog section">
@@ -374,7 +440,13 @@ export function BacklogView({
         {!backlogCollapsed && (
           <div className="bg-white">
             {backlogItems.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group transition-colors">
+              <div
+                key={item.id}
+                draggable
+                onDragStart={(e) => handleItemDragStart(e, item.id)}
+                onDragEnd={handleItemDragEnd}
+                className={`flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group transition-colors cursor-grab active:cursor-grabbing ${draggedItemId === item.id ? 'opacity-40' : ''}`}
+              >
                 <WorkItemTypeIcon type={item.type} size={18} />
                 <a {...openLink(item)} className="text-sm text-blue-700 w-16 hover:underline shrink-0">
                   {item.key}
