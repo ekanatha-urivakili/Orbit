@@ -56,6 +56,7 @@ public sealed class OrbitDbContext(
     public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
     public DbSet<WorkItemTypeDefinition> WorkItemTypeDefinitions => Set<WorkItemTypeDefinition>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
+    public DbSet<WorkItemCustomFieldValue> WorkItemCustomFieldValues => Set<WorkItemCustomFieldValue>();
     public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();
     public DbSet<WorkItemHistoryEntry> WorkItemHistoryEntries => Set<WorkItemHistoryEntry>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
@@ -103,6 +104,8 @@ public sealed class OrbitDbContext(
             .HasQueryFilter(definition => definition.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<CustomFieldDefinition>()
             .HasQueryFilter(definition => definition.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkItemCustomFieldValue>()
+            .HasQueryFilter(value => value.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkItemComment>()
             .HasQueryFilter(comment => comment.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkItemHistoryEntry>()
@@ -111,6 +114,8 @@ public sealed class OrbitDbContext(
             .HasQueryFilter(attachment => attachment.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkItemWatcher>()
             .HasQueryFilter(watcher => watcher.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<WorkItemCustomFieldValue>()
+            .HasQueryFilter(value => value.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkItemVote>()
             .HasQueryFilter(vote => vote.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkItemWorklog>()

@@ -119,6 +119,16 @@ public interface ICustomFieldRepository
         Guid tenantId, Guid projectId, CancellationToken cancellationToken);
 }
 
+public interface IWorkItemCustomFieldValueRepository
+{
+    Task<WorkItemCustomFieldValue?> GetAsync(
+        Guid tenantId, Guid workItemId, Guid customFieldDefinitionId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<WorkItemCustomFieldValue>> ListByWorkItemAsync(
+        Guid tenantId, Guid workItemId, CancellationToken cancellationToken);
+    Task AddAsync(WorkItemCustomFieldValue value, CancellationToken cancellationToken);
+    Task RemoveAsync(WorkItemCustomFieldValue value, CancellationToken cancellationToken);
+}
+
 public sealed record PasswordHash(
     string Value,
     string Algorithm,

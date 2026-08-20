@@ -188,6 +188,11 @@ export interface CustomFieldDefinition {
   choiceOptions: CustomFieldChoiceOption[]
 }
 
+export interface WorkItemCustomFieldValue {
+  customFieldDefinitionId: string
+  values: string[]
+}
+
 export interface CreateWorkItemInput {
   projectId: string
   summary: string

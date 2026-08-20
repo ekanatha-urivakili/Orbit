@@ -33,10 +33,10 @@ public sealed class CustomFieldChoiceOption
 }
 
 /// <summary>
-/// A project-owned, administrator-created field definition. Second slice of the configurability
-/// engine (ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md §13.5 step 6): definitions and choice options
-/// only - not yet wired into work-item creation/storage, screens, or query projections, unlike the
-/// stable <see cref="WorkItemTypeDefinition"/> registry it's modeled on.
+/// A project-owned, administrator-created field definition (ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md
+/// §13.5 step 6). Defines the schema; <c>WorkItemCustomFieldValue</c> holds the per-work-item
+/// values. Screens (which fields show for which work item type) and query projections are not
+/// wired yet.
 /// </summary>
 public sealed class CustomFieldDefinition
 {

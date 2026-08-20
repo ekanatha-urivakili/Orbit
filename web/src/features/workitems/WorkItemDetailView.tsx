@@ -20,6 +20,7 @@ import { LabelsInput } from '../../components/form/LabelsInput'
 import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemComments } from './WorkItemComments'
 import { WorkItemAttachments } from './WorkItemAttachments'
+import { WorkItemCustomFields } from './WorkItemCustomFields'
 import { WorkItemSubtasks } from './WorkItemSubtasks'
 import { WorkItemLinkedItems } from './WorkItemLinkedItems'
 import { WorkItemWorklogSection } from './WorkItemWorklogSection'
@@ -716,6 +717,7 @@ export function WorkItemDetailView({
           </div>
 
           <WorkItemAttachments workItemId={item.id} members={members} />
+          <WorkItemCustomFields workItemId={item.id} projectId={item.projectId} />
           {project && (
             <WorkItemSubtasks
               parent={item}

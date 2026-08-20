@@ -366,6 +366,28 @@ public static class WorkItemEndpoints
             .WithTags("Work items");
 
         // ------------------------------------------------------------------
+        // Custom field values
+        // ------------------------------------------------------------------
+
+        group.MapGet("/work-items/{workItemId:guid}/custom-field-values", async (
+            Guid workItemId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new GetWorkItemCustomFieldValuesQuery(workItemId), cancellationToken)))
+            .WithName("GetWorkItemCustomFieldValues")
+            .WithTags("Work items");
+
+        group.MapPut("/work-items/{workItemId:guid}/custom-field-values", async (
+            Guid workItemId,
+            IReadOnlyList<CustomFieldValueInput> request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(
+                new SetWorkItemCustomFieldValuesCommand(workItemId, request), cancellationToken)))
+            .WithName("SetWorkItemCustomFieldValues")
+            .WithTags("Work items");
+
+        // ------------------------------------------------------------------
         // Attachments
         // ------------------------------------------------------------------
 

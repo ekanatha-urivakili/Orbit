@@ -46,6 +46,7 @@ import type {
   CustomFieldDefinition,
   CustomFieldChoiceOptionInput,
   CustomFieldType,
+  WorkItemCustomFieldValue,
 } from './types'
 import { tenantStorageKey, withAuthHeader } from './auth'
 
@@ -142,6 +143,13 @@ export const orbitApi = {
         }),
       },
     ),
+  listWorkItemCustomFieldValues: (workItemId: string) =>
+    request<WorkItemCustomFieldValue[]>(`/work-items/${encodeURIComponent(workItemId)}/custom-field-values`),
+  setWorkItemCustomFieldValues: (workItemId: string, values: WorkItemCustomFieldValue[]) =>
+    request<WorkItemCustomFieldValue[]>(`/work-items/${encodeURIComponent(workItemId)}/custom-field-values`, {
+      method: 'PUT',
+      body: JSON.stringify(values),
+    }),
   listWorkItems: (projectId: string, skip = 0, take = 200) =>
     request<PagedResult<WorkItem>>(
       `/work-items?projectId=${encodeURIComponent(projectId)}&skip=${skip}&take=${take}`,
