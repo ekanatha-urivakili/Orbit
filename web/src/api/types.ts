@@ -74,7 +74,7 @@ export interface WorkItemWorklog {
   createdAt: string
 }
 
-export type WorkItemExportFormat = 'Csv' | 'Xml' | 'Json'
+export type WorkItemExportFormat = 'Csv' | 'Xml' | 'Json' | 'Xlsx' | 'Docx'
 
 export interface WorkItemLink {
   id: string

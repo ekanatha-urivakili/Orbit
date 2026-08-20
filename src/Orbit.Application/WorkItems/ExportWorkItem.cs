@@ -1,6 +1,10 @@
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
+using ClosedXML.Excel;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 using FluentValidation;
 using MediatR;
 using Orbit.Application.Abstractions;
@@ -14,6 +18,8 @@ public enum WorkItemExportFormat
     Csv,
     Xml,
     Json,
+    Xlsx,
+    Docx,
 }
 
 public sealed record WorkItemExportResult(string FileName, string ContentType, byte[] Content);
@@ -50,6 +56,14 @@ public sealed class ExportWorkItemHandler(
             WorkItemExportFormat.Json => new WorkItemExportResult(
                 $"{dto.Key}.json", "application/json",
                 JsonSerializer.SerializeToUtf8Bytes(dto, new JsonSerializerOptions { WriteIndented = true })),
+            WorkItemExportFormat.Xlsx => new WorkItemExportResult(
+                $"{dto.Key}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                BuildXlsx(dto)),
+            WorkItemExportFormat.Docx => new WorkItemExportResult(
+                $"{dto.Key}.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                BuildDocx(dto)),
             _ => throw new ValidationException("Unsupported export format."),
         };
     }
@@ -97,4 +111,89 @@ public sealed class ExportWorkItemHandler(
                 new XElement("Labels", dto.Labels.Select(label => new XElement("Label", label))),
                 new XElement("CreatedAt", dto.CreatedAt.ToString("O")),
                 new XElement("UpdatedAt", dto.UpdatedAt.ToString("O"))));
+
+    private static byte[] BuildXlsx(WorkItemDto dto)
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Work Item");
+
+        string[] headers = ["Key", "Type", "Status", "Priority", "Summary", "Description", "Labels", "CreatedAt", "UpdatedAt"];
+        for (var column = 0; column < headers.Length; column++)
+        {
+            var cell = worksheet.Cell(1, column + 1);
+            cell.Value = headers[column];
+            cell.Style.Font.Bold = true;
+        }
+
+        worksheet.Cell(2, 1).Value = dto.Key;
+        worksheet.Cell(2, 2).Value = dto.Type.ToString();
+        worksheet.Cell(2, 3).Value = dto.Status.ToString();
+        worksheet.Cell(2, 4).Value = dto.Priority.ToString();
+        worksheet.Cell(2, 5).Value = dto.Summary;
+        worksheet.Cell(2, 6).Value = dto.Description ?? string.Empty;
+        worksheet.Cell(2, 7).Value = string.Join("; ", dto.Labels);
+        worksheet.Cell(2, 8).Value = dto.CreatedAt.ToString("O");
+        worksheet.Cell(2, 9).Value = dto.UpdatedAt.ToString("O");
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    private static byte[] BuildDocx(WorkItemDto dto)
+    {
+        using var stream = new MemoryStream();
+        using (var document = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = document.AddMainDocumentPart();
+            mainPart.Document = new Document();
+            var body = mainPart.Document.AppendChild(new Body());
+
+            body.AppendChild(new Paragraph(new Run(new Text($"{dto.Key}: {dto.Summary}")
+            {
+                Space = SpaceProcessingModeValues.Preserve,
+            }))
+            {
+                ParagraphProperties = new ParagraphProperties(
+                    new ParagraphStyleId { Val = "Heading1" }),
+            });
+
+            (string Label, string Value)[] fields =
+            [
+                ("Type", dto.Type.ToString()),
+                ("Status", dto.Status.ToString()),
+                ("Priority", dto.Priority.ToString()),
+                ("Labels", string.Join(", ", dto.Labels)),
+                ("Created At", dto.CreatedAt.ToString("O")),
+                ("Updated At", dto.UpdatedAt.ToString("O")),
+            ];
+
+            foreach (var (label, value) in fields)
+            {
+                body.AppendChild(new Paragraph(new Run(new Text($"{label}: {value}")
+                {
+                    Space = SpaceProcessingModeValues.Preserve,
+                })));
+            }
+
+            body.AppendChild(new Paragraph(new Run(new Text("Description")
+            {
+                Space = SpaceProcessingModeValues.Preserve,
+            }))
+            {
+                ParagraphProperties = new ParagraphProperties(
+                    new ParagraphStyleId { Val = "Heading2" }),
+            });
+            body.AppendChild(new Paragraph(new Run(new Text(dto.Description ?? string.Empty)
+            {
+                Space = SpaceProcessingModeValues.Preserve,
+            })));
+
+            mainPart.Document.Save();
+        }
+
+        return stream.ToArray();
+    }
 }
