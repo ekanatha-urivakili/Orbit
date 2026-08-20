@@ -7,18 +7,41 @@ public enum CustomFieldType
     Text,
     Number,
     Date,
+    SingleChoice,
+    MultiChoice,
     Checkbox
 }
 
+public sealed record CustomFieldChoiceOptionInput(Guid? Id, string Label);
+
+public sealed class CustomFieldChoiceOption
+{
+    private CustomFieldChoiceOption()
+    {
+    }
+
+    internal CustomFieldChoiceOption(Guid id, string label, int order)
+    {
+        Id = id;
+        Label = label;
+        Order = order;
+    }
+
+    public Guid Id { get; private set; }
+    public string Label { get; private set; } = string.Empty;
+    public int Order { get; private set; }
+}
+
 /// <summary>
-/// A tenant-owned, administrator-created field definition. First slice of the configurability
-/// engine (ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md §13.5 step 6): definitions only - not yet wired
-/// into work-item creation/storage, screens, or query projections, unlike the stable
-/// <see cref="WorkItemTypeDefinition"/> registry it's modeled on. Select-style field types wait on
-/// the companion choice-options subsystem the same architecture step calls out separately.
+/// A project-owned, administrator-created field definition. Second slice of the configurability
+/// engine (ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md §13.5 step 6): definitions and choice options
+/// only - not yet wired into work-item creation/storage, screens, or query projections, unlike the
+/// stable <see cref="WorkItemTypeDefinition"/> registry it's modeled on.
 /// </summary>
 public sealed class CustomFieldDefinition
 {
+    private readonly List<CustomFieldChoiceOption> _choiceOptions = [];
+
     private CustomFieldDefinition()
     {
     }
@@ -26,6 +49,7 @@ public sealed class CustomFieldDefinition
     private CustomFieldDefinition(
         Guid id,
         Guid tenantId,
+        Guid projectId,
         string key,
         string label,
         CustomFieldType fieldType,
@@ -35,6 +59,7 @@ public sealed class CustomFieldDefinition
     {
         Id = id;
         TenantId = tenantId;
+        ProjectId = projectId;
         Key = key;
         Label = label;
         FieldType = fieldType;
@@ -48,6 +73,7 @@ public sealed class CustomFieldDefinition
 
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
+    public Guid ProjectId { get; private set; }
     public string Key { get; private set; } = string.Empty;
     public string Label { get; private set; } = string.Empty;
     public CustomFieldType FieldType { get; private set; }
@@ -57,21 +83,24 @@ public sealed class CustomFieldDefinition
     public long Version { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+    public IReadOnlyList<CustomFieldChoiceOption> ChoiceOptions => _choiceOptions;
 
     public static string NormalizeKey(string key) => key.Trim().ToLowerInvariant();
 
     public static CustomFieldDefinition Create(
         Guid tenantId,
+        Guid projectId,
         string key,
         string label,
         CustomFieldType fieldType,
         bool required,
         int order,
+        IReadOnlyList<CustomFieldChoiceOptionInput> choiceOptions,
         DateTimeOffset now)
     {
-        if (tenantId == Guid.Empty)
+        if (tenantId == Guid.Empty || projectId == Guid.Empty)
         {
-            throw new DomainException("Tenant id is required.");
+            throw new DomainException("Tenant and project ids are required.");
         }
 
         var normalizedKey = NormalizeKey(key);
@@ -79,11 +108,19 @@ public sealed class CustomFieldDefinition
         ValidateLabel(label);
         ValidateOrder(order);
 
-        return new CustomFieldDefinition(
-            Guid.CreateVersion7(), tenantId, normalizedKey, label.Trim(), fieldType, required, order, now);
+        var definition = new CustomFieldDefinition(
+            Guid.CreateVersion7(), tenantId, projectId, normalizedKey, label.Trim(), fieldType, required, order, now);
+        definition.ReplaceChoiceOptions(choiceOptions);
+        return definition;
     }
 
-    public void Update(string label, bool required, int order, bool enabled, DateTimeOffset now)
+    public void Update(
+        string label,
+        bool required,
+        int order,
+        bool enabled,
+        IReadOnlyList<CustomFieldChoiceOptionInput> choiceOptions,
+        DateTimeOffset now)
     {
         ValidateLabel(label);
         ValidateOrder(order);
@@ -92,8 +129,42 @@ public sealed class CustomFieldDefinition
         Required = required;
         Order = order;
         Enabled = enabled;
+        ReplaceChoiceOptions(choiceOptions);
         Version++;
         UpdatedAt = now;
+    }
+
+    private void ReplaceChoiceOptions(IReadOnlyList<CustomFieldChoiceOptionInput> options)
+    {
+        var isChoiceType = FieldType is CustomFieldType.SingleChoice or CustomFieldType.MultiChoice;
+        if (!isChoiceType)
+        {
+            if (options.Count > 0)
+            {
+                throw new DomainException("Only single-choice or multi-choice fields may have choice options.");
+            }
+
+            _choiceOptions.Clear();
+            return;
+        }
+
+        if (options.Count == 0)
+        {
+            throw new DomainException("A single-choice or multi-choice field needs at least one option.");
+        }
+
+        var existingIds = _choiceOptions.Select(option => option.Id).ToHashSet();
+        var replacement = new List<CustomFieldChoiceOption>();
+        for (var index = 0; index < options.Count; index++)
+        {
+            var input = options[index];
+            ValidateChoiceLabel(input.Label);
+            var id = input.Id is { } existingId && existingIds.Contains(existingId) ? existingId : Guid.CreateVersion7();
+            replacement.Add(new CustomFieldChoiceOption(id, input.Label.Trim(), index));
+        }
+
+        _choiceOptions.Clear();
+        _choiceOptions.AddRange(replacement);
     }
 
     private static void ValidateKey(string key)
@@ -109,6 +180,14 @@ public sealed class CustomFieldDefinition
         if (label.Trim().Length is < 2 or > 80)
         {
             throw new DomainException("Field label must contain 2 to 80 characters.");
+        }
+    }
+
+    private static void ValidateChoiceLabel(string label)
+    {
+        if (label.Trim().Length is < 1 or > 80)
+        {
+            throw new DomainException("Choice option label must contain 1 to 80 characters.");
         }
     }
 
