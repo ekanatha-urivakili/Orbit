@@ -1,9 +1,15 @@
 import { useState } from 'react'
 import { ArrowDown, ArrowUp, Kanban, Pencil, Plus, X } from 'lucide-react'
-import type { Board, BoardColumn, BoardType, WipLimitMode, WorkItem, WorkItemStatus } from '../../api/types'
+import type { Board, BoardColumn, BoardType, TenantMembership, WipLimitMode, WorkItem, WorkItemStatus } from '../../api/types'
 import { allStatuses, statusMeta } from './constants'
 import { KanbanBoard } from './KanbanBoard'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { FilterBar } from '../../components/filters/FilterBar'
+import { useWorkItemFilters } from '../../hooks/useWorkItemFilters'
+
+const statusLabels = Object.fromEntries(
+  Object.entries(statusMeta).map(([status, meta]) => [status, meta.label]),
+) as Record<WorkItemStatus, string>
 
 interface MutationShape {
   isPending: boolean
@@ -19,9 +25,12 @@ export function BoardView({
   onSave,
   workItems,
   workItemsLoading,
+  members = [],
   onStatusChange,
   onReorder,
   onOpen,
+  onAssigneeChange,
+  assigneeChangePending = false,
 }: {
   projectName: string
   board?: Board
@@ -30,11 +39,20 @@ export function BoardView({
   onSave: (input: { name: string; type: BoardType; columns: BoardColumn[] }) => void
   workItems: WorkItem[]
   workItemsLoading: boolean
+  members?: TenantMembership[]
   onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
   onReorder: (workItem: WorkItem, neighbors: { beforeId: string | null; afterId: string | null }) => void
   onOpen?: (workItem: WorkItem) => void
+  onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
+  assigneeChangePending?: boolean
 }) {
   const [editing, setEditing] = useState(false)
+  const { searchTerm, setSearchTerm, fields, activeCount, clearAll, filteredItems: filteredWorkItems } = useWorkItemFilters(
+    workItems,
+    members,
+    statusLabels,
+    {},
+  )
 
   if (loading || !board) return <div className="board-loading">Loading board…</div>
 
@@ -78,18 +96,35 @@ export function BoardView({
           </div>
           <p className="subtitle">{board.type} board</p>
         </div>
-        <button className="secondary-button" onClick={() => setEditing(true)}>
-          <Pencil size={14} /> Edit board
-        </button>
+        <div className="flex items-center gap-4">
+          <button className="secondary-button" onClick={() => setEditing(true)}>
+            <Pencil size={14} /> Edit board
+          </button>
+        </div>
       </div>
       {mutation.isError && <div className="error-banner">{mutation.error?.message}</div>}
+
+      <div className="flex flex-wrap items-center gap-4 mb-6 mt-4">
+        <FilterBar
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Search board"
+          fields={fields}
+          activeCount={activeCount}
+          onClearAll={clearAll}
+        />
+      </div>
+
       <KanbanBoard
         columns={board.columns}
-        workItems={workItems}
+        workItems={filteredWorkItems}
         loading={workItemsLoading}
+        members={members}
         onStatusChange={onStatusChange}
         onReorder={onReorder}
         onOpen={onOpen}
+        onAssigneeChange={onAssigneeChange}
+        assigneeChangePending={assigneeChangePending}
       />
     </>
   )

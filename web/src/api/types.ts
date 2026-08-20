@@ -41,6 +41,7 @@ export interface WorkItem {
   sprintName: string | null
   identifiedOn: string | null
   startDate: string | null
+  dueDate: string | null
   teamId: string | null
   storyPoints: number | null
   labels: string[]
@@ -203,6 +204,7 @@ export interface CreateWorkItemInput {
   sprintName?: string | null
   identifiedOn?: string | null
   startDate?: string | null
+  dueDate?: string | null
   teamId?: string | null
   storyPoints?: number | null
   labels?: string[]
@@ -224,6 +226,7 @@ export interface UpdateWorkItemInput {
   sprintName?: string | null
   identifiedOn?: string | null
   startDate?: string | null
+  dueDate?: string | null
   teamId?: string | null
   storyPoints?: number | null
   labels?: string[]

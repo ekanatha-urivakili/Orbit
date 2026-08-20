@@ -34,9 +34,19 @@ export function Header({ online, profile, logoUrl, onCreateClick, onHomeClick, o
       </div>
 
       <div className="flex-1 flex items-center justify-center max-w-2xl px-4 gap-3">
-        <label className="relative flex items-center w-full bg-white/20 hover:bg-white/30 rounded-md h-8 transition-colors">
+        <label className="relative flex items-center w-full bg-white/20 hover:bg-white/30 rounded-md h-8 transition-colors cursor-text">
           <Search size={15} className="absolute left-2.5 text-white/80" />
-          <input className="w-full h-full pl-8 pr-3 bg-transparent text-sm text-white placeholder-white/80 focus:outline-none" placeholder="Search Orbit (issues, spaces, boards)" />
+          <input
+            readOnly
+            onFocus={(event) => {
+              event.target.blur()
+              window.dispatchEvent(new CustomEvent('orbit:open-command-palette'))
+            }}
+            className="w-full h-full pl-8 pr-3 bg-transparent text-sm text-white placeholder-white/80 focus:outline-none cursor-text"
+            placeholder="Search Orbit (issues, spaces, boards)"
+            aria-label="Search Orbit"
+          />
+          <kbd className="absolute right-2.5 text-[10px] text-white/70 border border-white/30 rounded px-1 py-0.5 pointer-events-none">⌘K</kbd>
         </label>
         {onCreateClick && <button onClick={onCreateClick} className="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded font-semibold text-xs shadow-sm whitespace-nowrap">+ Create</button>}
       </div>

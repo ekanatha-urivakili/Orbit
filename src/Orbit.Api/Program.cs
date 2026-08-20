@@ -137,6 +137,14 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("auth", context => CreateRateLimitPartition(
         context, "auth", context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         permitLimit: 20, TimeSpan.FromMinutes(1)));
+    options.AddPolicy("api", context => CreateRateLimitPartition(
+        context,
+        "api",
+        context.User.FindFirst("sub")?.Value is { } subject
+            ? $"{subject}:{context.User.FindFirst("tenant_id")?.Value ?? "unknown"}"
+            : context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        permitLimit: 120,
+        TimeSpan.FromMinutes(1)));
     // Slack webhook posts are external-service side effects (message sends); throttle
     // per authenticated user to prevent channel spam from a compromised/misused token.
     options.AddPolicy("slack-share", context => CreateRateLimitPartition(
@@ -252,8 +260,8 @@ app.Use(async (context, next) =>
 });
 
 app.UseCors();
-app.UseRateLimiter();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.UseMiddleware<TenantTransactionMiddleware>();
 
@@ -278,6 +286,7 @@ app.MapGroup("/api/v1").MapGoogleOAuthEndpoints();
 app.MapGroup("/api/v1").MapInvitationAcceptanceEndpoints();
 
 var api = app.MapGroup("/api/v1");
+api.RequireRateLimiting("api");
 if (app.Environment.IsProduction() || !app.Configuration.GetValue<bool>("Tenancy:AllowHeaderTenant"))
 {
     api.RequireAuthorization();

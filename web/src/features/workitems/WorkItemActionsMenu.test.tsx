@@ -39,6 +39,7 @@ function buildWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
     sprintName: null,
     identifiedOn: null,
     startDate: null,
+    dueDate: null,
     teamId: null,
     storyPoints: null,
     labels: [],

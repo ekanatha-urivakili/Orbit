@@ -47,6 +47,7 @@ public static class WorkItemEndpoints
                 request.SprintName,
                 request.IdentifiedOn,
                 request.StartDate,
+                request.DueDate,
                 request.TeamId,
                 request.StoryPoints,
                 request.Labels,
@@ -87,6 +88,7 @@ public static class WorkItemEndpoints
                 request.SprintName,
                 request.IdentifiedOn,
                 request.StartDate,
+                request.DueDate,
                 request.TeamId,
                 request.StoryPoints,
                 request.Labels,
@@ -98,6 +100,28 @@ public static class WorkItemEndpoints
             return Results.Ok(workItem);
         })
         .WithName("UpdateWorkItem")
+        .WithTags("Work items");
+
+        group.MapPatch("/work-items/{workItemId:guid}/assignee", async (
+            Guid workItemId,
+            ChangeWorkItemAssigneeRequest request,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var workItem = await sender.Send(
+                new ChangeWorkItemAssigneeCommand(workItemId, request.AssigneeUserId, expectedVersion),
+                cancellationToken);
+            httpResponse.Headers.ETag = $"\"{workItem.Version}\"";
+            return Results.Ok(workItem);
+        })
+        .WithName("ChangeWorkItemAssignee")
         .WithTags("Work items");
 
         group.MapPatch("/work-items/{workItemId:guid}/status", async (
@@ -683,6 +707,7 @@ public static class WorkItemEndpoints
         string? SprintName,
         string? IdentifiedOn,
         DateOnly? StartDate,
+        DateOnly? DueDate,
         Guid? TeamId,
         decimal? StoryPoints,
         string[]? Labels,
@@ -703,6 +728,7 @@ public static class WorkItemEndpoints
         string? SprintName,
         string? IdentifiedOn,
         DateOnly? StartDate,
+        DateOnly? DueDate,
         Guid? TeamId,
         decimal? StoryPoints,
         string[]? Labels,
@@ -710,6 +736,8 @@ public static class WorkItemEndpoints
         string[]? AttachmentNames);
 
     public sealed record ChangeStatusRequest(WorkItemStatus Status);
+
+    public sealed record ChangeWorkItemAssigneeRequest(Guid? AssigneeUserId);
 
     public sealed record ChangeWorkItemTypeRequest(WorkItemType Type);
 

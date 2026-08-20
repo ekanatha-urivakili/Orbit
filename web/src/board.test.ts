@@ -18,6 +18,7 @@ const item: WorkItem = {
   sprintName: null,
   identifiedOn: null,
   startDate: null,
+  dueDate: null,
   teamId: null,
   storyPoints: null,
   labels: [],

@@ -1,20 +1,21 @@
 import { useState } from 'react'
-import { ChevronDown, Search, Filter, LineChart, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight } from 'lucide-react'
+import { ChevronDown, LineChart, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight } from 'lucide-react'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { groupWorkItemsByStatus } from '../../board'
 import { getInitials } from '../../lib/initials'
 import { SprintReportDialog } from './SprintReportDialog'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemTypeIcon } from '../workitems/typeIcons'
+import { FilterBar } from '../../components/filters/FilterBar'
+import { useWorkItemFilters } from '../../hooks/useWorkItemFilters'
+import { statusMeta } from '../board/constants'
 import type { Sprint, TenantMembership, WorkItem } from '../../api/types'
 
 const trackedStatuses: WorkItem['status'][] = ['Backlog', 'InProgress', 'Done']
-
-function matchesSearch(item: WorkItem, term: string): boolean {
-  if (!term) return true
-  const haystack = `${item.key} ${item.summary}`.toLowerCase()
-  return haystack.includes(term.toLowerCase())
-}
+const statusLabels = Object.fromEntries(
+  Object.entries(statusMeta).map(([status, meta]) => [status, meta.label]),
+) as Record<WorkItem['status'], string>
 
 interface BacklogViewProps {
   workItems: WorkItem[]
@@ -29,6 +30,8 @@ interface BacklogViewProps {
   onAssignToSprint: (workItemId: string, sprintId: string) => void
   onRemoveFromSprint: (workItemId: string) => void
   onOpenWorkItem: (workItem: WorkItem) => void
+  onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
+  assigneeChangePending?: boolean
   error: string | null
 }
 
@@ -45,6 +48,8 @@ export function BacklogView({
   onAssignToSprint,
   onRemoveFromSprint,
   onOpenWorkItem,
+  onAssigneeChange,
+  assigneeChangePending = false,
   error,
 }: BacklogViewProps) {
   const activeSprint = sprints.find((sprint) => sprint.state === 'Active')
@@ -82,19 +87,20 @@ export function BacklogView({
   const [backlogCollapsed, setBacklogCollapsed] = useState(false)
   const [closedSectionOpen, setClosedSectionOpen] = useState(false)
   const [reportSprint, setReportSprint] = useState<Sprint | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null)
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false)
+  const { searchTerm, setSearchTerm, fields, activeCount, clearAll, matches } = useWorkItemFilters(
+    workItems,
+    members,
+    statusLabels,
+    {},
+  )
 
   const toggleSprintCollapse = (sprintId: string) =>
     setCollapsedSprints((curr) => ({ ...curr, [sprintId]: !curr[sprintId] }))
 
-  const matchesFilters = (item: WorkItem) =>
-    matchesSearch(item, searchTerm) && (assigneeFilter === null || item.assigneeUserId === assigneeFilter)
+  const matchesFilters = matches
 
   const backlogItems = workItems.filter((item) => !assignedItemIds.has(item.id) && matchesFilters(item))
   const backlogStatusCounts = groupWorkItemsByStatus(trackedStatuses, backlogItems)
-  const assigneeFilterMember = members.find((member) => member.userId === assigneeFilter)
 
   const mutation = useCreateWorkItem(projectId)
 
@@ -123,6 +129,16 @@ export function BacklogView({
   }
 
   const renderAssigneeAvatar = (item: WorkItem) => {
+    if (onAssigneeChange) {
+      return (
+        <AssigneePicker
+          workItem={item}
+          members={members}
+          onChange={(assigneeUserId) => onAssigneeChange(item, assigneeUserId)}
+          disabled={assigneeChangePending}
+        />
+      )
+    }
     const member = item.assigneeUserId ? membersByUserId.get(item.assigneeUserId) : undefined
     return member ? (
       <div
@@ -138,59 +154,39 @@ export function BacklogView({
     )
   }
 
+  const renderLabels = (item: WorkItem) => {
+    if (item.labels.length === 0) return null
+    return (
+      <div className="flex items-center gap-1 flex-wrap max-w-[200px]">
+        {item.labels.map((label) => (
+          <span key={label} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-medium rounded whitespace-nowrap dark:bg-gray-800 dark:text-gray-300">
+            {label}
+          </span>
+        ))}
+      </div>
+    )
+  }
+
+  const openLink = (item: WorkItem) => ({
+    href: `/browse/${item.key}`,
+    onClick: (event: React.MouseEvent) => {
+      event.preventDefault()
+      onOpenWorkItem(item)
+    },
+  })
+
   return (
     <div className="p-6 md:p-8 w-full">
       {error && <div className="error-banner mb-4">{error}</div>}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search backlog"
-            className="pl-9 pr-4 py-1.5 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:border-blue-500 text-sm w-64"
-          />
-        </div>
-        <div className="relative">
-          <button
-            onClick={() => setFilterMenuOpen(!filterMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded border border-transparent hover:border-gray-200 text-sm font-medium text-gray-700"
-          >
-            {assigneeFilterMember ? (
-              <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-[10px] font-bold">
-                {getInitials(assigneeFilterMember.displayName ?? undefined)}
-              </span>
-            ) : (
-              <Filter size={16} />
-            )}
-            {assigneeFilterMember?.displayName ?? 'Filter'}
-            <ChevronDown size={14} />
-          </button>
-          {filterMenuOpen && (
-            <div className="absolute left-0 top-full mt-1 w-56 bg-white border border-gray-200 shadow-xl rounded-lg py-1 z-50">
-              <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase">Assignee</div>
-              <button
-                onClick={() => { setAssigneeFilter(null); setFilterMenuOpen(false) }}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${assigneeFilter === null ? 'bg-blue-50 text-blue-700' : ''}`}
-              >
-                <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs"><User size={12} /></div> All assignees
-              </button>
-              {members.filter((member) => member.userId).map((member) => (
-                <button
-                  key={member.id}
-                  onClick={() => { setAssigneeFilter(member.userId); setFilterMenuOpen(false) }}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${assigneeFilter === member.userId ? 'bg-blue-50 text-blue-700' : ''}`}
-                >
-                  <div className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold">
-                    {getInitials(member.displayName ?? undefined)}
-                  </div>
-                  {member.displayName ?? 'Unnamed member'}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="mb-6">
+        <FilterBar
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Search backlog"
+          fields={fields}
+          activeCount={activeCount}
+          onClearAll={clearAll}
+        />
       </div>
 
       {!sprintsLoading && openSprints.map((sprint) => {
@@ -275,15 +271,16 @@ export function BacklogView({
             {!isCollapsed && (
               <div className="bg-white">
                 {sprintItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group cursor-pointer transition-colors">
+                  <div key={item.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group transition-colors">
                     <WorkItemTypeIcon type={item.type} size={18} />
-                    <span className="text-sm text-gray-500 w-16">{item.key}</span>
-                    <span
-                      className="text-sm text-gray-900 flex-1 truncate hover:underline"
-                      onClick={() => onOpenWorkItem(item)}
-                    >
+                    <a {...openLink(item)} className="text-sm text-blue-700 w-16 hover:underline shrink-0">
+                      {item.key}
+                    </a>
+                    <a {...openLink(item)} className="text-sm text-gray-900 flex-1 truncate hover:underline">
                       {item.summary}
-                    </span>
+                    </a>
+
+                    {renderLabels(item)}
 
                     <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
@@ -377,15 +374,16 @@ export function BacklogView({
         {!backlogCollapsed && (
           <div className="bg-white">
             {backlogItems.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group cursor-pointer transition-colors">
+              <div key={item.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group transition-colors">
                 <WorkItemTypeIcon type={item.type} size={18} />
-                <span className="text-sm text-gray-500 w-16">{item.key}</span>
-                <span
-                  className="text-sm text-gray-900 flex-1 truncate hover:underline"
-                  onClick={() => onOpenWorkItem(item)}
-                >
+                <a {...openLink(item)} className="text-sm text-blue-700 w-16 hover:underline shrink-0">
+                  {item.key}
+                </a>
+                <a {...openLink(item)} className="text-sm text-gray-900 flex-1 truncate hover:underline">
                   {item.summary}
-                </span>
+                </a>
+
+                {renderLabels(item)}
 
                 {assignableSprints.length > 0 && (
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity w-36">

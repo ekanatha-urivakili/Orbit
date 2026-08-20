@@ -24,6 +24,7 @@ public sealed record UpdateWorkItemCommand(
     string? SprintName,
     string? IdentifiedOn,
     DateOnly? StartDate,
+    DateOnly? DueDate,
     Guid? TeamId,
     decimal? StoryPoints,
     string[]? Labels,
@@ -100,6 +101,7 @@ public sealed class UpdateWorkItemHandler(
         var previousSprintName = workItem.SprintName;
         var previousIdentifiedOn = workItem.IdentifiedOn;
         var previousStartDate = workItem.StartDate;
+        var previousDueDate = workItem.DueDate;
         var previousTeamId = workItem.TeamId;
         var previousLabels = workItem.Labels;
         var previousCountries = workItem.Countries;
@@ -118,6 +120,7 @@ public sealed class UpdateWorkItemHandler(
             request.SprintName,
             request.IdentifiedOn,
             request.StartDate,
+            request.DueDate,
             request.TeamId,
             request.StoryPoints,
             request.Labels,
@@ -153,7 +156,7 @@ public sealed class UpdateWorkItemHandler(
             previousSummary, previousDescription, previousPriority, previousParentId, parent,
             previousEpicName, previousAcceptanceCriteria, previousStepsToConduct,
             previousAssigneeUserId, previousDeveloperUserId, previousProductOwnerUserId,
-            previousSprintName, previousIdentifiedOn, previousStartDate, previousTeamId,
+            previousSprintName, previousIdentifiedOn, previousStartDate, previousDueDate, previousTeamId,
             previousStoryPoints, previousLabels, previousCountries,
             now, cancellationToken);
 
@@ -177,6 +180,7 @@ public sealed class UpdateWorkItemHandler(
         string? previousSprintName,
         string? previousIdentifiedOn,
         DateOnly? previousStartDate,
+        DateOnly? previousDueDate,
         Guid? previousTeamId,
         decimal? previousStoryPoints,
         string[] previousLabels,
@@ -240,6 +244,7 @@ public sealed class UpdateWorkItemHandler(
             ("Sprint", previousSprintName, workItem.SprintName),
             ("Identified on", previousIdentifiedOn, workItem.IdentifiedOn),
             ("Start date", previousStartDate?.ToString("yyyy-MM-dd"), workItem.StartDate?.ToString("yyyy-MM-dd")),
+            ("Due date", previousDueDate?.ToString("yyyy-MM-dd"), workItem.DueDate?.ToString("yyyy-MM-dd")),
             ("Team", previousTeamLabel, newTeamLabel),
             ("Story points", previousStoryPoints?.ToString(), workItem.StoryPoints?.ToString()),
             ("Labels", string.Join(", ", previousLabels), string.Join(", ", workItem.Labels)),

@@ -233,6 +233,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             sprintName: null,
             identifiedOn: null,
             startDate: null,
+            dueDate: null,
             teamId: null,
             storyPoints: null,
             labels: null,

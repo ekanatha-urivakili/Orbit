@@ -24,10 +24,13 @@ import { CommandPalette } from './components/CommandPalette'
 // Feature Components
 import { BoardView } from './features/board/BoardView'
 import { BacklogView } from './features/backlog/BacklogView'
+import { TimelineView } from './features/timeline/TimelineView'
 import { DevelopmentView } from './features/development/DevelopmentView'
 import { SummaryView } from './features/summary/SummaryView'
 import { CreateWorkItemDialog } from './features/workitems/CreateWorkItemDialog'
 import { WorkItemDetailView } from './features/workitems/WorkItemDetailView'
+import { WorkItemDetailOverlay } from './features/workitems/WorkItemDetailOverlay'
+import { useChangeWorkItemAssignee } from './hooks/useUpdateWorkItem'
 import { BootstrapOnboarding } from './features/onboarding/BootstrapOnboarding'
 import { ProjectOnboarding } from './features/onboarding/ProjectOnboarding'
 import { SettingsView } from './features/settings/SettingsView'
@@ -45,6 +48,8 @@ function App() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
   const [editingWorkItemId, setEditingWorkItemId] = useState<string | null>(null)
+  const [overlayWorkItemId, setOverlayWorkItemId] = useState<string | null>(null)
+  const [overlayVariant, setOverlayVariant] = useState<'modal' | 'drawer'>('modal')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
   const [activeTab, setActiveTab] = useState<TabType>('Backlog')
@@ -403,6 +408,13 @@ function App() {
     window.history.pushState({ workItemId: workItem.id, key: workItem.key }, '', `/browse/${workItem.key}`)
   }
 
+  const handleOpenWorkItemOverlay = (workItem: WorkItem, variant: 'modal' | 'drawer') => {
+    setOverlayVariant(variant)
+    setOverlayWorkItemId(workItem.id)
+  }
+
+  const closeWorkItemOverlay = () => setOverlayWorkItemId(null)
+
   const handleBackFromWorkItem = () => {
     setEditingWorkItemId(null)
     setUrlWorkItemKey(null)
@@ -432,6 +444,13 @@ function App() {
     enabled: Boolean(selectedProjectId),
   })
   const sprints = sprintsQuery.data ?? []
+
+  const assigneeMutation = useChangeWorkItemAssignee(selectedProjectId ?? '')
+  const handleAssigneeChange = (workItem: WorkItem, assigneeUserId: string | null) => {
+    if (!assigneeMutation.isPending) {
+      assigneeMutation.mutate({ workItem, assigneeUserId })
+    }
+  }
 
   const statusMutation = useMutation({
     mutationFn: ({ workItem, status }: { workItem: WorkItem; status: WorkItemStatus }) =>
@@ -699,7 +718,9 @@ function App() {
                 onReopenSprint={(sprint) => reopenSprintMutation.mutate(sprint)}
                 onAssignToSprint={(workItemId, sprintId) => assignToSprintMutation.mutate({ workItemId, sprintId })}
                 onRemoveFromSprint={(workItemId) => removeFromSprintMutation.mutate(workItemId)}
-                onOpenWorkItem={handleOpenWorkItem}
+                onOpenWorkItem={(workItem) => handleOpenWorkItemOverlay(workItem, 'drawer')}
+                onAssigneeChange={handleAssigneeChange}
+                assigneeChangePending={assigneeMutation.isPending}
                 error={
                   createSprintMutation.error?.message ??
                   startSprintMutation.error?.message ??
@@ -707,6 +728,7 @@ function App() {
                   reopenSprintMutation.error?.message ??
                   assignToSprintMutation.error?.message ??
                   removeFromSprintMutation.error?.message ??
+                  assigneeMutation.error?.message ??
                   null
                 }
               />
@@ -716,6 +738,7 @@ function App() {
               <div className="p-8">
                 {statusMutation.isError && <div className="error-banner">{statusMutation.error.message}</div>}
                 {reorderMutation.isError && <div className="error-banner">{reorderMutation.error.message}</div>}
+                {assigneeMutation.isError && <div className="error-banner">{assigneeMutation.error.message}</div>}
                 <BoardView
                   projectName={selectedProject?.name ?? ''}
                   board={boardQuery.data}
@@ -724,11 +747,23 @@ function App() {
                   onSave={(input) => boardMutation.mutate(input)}
                   workItems={workItems}
                   workItemsLoading={workItemsQuery.isPending}
+                  members={members}
                   onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
                   onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
-                  onOpen={handleOpenWorkItem}
+                  onOpen={(workItem) => handleOpenWorkItemOverlay(workItem, 'modal')}
+                  onAssigneeChange={handleAssigneeChange}
+                  assigneeChangePending={assigneeMutation.isPending}
                 />
               </div>
+            )}
+
+            {activeTab === 'Timeline' && (
+              <TimelineView
+                workItems={workItems}
+                sprints={sprints}
+                onOpenWorkItem={(workItem) => handleOpenWorkItemOverlay(workItem, 'drawer')}
+                onCreateEpic={() => setCreateOpen(true)}
+              />
             )}
 
             {activeTab === 'Development' && (
@@ -744,6 +779,30 @@ function App() {
           </>}
         </main>
       </div>
+
+      {overlayWorkItemId && (() => {
+        const overlayItem = workItems.find((item) => item.id === overlayWorkItemId)
+        return overlayItem ? (
+          <WorkItemDetailOverlay
+            variant={overlayVariant}
+            item={overlayItem}
+            project={selectedProject}
+            workItems={workItems}
+            profile={profileQuery.data}
+            members={members}
+            priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
+            sprints={sprints}
+            onClose={closeWorkItemOverlay}
+            onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
+            onOpenWorkItem={(workItem) => setOverlayWorkItemId(workItem.id)}
+            onManageWorkTypes={() => {
+              setSettingsSection('item-types')
+              setActiveView('settings')
+              closeWorkItemOverlay()
+            }}
+          />
+        ) : null
+      })()}
 
       {createOpen && selectedProject && (
         <CreateWorkItemDialog

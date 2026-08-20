@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { Field, Hint } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemTypeIcon } from './typeIcons'
 import { RichTextEditor } from '../../components/form/RichTextEditor'
 import { orbitApi } from '../../api/client'
@@ -34,6 +35,7 @@ const blankDetails: Required<Omit<CreateWorkItemInput, 'projectId' | 'summary' |
   sprintName: null,
   identifiedOn: null,
   startDate: null,
+  dueDate: null,
   teamId: null,
   storyPoints: null,
   labels: [],
@@ -212,20 +214,19 @@ export function CreateWorkItemDialog({
 
           <div className="form-row">
             <Field label="Assignee">
-              <SearchableSelect
-                size="xl"
-                value={details.assigneeUserId ?? ''}
-                onChange={(val) => patch({ assigneeUserId: val || null })}
-                options={[
-                  { value: '', label: 'Unassigned' },
-                  ...members.filter((member) => member.userId).map((member) => ({
-                    value: member.userId ?? '',
-                    label: `${member.displayName ?? 'Unnamed member'}${profile && member.userId === profile.userId ? ' (me)' : ''}`,
-                  })),
-                ]}
-                placeholder="Unassigned"
-                searchPlaceholder="Search members…"
-              />
+              <div className="flex items-center gap-2.5 min-h-[38px] settings-control bg-white dark:bg-[#22272b] px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg">
+                <AssigneePicker
+                  members={members}
+                  value={details.assigneeUserId}
+                  onChange={(assigneeUserId) => patch({ assigneeUserId })}
+                  size="md"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  {details.assigneeUserId
+                    ? members.find((m) => m.userId === details.assigneeUserId)?.displayName ?? 'Unnamed member'
+                    : 'Unassigned'}
+                </span>
+              </div>
             </Field>
             <Field label="Priority">
               <SearchableSelect
@@ -324,6 +325,18 @@ export function CreateWorkItemDialog({
                 lang="en-GB"
                 value={details.startDate ?? ''}
                 onChange={(event) => patch({ startDate: event.target.value || null })}
+              />
+            </Field>
+          </div>
+
+          <div className="form-row">
+            <Field label="Due date">
+              <input
+                type="date"
+                lang="en-GB"
+                min={details.startDate ?? undefined}
+                value={details.dueDate ?? ''}
+                onChange={(event) => patch({ dueDate: event.target.value || null })}
               />
             </Field>
           </div>
