@@ -9,9 +9,8 @@ using Orbit.Domain.WorkItems;
 namespace Orbit.Application.WorkItems;
 
 /// <summary>
-/// Content types accepted for work-item attachments. Deliberately narrow — this is a self-hosted
-/// MVP upload path with no malware/quarantine scanning (see ARCH-ORBIT-001 §13.5.2), so the
-/// allowlist is the only defense against arbitrary executable content.
+/// Content types accepted for work-item attachments. Deliberately narrow — an additional defense
+/// alongside the worker-driven malware scan (see ARCH-ORBIT-001 §10.3), not a substitute for it.
 /// </summary>
 internal static class AttachmentContentTypes
 {
