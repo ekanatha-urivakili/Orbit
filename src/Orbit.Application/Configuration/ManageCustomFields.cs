@@ -3,53 +3,69 @@ using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Application.Settings;
+using Orbit.Domain.Access;
 using Orbit.Domain.Configuration;
 
 namespace Orbit.Application.Configuration;
 
+public sealed record CustomFieldChoiceOptionDto(Guid Id, string Label, int Order)
+{
+    public static CustomFieldChoiceOptionDto From(CustomFieldChoiceOption option) =>
+        new(option.Id, option.Label, option.Order);
+}
+
 public sealed record CustomFieldDefinitionDto(
     Guid Id,
+    Guid ProjectId,
     string Key,
     string Label,
     CustomFieldType FieldType,
     bool Required,
     int Order,
     bool Enabled,
-    long Version)
+    long Version,
+    IReadOnlyList<CustomFieldChoiceOptionDto> ChoiceOptions)
 {
     public static CustomFieldDefinitionDto From(CustomFieldDefinition definition) =>
         new(
             definition.Id,
+            definition.ProjectId,
             definition.Key,
             definition.Label,
             definition.FieldType,
             definition.Required,
             definition.Order,
             definition.Enabled,
-            definition.Version);
+            definition.Version,
+            [.. definition.ChoiceOptions.OrderBy(option => option.Order).Select(CustomFieldChoiceOptionDto.From)]);
 }
 
 public sealed record CreateCustomFieldCommand(
+    Guid ProjectId,
     string Key,
     string Label,
     CustomFieldType FieldType,
     bool Required,
-    int Order) : ICommand<CustomFieldDefinitionDto>;
+    int Order,
+    IReadOnlyList<CustomFieldChoiceOptionInput> ChoiceOptions) : ICommand<CustomFieldDefinitionDto>;
 
 public sealed class CreateCustomFieldValidator : AbstractValidator<CreateCustomFieldCommand>
 {
     public CreateCustomFieldValidator()
     {
+        RuleFor(command => command.ProjectId).NotEmpty();
         RuleFor(command => command.Key).NotEmpty().MaximumLength(64).Matches("^[a-zA-Z0-9-]+$");
         RuleFor(command => command.Label).NotEmpty().Length(2, 80);
         RuleFor(command => command.FieldType).IsInEnum();
         RuleFor(command => command.Order).InclusiveBetween(0, 10_000);
+        RuleForEach(command => command.ChoiceOptions).ChildRules(option =>
+            option.RuleFor(o => o.Label).NotEmpty().MaximumLength(80));
     }
 }
 
 public sealed class CreateCustomFieldHandler(
     ITenantContext tenant,
-    ITenantAuthorization authorization,
+    IProjectRepository projects,
     ICustomFieldRepository repository,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<CreateCustomFieldCommand, CustomFieldDefinitionDto>
@@ -58,13 +74,12 @@ public sealed class CreateCustomFieldHandler(
         CreateCustomFieldCommand request,
         CancellationToken cancellationToken)
     {
-        if (!authorization.CanManageTeams())
-        {
-            throw new AccessDeniedException("Workspace administration permission is required.");
-        }
+        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
+            ?? throw new NotFoundException("Project was not found.");
 
         var normalizedKey = CustomFieldDefinition.NormalizeKey(request.Key);
-        var existing = await repository.GetByKeyAsync(tenant.TenantId, normalizedKey, cancellationToken);
+        var existing = await repository.GetByKeyAsync(
+            tenant.TenantId, request.ProjectId, normalizedKey, cancellationToken);
         if (existing is not null)
         {
             throw new ConflictException("A field with this key already exists.");
@@ -72,11 +87,13 @@ public sealed class CreateCustomFieldHandler(
 
         var definition = CustomFieldDefinition.Create(
             tenant.TenantId,
+            request.ProjectId,
             normalizedKey,
             request.Label,
             request.FieldType,
             request.Required,
             request.Order,
+            request.ChoiceOptions,
             timeProvider.GetUtcNow());
         await repository.AddAsync(definition, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -84,41 +101,52 @@ public sealed class CreateCustomFieldHandler(
     }
 }
 
-public sealed record ListCustomFieldsQuery : IQuery<IReadOnlyList<CustomFieldDefinitionDto>>;
+public sealed record ListCustomFieldsQuery(Guid ProjectId) : IQuery<IReadOnlyList<CustomFieldDefinitionDto>>;
 
 public sealed class ListCustomFieldsHandler(
     ITenantContext tenant,
+    IProjectRepository projects,
     ICustomFieldRepository repository) : IRequestHandler<ListCustomFieldsQuery, IReadOnlyList<CustomFieldDefinitionDto>>
 {
     public async Task<IReadOnlyList<CustomFieldDefinitionDto>> Handle(
         ListCustomFieldsQuery request,
-        CancellationToken cancellationToken) =>
-        (await repository.ListAsync(tenant.TenantId, cancellationToken))
+        CancellationToken cancellationToken)
+    {
+        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.View, cancellationToken)
+            ?? throw new NotFoundException("Project was not found.");
+
+        return (await repository.ListAsync(tenant.TenantId, request.ProjectId, cancellationToken))
             .Select(CustomFieldDefinitionDto.From)
             .ToArray();
+    }
 }
 
 public sealed record UpdateCustomFieldCommand(
+    Guid ProjectId,
     Guid Id,
     string Label,
     bool Required,
     int Order,
     bool Enabled,
+    IReadOnlyList<CustomFieldChoiceOptionInput> ChoiceOptions,
     long ExpectedVersion) : ICommand<CustomFieldDefinitionDto>;
 
 public sealed class UpdateCustomFieldValidator : AbstractValidator<UpdateCustomFieldCommand>
 {
     public UpdateCustomFieldValidator()
     {
+        RuleFor(command => command.ProjectId).NotEmpty();
         RuleFor(command => command.Label).NotEmpty().Length(2, 80);
         RuleFor(command => command.Order).InclusiveBetween(0, 10_000);
         RuleFor(command => command.ExpectedVersion).GreaterThan(0);
+        RuleForEach(command => command.ChoiceOptions).ChildRules(option =>
+            option.RuleFor(o => o.Label).NotEmpty().MaximumLength(80));
     }
 }
 
 public sealed class UpdateCustomFieldHandler(
     ITenantContext tenant,
-    ITenantAuthorization authorization,
+    IProjectRepository projects,
     ICustomFieldRepository repository,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UpdateCustomFieldCommand, CustomFieldDefinitionDto>
@@ -127,17 +155,21 @@ public sealed class UpdateCustomFieldHandler(
         UpdateCustomFieldCommand request,
         CancellationToken cancellationToken)
     {
-        if (!authorization.CanManageTeams())
-        {
-            throw new AccessDeniedException("Workspace administration permission is required.");
-        }
+        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
+            ?? throw new NotFoundException("Project was not found.");
 
-        var definition = await repository.GetAsync(tenant.TenantId, request.Id, cancellationToken)
+        var definition = await repository.GetAsync(tenant.TenantId, request.ProjectId, request.Id, cancellationToken)
             ?? throw new NotFoundException("Field was not found.");
         SettingsConcurrency.EnsureVersion(
             true, definition.Version, request.ExpectedVersion, "The field changed after it was loaded.");
 
-        definition.Update(request.Label, request.Required, request.Order, request.Enabled, timeProvider.GetUtcNow());
+        definition.Update(
+            request.Label,
+            request.Required,
+            request.Order,
+            request.Enabled,
+            request.ChoiceOptions,
+            timeProvider.GetUtcNow());
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return CustomFieldDefinitionDto.From(definition);
     }

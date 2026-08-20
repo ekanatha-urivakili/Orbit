@@ -111,9 +111,11 @@ public interface IWorkItemTypeRepository
 public interface ICustomFieldRepository
 {
     Task AddAsync(CustomFieldDefinition definition, CancellationToken cancellationToken);
-    Task<CustomFieldDefinition?> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
-    Task<CustomFieldDefinition?> GetByKeyAsync(Guid tenantId, string key, CancellationToken cancellationToken);
-    Task<IReadOnlyList<CustomFieldDefinition>> ListAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<CustomFieldDefinition?> GetAsync(Guid tenantId, Guid projectId, Guid id, CancellationToken cancellationToken);
+    Task<CustomFieldDefinition?> GetByKeyAsync(
+        Guid tenantId, Guid projectId, string key, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CustomFieldDefinition>> ListAsync(
+        Guid tenantId, Guid projectId, CancellationToken cancellationToken);
 }
 
 public sealed record PasswordHash(

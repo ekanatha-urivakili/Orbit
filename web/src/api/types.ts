@@ -157,10 +157,22 @@ export interface WorkItemTypeDefinition {
   version: number
 }
 
-export type CustomFieldType = 'Text' | 'Number' | 'Date' | 'Checkbox'
+export type CustomFieldType = 'Text' | 'Number' | 'Date' | 'SingleChoice' | 'MultiChoice' | 'Checkbox'
+
+export interface CustomFieldChoiceOption {
+  id: string
+  label: string
+  order: number
+}
+
+export interface CustomFieldChoiceOptionInput {
+  id: string | null
+  label: string
+}
 
 export interface CustomFieldDefinition {
   id: string
+  projectId: string
   key: string
   label: string
   fieldType: CustomFieldType
@@ -168,6 +180,7 @@ export interface CustomFieldDefinition {
   order: number
   enabled: boolean
   version: number
+  choiceOptions: CustomFieldChoiceOption[]
 }
 
 export interface CreateWorkItemInput {

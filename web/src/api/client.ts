@@ -41,6 +41,7 @@ import type {
   WorkItemStatus,
   WorkItemType,
   CustomFieldDefinition,
+  CustomFieldChoiceOptionInput,
   CustomFieldType,
 } from './types'
 import { tenantStorageKey, withAuthHeader } from './auth'
@@ -101,15 +102,43 @@ export const orbitApi = {
       headers: { 'If-Match': `"${input.version}"` },
       body: JSON.stringify(input),
     }),
-  listCustomFields: () => request<CustomFieldDefinition[]>('/custom-fields'),
-  createCustomField: (input: { key: string; label: string; fieldType: CustomFieldType; required: boolean; order: number }) =>
-    request<CustomFieldDefinition>('/custom-fields', { method: 'POST', body: JSON.stringify(input) }),
-  updateCustomField: (input: CustomFieldDefinition) =>
-    request<CustomFieldDefinition>(`/custom-fields/${encodeURIComponent(input.id)}`, {
-      method: 'PATCH',
-      headers: { 'If-Match': `"${input.version}"` },
+  listCustomFields: (projectId: string) =>
+    request<CustomFieldDefinition[]>(`/projects/${encodeURIComponent(projectId)}/custom-fields`),
+  createCustomField: (
+    projectId: string,
+    input: {
+      key: string
+      label: string
+      fieldType: CustomFieldType
+      required: boolean
+      order: number
+      choiceOptions: CustomFieldChoiceOptionInput[]
+    },
+  ) =>
+    request<CustomFieldDefinition>(`/projects/${encodeURIComponent(projectId)}/custom-fields`, {
+      method: 'POST',
       body: JSON.stringify(input),
     }),
+  updateCustomField: (
+    projectId: string,
+    input: Pick<CustomFieldDefinition, 'id' | 'label' | 'required' | 'order' | 'enabled' | 'version'> & {
+      choiceOptions: CustomFieldChoiceOptionInput[]
+    },
+  ) =>
+    request<CustomFieldDefinition>(
+      `/projects/${encodeURIComponent(projectId)}/custom-fields/${encodeURIComponent(input.id)}`,
+      {
+        method: 'PATCH',
+        headers: { 'If-Match': `"${input.version}"` },
+        body: JSON.stringify({
+          label: input.label,
+          required: input.required,
+          order: input.order,
+          enabled: input.enabled,
+          choiceOptions: input.choiceOptions,
+        }),
+      },
+    ),
   listWorkItems: (projectId: string, skip = 0, take = 200) =>
     request<PagedResult<WorkItem>>(
       `/work-items?projectId=${encodeURIComponent(projectId)}&skip=${skip}&take=${take}`,

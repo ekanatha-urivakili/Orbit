@@ -8,28 +8,38 @@ public static class CustomFieldEndpoints
 {
     public static RouteGroupBuilder MapCustomFieldEndpoints(this RouteGroupBuilder group)
     {
-        group.MapGet("/custom-fields", async (
+        group.MapGet("/projects/{projectId:guid}/custom-fields", async (
+            Guid projectId,
             ISender sender,
             CancellationToken cancellationToken) =>
-            Results.Ok(await sender.Send(new ListCustomFieldsQuery(), cancellationToken)))
+            Results.Ok(await sender.Send(new ListCustomFieldsQuery(projectId), cancellationToken)))
             .WithName("ListCustomFields")
             .WithTags("Configuration");
 
-        group.MapPost("/custom-fields", async (
+        group.MapPost("/projects/{projectId:guid}/custom-fields", async (
+            Guid projectId,
             CreateCustomFieldRequest request,
             ISender sender,
             CancellationToken cancellationToken) =>
         {
             var definition = await sender.Send(
                 new CreateCustomFieldCommand(
-                    request.Key, request.Label, request.FieldType, request.Required, request.Order),
+                    projectId,
+                    request.Key,
+                    request.Label,
+                    request.FieldType,
+                    request.Required,
+                    request.Order,
+                    request.ChoiceOptions ?? []),
                 cancellationToken);
-            return Results.Created($"/api/v1/custom-fields/{definition.Id}", definition);
+            return Results.Created(
+                $"/api/v1/projects/{projectId}/custom-fields/{definition.Id}", definition);
         })
         .WithName("CreateCustomField")
         .WithTags("Configuration");
 
-        group.MapPatch("/custom-fields/{id:guid}", async (
+        group.MapPatch("/projects/{projectId:guid}/custom-fields/{id:guid}", async (
+            Guid projectId,
             Guid id,
             UpdateCustomFieldRequest request,
             HttpRequest httpRequest,
@@ -43,7 +53,15 @@ public static class CustomFieldEndpoints
             }
 
             var definition = await sender.Send(
-                new UpdateCustomFieldCommand(id, request.Label, request.Required, request.Order, request.Enabled, version),
+                new UpdateCustomFieldCommand(
+                    projectId,
+                    id,
+                    request.Label,
+                    request.Required,
+                    request.Order,
+                    request.Enabled,
+                    request.ChoiceOptions ?? [],
+                    version),
                 cancellationToken);
             response.Headers.ETag = $"\"{definition.Version}\"";
             return Results.Ok(definition);
@@ -59,7 +77,13 @@ public static class CustomFieldEndpoints
         string Label,
         CustomFieldType FieldType,
         bool Required,
-        int Order);
+        int Order,
+        IReadOnlyList<CustomFieldChoiceOptionInput>? ChoiceOptions);
 
-    public sealed record UpdateCustomFieldRequest(string Label, bool Required, int Order, bool Enabled);
+    public sealed record UpdateCustomFieldRequest(
+        string Label,
+        bool Required,
+        int Order,
+        bool Enabled,
+        IReadOnlyList<CustomFieldChoiceOptionInput>? ChoiceOptions);
 }

@@ -12,6 +12,7 @@ import { Field, Hint, SubmitRow } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import type {
   CreateMembershipInput,
+  CustomFieldChoiceOptionInput,
   CustomFieldDefinition,
   CustomFieldType,
   DensityPreference,
@@ -64,7 +65,10 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
     queryFn: () => orbitApi.getProjectSettings(project.id),
   })
   const itemTypesQuery = useQuery({ queryKey: ['work-item-types'], queryFn: orbitApi.listWorkItemTypes })
-  const customFieldsQuery = useQuery({ queryKey: ['custom-fields'], queryFn: orbitApi.listCustomFields })
+  const customFieldsQuery = useQuery({
+    queryKey: ['custom-fields', project.id],
+    queryFn: () => orbitApi.listCustomFields(project.id),
+  })
 
   return (
     <div className="min-h-[calc(100vh-48px)] bg-[#f7f8fa] w-full">
@@ -100,7 +104,7 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
           {activeSection === 'appearance' && <QueryState query={typographyQuery} render={(setting) => <AppearanceForm setting={setting} />} />}
           {activeSection === 'project' && <QueryState query={projectQuery} render={(setting) => <ProjectForm project={project} setting={setting} itemTypes={itemTypesQuery.data ?? []} />} />}
           {activeSection === 'item-types' && <QueryState query={itemTypesQuery} render={(definitions) => <ItemTypesPanel definitions={definitions} />} />}
-          {activeSection === 'custom-fields' && <QueryState query={customFieldsQuery} render={(fields) => <CustomFieldsPanel fields={fields} />} />}
+          {activeSection === 'custom-fields' && <QueryState query={customFieldsQuery} render={(fields) => <CustomFieldsPanel projectId={project.id} fields={fields} />} />}
           {activeSection === 'members' && <MembersPanel project={project} />}
           {activeSection === 'teams' && <TeamsPanel />}
           {activeSection === 'security' && <SecurityPanel />}
@@ -485,19 +489,41 @@ function ItemTypeRow({ definition }: { definition: WorkItemTypeDefinition }) {
   )
 }
 
-const customFieldTypes: CustomFieldType[] = ['Text', 'Number', 'Date', 'Checkbox']
-const blankCustomField = { key: '', label: '', fieldType: 'Text' as CustomFieldType, required: false, order: 0 }
+const customFieldTypes: CustomFieldType[] = ['Text', 'Number', 'Date', 'SingleChoice', 'MultiChoice', 'Checkbox']
+const choiceFieldTypes: CustomFieldType[] = ['SingleChoice', 'MultiChoice']
+const blankCustomField = { key: '', label: '', fieldType: 'Text' as CustomFieldType, required: false, order: 0, choiceOptionsText: '' }
 
-function CustomFieldsPanel({ fields }: { fields: CustomFieldDefinition[] }) {
+function parseChoiceOptionsText(
+  text: string,
+  existing: CustomFieldDefinition['choiceOptions'],
+): CustomFieldChoiceOptionInput[] {
+  const existingByLabel = new Map(existing.map((option) => [option.label, option.id]))
+  return text
+    .split(',')
+    .map((label) => label.trim())
+    .filter((label) => label.length > 0)
+    .map((label) => ({ id: existingByLabel.get(label) ?? null, label }))
+}
+
+function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: CustomFieldDefinition[] }) {
   const client = useQueryClient()
   const [draft, setDraft] = useState(blankCustomField)
   const createMutation = useMutation({
-    mutationFn: () => orbitApi.createCustomField(draft),
+    mutationFn: () =>
+      orbitApi.createCustomField(projectId, {
+        key: draft.key,
+        label: draft.label,
+        fieldType: draft.fieldType,
+        required: draft.required,
+        order: draft.order,
+        choiceOptions: parseChoiceOptionsText(draft.choiceOptionsText, []),
+      }),
     onSuccess: (created) => {
       setDraft(blankCustomField)
-      client.setQueryData<CustomFieldDefinition[]>(['custom-fields'], (current) => [...(current ?? []), created])
+      client.setQueryData<CustomFieldDefinition[]>(['custom-fields', projectId], (current) => [...(current ?? []), created])
     },
   })
+  const isChoiceType = choiceFieldTypes.includes(draft.fieldType)
 
   return (
     <div className="space-y-5">
@@ -534,13 +560,22 @@ function CustomFieldsPanel({ fields }: { fields: CustomFieldDefinition[] }) {
               checked={draft.required}
               onChange={(required) => setDraft((current) => ({ ...current, required }))}
             />
+            {isChoiceType && (
+              <Field variant="panel" label="Options (comma-separated)">
+                <input
+                  required
+                  value={draft.choiceOptionsText}
+                  onChange={(event) => setDraft((current) => ({ ...current, choiceOptionsText: event.target.value }))}
+                />
+              </Field>
+            )}
           </div>
           <SubmitRow mutation={createMutation} />
         </form>
       </Panel>
-      <Panel title="Custom fields" description="Workspace-defined fields, ordered for display.">
+      <Panel title="Custom fields" description="Project-defined fields, ordered for display.">
         <div className="space-y-3">
-          {fields.map((field) => <CustomFieldRow key={field.id} field={field} />)}
+          {fields.map((field) => <CustomFieldRow key={field.id} projectId={projectId} field={field} />)}
           {fields.length === 0 && <p className="text-sm text-gray-500">No custom fields yet.</p>}
         </div>
       </Panel>
@@ -548,14 +583,23 @@ function CustomFieldsPanel({ fields }: { fields: CustomFieldDefinition[] }) {
   )
 }
 
-function CustomFieldRow({ field }: { field: CustomFieldDefinition }) {
+function CustomFieldRow({ projectId, field }: { projectId: string; field: CustomFieldDefinition }) {
   const client = useQueryClient()
   const [draft, setDraft] = useState(field)
+  const isChoiceType = choiceFieldTypes.includes(field.fieldType)
+  const [choiceOptionsText, setChoiceOptionsText] = useState(
+    field.choiceOptions.map((option) => option.label).join(', '),
+  )
   const mutation = useMutation({
-    mutationFn: () => orbitApi.updateCustomField(draft),
+    mutationFn: () =>
+      orbitApi.updateCustomField(projectId, {
+        ...draft,
+        choiceOptions: isChoiceType ? parseChoiceOptionsText(choiceOptionsText, field.choiceOptions) : [],
+      }),
     onSuccess: (updated) => {
       setDraft(updated)
-      client.setQueryData<CustomFieldDefinition[]>(['custom-fields'], (current) =>
+      setChoiceOptionsText(updated.choiceOptions.map((option) => option.label).join(', '))
+      client.setQueryData<CustomFieldDefinition[]>(['custom-fields', projectId], (current) =>
         current?.map((existing) => existing.id === updated.id ? updated : existing),
       )
     },
@@ -573,6 +617,13 @@ function CustomFieldRow({ field }: { field: CustomFieldDefinition }) {
         <Toggle label="Required" checked={draft.required} onChange={(required) => setDraft((current) => ({ ...current, required }))} />
         <Toggle label="Enabled" checked={draft.enabled} onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))} />
       </div>
+      {isChoiceType && (
+        <div className="mt-3">
+          <Field variant="panel" label="Options (comma-separated)">
+            <input value={choiceOptionsText} onChange={(event) => setChoiceOptionsText(event.target.value)} />
+          </Field>
+        </div>
+      )}
       <SubmitRow mutation={mutation} />
     </form>
   )
