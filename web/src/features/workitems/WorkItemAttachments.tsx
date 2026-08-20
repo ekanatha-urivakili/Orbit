@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Paperclip, Trash2, Download, Image as ImageIcon, File as FileIcon } from 'lucide-react'
+import { Paperclip, Trash2, Download, Image as ImageIcon, File as FileIcon, ShieldAlert } from 'lucide-react'
 import { orbitApi } from '../../api/client'
 import type { TenantMembership } from '../../api/types'
 
@@ -80,6 +80,14 @@ export function WorkItemAttachments({
                   <a href={attachment.downloadUrl} target="_blank" rel="noreferrer" className="font-medium text-blue-700 hover:underline truncate block">
                     {attachment.fileName}
                   </a>
+                ) : attachment.scanStatus === 'Infected' ? (
+                  <span className="font-medium text-red-700 truncate flex items-center gap-1">
+                    <ShieldAlert size={14} /> {attachment.fileName} (blocked: malware detected)
+                  </span>
+                ) : attachment.scanStatus === 'Failed' ? (
+                  <span className="font-medium text-amber-700 truncate flex items-center gap-1">
+                    <ShieldAlert size={14} /> {attachment.fileName} (scan failed, download unavailable)
+                  </span>
                 ) : (
                   <span className="font-medium text-gray-500 truncate block">{attachment.fileName} (scanning...)</span>
                 )}
