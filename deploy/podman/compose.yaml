@@ -68,6 +68,7 @@ services:
     # AttachmentScanning__Enabled=true for Orbit.Worker to actually use it - otherwise a
     # NoOpAttachmentScanner runs instead, e.g. in sandboxes without network access to pull this image.
     image: docker.io/clamav/clamav:1.4
+    platform: linux/amd64
     ports:
       - "${CLAMAV_PORT:-3310}:3310"
     volumes:

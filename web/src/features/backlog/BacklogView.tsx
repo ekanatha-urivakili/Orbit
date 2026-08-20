@@ -204,7 +204,7 @@ export function BacklogView({
   const renderLabels = (item: WorkItem) => {
     if (item.labels.length === 0) return null
     return (
-      <div className="flex items-center gap-1 flex-wrap max-w-[200px]">
+      <div className="hidden sm:flex items-center gap-1 flex-wrap max-w-[200px]">
         {item.labels.map((label) => (
           <span key={label} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-medium rounded whitespace-nowrap dark:bg-gray-800 dark:text-gray-300">
             {label}
@@ -254,7 +254,7 @@ export function BacklogView({
             onDrop={(e) => handleSprintDrop(e, sprint)}
             className={`bg-gray-50 rounded-lg border mb-8 overflow-hidden transition-colors ${isDropTarget ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
               <div className="flex items-center gap-2">
                 <button onClick={() => toggleSprintCollapse(sprint.id)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle sprint section">
                   <ChevronDown size={18} className={`text-gray-600 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
@@ -262,7 +262,7 @@ export function BacklogView({
                 <h2 className="font-bold text-gray-900 text-sm">{sprint.name}</h2>
                 <span className="text-sm text-gray-500 ml-2">({sprintItems.length} work items)</span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center text-xs font-semibold gap-1">
                   <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sprintStatusCounts.get('Backlog')?.length ?? 0}</span>
                   <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.get('InProgress')?.length ?? 0}</span>
@@ -277,8 +277,8 @@ export function BacklogView({
                   </button>
                 )}
                 {(sprint.state === 'Active' || sprint.state === 'Reopened') && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-64">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="w-48 sm:w-64">
                       <SearchableSelect
                         size="sm"
                         value={rolloverTargets[sprint.id] ?? ''}
@@ -343,7 +343,7 @@ export function BacklogView({
 
                     {renderLabels(item)}
 
-                    <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="hidden sm:flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => onRemoveFromSprint(item.id)}
                         className="p-1 hover:bg-gray-200 rounded text-gray-600"
@@ -354,8 +354,8 @@ export function BacklogView({
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-3 ml-4">
-                      <div className="px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase flex items-center gap-1">
+                    <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
+                      <div className="hidden sm:flex px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase items-center gap-1">
                         {item.status === 'Backlog' ? 'To Do' : item.status}
                       </div>
                       {renderAssigneeAvatar(item)}
@@ -415,7 +415,7 @@ export function BacklogView({
         onDrop={handleBacklogDrop}
         className={`bg-gray-50 rounded-lg border overflow-hidden transition-colors ${dragOverTarget === 'backlog' ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
           <div className="flex items-center gap-2">
             <button onClick={() => setBacklogCollapsed(!backlogCollapsed)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle backlog section">
               <ChevronDown size={18} className={`text-gray-600 transition-transform ${backlogCollapsed ? '-rotate-90' : ''}`} />
@@ -423,7 +423,7 @@ export function BacklogView({
             <h2 className="font-bold text-gray-900 text-sm">Backlog</h2>
             <span className="text-sm text-gray-500 ml-2">({backlogItems.length} work items)</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
              <div className="flex items-center text-xs font-semibold gap-1">
               <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{backlogStatusCounts.get('Backlog')?.length ?? 0}</span>
               <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.get('InProgress')?.length ?? 0}</span>
@@ -458,7 +458,7 @@ export function BacklogView({
                 {renderLabels(item)}
 
                 {assignableSprints.length > 0 && (
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity w-36">
+                  <div className="hidden sm:block opacity-0 group-hover:opacity-100 transition-opacity w-36">
                     <SearchableSelect
                       size="sm"
                       value=""
@@ -476,8 +476,8 @@ export function BacklogView({
                   </div>
                 )}
 
-                <div className="flex items-center gap-3 ml-4">
-                  <div className="px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase flex items-center gap-1">
+                <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
+                  <div className="hidden sm:flex px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase items-center gap-1">
                     {item.status === 'Backlog' ? 'To Do' : item.status}
                   </div>
                   {renderAssigneeAvatar(item)}

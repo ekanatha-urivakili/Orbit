@@ -44,27 +44,30 @@ fi
 dotnet tool restore >/dev/null
 
 wait_for_container() {
-    local container_name="$1"
+    local target="$1"
     local status=""
+    local candidates=("$target" "${target//-/_}" "${target//_/-}" "orbit_${target}_1" "orbit-${target}-1")
 
     for _ in {1..60}; do
-        status="$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_name" 2>/dev/null || true)"
-        if [[ "$status" == "healthy" || "$status" == "running" ]]; then
-            return 0
-        fi
+        for name in "${candidates[@]}"; do
+            status="$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || true)"
+            if [[ "$status" == "healthy" || "$status" == "running" ]]; then
+                return 0
+            fi
+        done
         sleep 1
     done
 
-    echo "Container did not become healthy: $container_name (status: ${status:-missing})" >&2
+    echo "Container did not become healthy: $target (status: ${status:-missing})" >&2
     return 1
 }
 
 echo "Starting PostgreSQL and Valkey if required..."
 ./scripts/start-local-services.sh
-wait_for_container orbit-postgres-1
-wait_for_container orbit-valkey-1
-wait_for_container orbit-mailpit-1
-wait_for_container orbit-minio-1
+wait_for_container postgres
+wait_for_container valkey
+wait_for_container mailpit
+wait_for_container minio
 
 echo "Applying database migrations..."
 ./scripts/migrate.sh

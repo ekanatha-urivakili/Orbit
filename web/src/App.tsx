@@ -11,6 +11,7 @@ import { RegisterView } from './features/auth/RegisterView'
 import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus } from './api/types'
 import { getStoredLogoUrl, setStoredLogoUrl } from './lib/branding'
 import { applyTheme } from './lib/theme'
+import { useServiceWorkerUpdate } from './lib/pwa'
 
 import './App.css'
 
@@ -56,6 +57,7 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('project')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [oidcError, setOidcError] = useState<string | null>(null)
+  const { available: updateAvailable, applyUpdate } = useServiceWorkerUpdate()
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = localStorage.getItem('orbit_sidebar_width')
     return saved ? Math.max(180, Math.min(480, Number(saved))) : 240
@@ -595,6 +597,7 @@ function App() {
         onHomeClick={handleNavigateHome}
         onOpenSettings={(section) => { setSettingsSection(section); setActiveView('settings') }}
         onThemeChange={(theme) => themeMutation.mutate(theme)}
+        onOpenMobileMenu={() => setMobileMenuOpen(true)}
       />
       {workspaceSwitchMutation.isError && (
         <div className="error-banner m-4">{workspaceSwitchMutation.error.message}</div>
@@ -603,6 +606,12 @@ function App() {
         <div className="error-banner m-4 flex items-center justify-between">
           <span>{oidcError}</span>
           <button onClick={() => setOidcError(null)} className="ml-4 text-sm font-medium underline">Dismiss</button>
+        </div>
+      )}
+      {updateAvailable && (
+        <div className="update-banner m-4 flex items-center justify-between">
+          <span>A new version of Orbit is available.</span>
+          <button onClick={applyUpdate} className="ml-4 text-sm font-medium underline">Reload</button>
         </div>
       )}
       {createWorkspaceOpen && (
@@ -640,12 +649,13 @@ function App() {
         
         <main
           style={{
-            marginLeft: sidebarCollapsed ? '0px' : `${sidebarWidth}px`,
+            ['--sidebar-offset' as string]: sidebarCollapsed ? '0px' : `${sidebarWidth}px`,
           }}
-          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden transition-[margin-left] duration-150 ease-out ${
+          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden ml-0 lg:ml-[var(--sidebar-offset)] transition-[margin-left] duration-150 ease-out ${
             isResizingSidebar ? '!transition-none' : ''
           }`}
         >
+          <div className="3xl:max-w-[1800px] 3xl:mx-auto">
           {projects.length === 0 ? <ProjectOnboarding /> : <>
           {activeView === 'home' && (
             <HomeView
@@ -777,6 +787,7 @@ function App() {
             </div>
           </>}
           </>}
+          </div>
         </main>
       </div>
 

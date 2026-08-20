@@ -101,7 +101,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-24"
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 px-4 pt-24"
       role="dialog"
       onClick={() => setOpen(false)}
     >
