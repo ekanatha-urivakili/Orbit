@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 using Orbit.Application.Abstractions;
 using Orbit.Infrastructure.Authorization;
 using Orbit.Infrastructure.Email;
@@ -8,6 +10,7 @@ using Orbit.Infrastructure.Identity;
 using Orbit.Infrastructure.Integrations;
 using Orbit.Infrastructure.Messaging;
 using Orbit.Infrastructure.Persistence;
+using Orbit.Infrastructure.RateLimiting;
 using Orbit.Infrastructure.Storage;
 
 namespace Orbit.Infrastructure;
@@ -74,20 +77,35 @@ public static class DependencyInjection
         services.AddSingleton<IOAuthStateCodec, OAuthStateCodec>();
         services.Configure<SlackOptions>(configuration.GetSection(SlackOptions.SectionName));
         services.AddHttpClient<ISlackClient, SlackClient>();
-        services.AddDataProtection();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<OrbitDbContext>());
         services.AddScoped<RuntimeDatabaseSecurityValidator>();
         services.AddSingleton(TimeProvider.System);
 
+        services.Configure<RateLimitingOptions>(configuration.GetSection(RateLimitingOptions.SectionName));
+
         var redisConnection = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrWhiteSpace(redisConnection))
         {
             services.AddStackExchangeRedisCache(options => options.Configuration = redisConnection);
+
+            // Shared singleton so the v1.34 Data Protection key store and the §13.7.1 distributed
+            // rate limiter reuse one multiplexed connection instead of each opening their own.
+            var multiplexer = ConnectionMultiplexer.Connect(redisConnection);
+            services.AddSingleton<IConnectionMultiplexer>(multiplexer);
+
+            // Keys must survive container restarts and be shared across every API replica -
+            // the default filesystem key ring is per-container and ephemeral on Railway, which
+            // would silently strand every secret DataProtectionSecretProtector has encrypted
+            // (e.g. Slack webhook URLs) the moment a container recycles or a second replica starts.
+            services.AddDataProtection()
+                .SetApplicationName("Orbit")
+                .PersistKeysToStackExchangeRedis(multiplexer, "orbit:dataprotection-keys");
         }
         else
         {
             services.AddDistributedMemoryCache();
+            services.AddDataProtection().SetApplicationName("Orbit");
         }
 
         return services;

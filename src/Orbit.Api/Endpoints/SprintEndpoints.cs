@@ -98,6 +98,30 @@ public static class SprintEndpoints
         .WithName("GetSprintReport")
         .WithTags("Sprints");
 
+        group.MapGet("/sprints/{sprintId:guid}/reports/cumulative-flow", async (
+            Guid sprintId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new CumulativeFlowDiagramQuery(sprintId), cancellationToken)))
+        .WithName("GetSprintCumulativeFlowDiagram")
+        .WithTags("Sprints");
+
+        group.MapGet("/sprints/{sprintId:guid}/reports/cycle-time", async (
+            Guid sprintId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new CycleTimeReportQuery(sprintId), cancellationToken)))
+        .WithName("GetSprintCycleTimeReport")
+        .WithTags("Sprints");
+
+        group.MapGet("/sprints/{sprintId:guid}/reports/control-chart", async (
+            Guid sprintId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new ControlChartQuery(sprintId), cancellationToken)))
+        .WithName("GetSprintControlChart")
+        .WithTags("Sprints");
+
         group.MapPut("/work-items/{workItemId:guid}/sprint", async (
             Guid workItemId,
             AssignWorkItemToSprintRequest request,

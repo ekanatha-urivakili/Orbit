@@ -603,6 +603,17 @@ public interface IWorkItemHistoryRepository
         int skip,
         int take,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns every <paramref name="fieldName"/> history entry for the given work items, ordered
+    /// by <c>ChangedAt ASC</c> then <c>Id</c>. Backs the cumulative-flow/control-chart/cycle-time
+    /// reports (§13.5 Agile UI increment), which fold "Status" entries into a per-item timeline.
+    /// </summary>
+    Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemsAndFieldAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> workItemIds,
+        string fieldName,
+        CancellationToken cancellationToken);
 }
 
 public interface IAttachmentRepository

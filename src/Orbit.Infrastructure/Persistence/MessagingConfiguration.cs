@@ -21,6 +21,7 @@ internal sealed class OutboxEmailMessageConfiguration : IEntityTypeConfiguration
         builder.Property(message => message.PublishedAt).HasColumnName("published_at");
         builder.Property(message => message.Attempts).HasColumnName("attempts");
         builder.Property(message => message.LastError).HasColumnName("last_error").HasMaxLength(2048);
+        builder.Property(message => message.TraceParent).HasColumnName("trace_parent").HasMaxLength(64);
         builder.HasIndex(message => new { message.PublishedAt, message.Attempts, message.CreatedAt });
     }
 }

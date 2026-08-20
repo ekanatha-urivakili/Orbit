@@ -436,6 +436,42 @@ export interface SprintReport {
   scopeChanges: SprintScopeChange[]
 }
 
+export interface CumulativeFlowStatusCount {
+  status: WorkItemStatus
+  count: number
+}
+
+export interface CumulativeFlowPoint {
+  date: string
+  statusCounts: CumulativeFlowStatusCount[]
+}
+
+export interface CumulativeFlowDiagram {
+  sprintId: string
+  points: CumulativeFlowPoint[]
+}
+
+export interface CompletedItem {
+  workItemId: string
+  startedAt: string
+  completedAt: string
+  cycleTimeDays: number
+}
+
+export interface CycleTimeReport {
+  sprintId: string
+  items: CompletedItem[]
+  averageCycleTimeDays: number | null
+  medianCycleTimeDays: number | null
+}
+
+export interface ControlChart {
+  sprintId: string
+  points: CompletedItem[]
+  averageCycleTimeDays: number | null
+  p85CycleTimeDays: number | null
+}
+
 export interface AuthSession {
   accessToken: string
   accessTokenExpiresAt: string

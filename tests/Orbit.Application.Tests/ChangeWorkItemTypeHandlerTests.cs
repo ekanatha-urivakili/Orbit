@@ -184,5 +184,10 @@ public sealed class ChangeWorkItemTypeHandlerTests
         public Task<PagedResult<WorkItemHistoryEntry>> ListByWorkItemAsync(
             Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<WorkItemHistoryEntry>([], 0));
+
+        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemsAndFieldAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> workItemIds, string fieldName, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>(
+                Added.Where(e => workItemIds.Contains(e.WorkItemId) && e.FieldName == fieldName).ToArray());
     }
 }

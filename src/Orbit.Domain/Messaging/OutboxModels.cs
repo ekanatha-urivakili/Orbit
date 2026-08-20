@@ -45,6 +45,7 @@ public sealed class OutboxEmailMessage
     public DateTimeOffset? PublishedAt { get; private set; }
     public int Attempts { get; private set; }
     public string? LastError { get; private set; }
+    public string? TraceParent { get; private set; }
 
     public static OutboxEmailMessage Create(string toEmail, string subject, string htmlBody, DateTimeOffset now)
     {
@@ -91,6 +92,16 @@ public sealed class OutboxEmailMessage
         message.WorkspaceInvitationId = invitationId;
         message.FrontendBaseUrl = frontendBaseUrl;
         return message;
+    }
+
+    /// <summary>
+    /// W3C traceparent captured at insert time (§13.7.2, ADR-023) so the worker that claims this
+    /// row later - a separate process with no shared memory - can re-parent its own span under
+    /// the trace that produced this message, instead of the two rendering as unrelated spans.
+    /// </summary>
+    public void SetTraceParent(string? traceParent)
+    {
+        TraceParent = traceParent;
     }
 
     public void MarkPublished(DateTimeOffset now)

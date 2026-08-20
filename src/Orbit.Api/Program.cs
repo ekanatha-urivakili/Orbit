@@ -6,7 +6,12 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Orbit.Api.Endpoints;
 using Orbit.Api.Errors;
 using Orbit.Api.Tenancy;
@@ -15,7 +20,9 @@ using Orbit.Application.Abstractions;
 using Orbit.Infrastructure;
 using Orbit.Infrastructure.Identity;
 using Orbit.Infrastructure.Persistence;
+using Orbit.Infrastructure.RateLimiting;
 using Scalar.AspNetCore;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 const string bearerScheme = "OrbitBearer";
@@ -123,36 +130,50 @@ builder.Services.AddRateLimiter(options =>
         await rejectionContext.HttpContext.Response.WriteAsync(
             "Too many requests. Please try again later.", cancellationToken);
     };
-    options.AddFixedWindowLimiter("bootstrap", limiter =>
-    {
-        limiter.PermitLimit = 5;
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.QueueLimit = 0;
-        limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-    });
     // PERF-03: Fall back to a shared "unknown" partition only when no remote IP
     // is resolvable (should be rare with the ForwardedHeaders fix above).
-    options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = 20,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0,
-            QueueProcessingOrder = QueueProcessingOrder.OldestFirst
-        }));
+    options.AddPolicy("bootstrap", context => CreateRateLimitPartition(
+        context, "bootstrap", "global", permitLimit: 5, TimeSpan.FromMinutes(1)));
+    options.AddPolicy("auth", context => CreateRateLimitPartition(
+        context, "auth", context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        permitLimit: 20, TimeSpan.FromMinutes(1)));
     // Slack webhook posts are external-service side effects (message sends); throttle
     // per authenticated user to prevent channel spam from a compromised/misused token.
-    options.AddPolicy("slack-share", context => RateLimitPartition.GetFixedWindowLimiter(
+    options.AddPolicy("slack-share", context => CreateRateLimitPartition(
+        context, "slack-share",
         context.User.FindFirst("sub")?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = 5,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0,
-            QueueProcessingOrder = QueueProcessingOrder.OldestFirst
-        }));
+        permitLimit: 5, TimeSpan.FromMinutes(1)));
 });
+
+// §13.7.1 (ADR-022): use the Valkey-backed sliding-window limiter across every partition when
+// RateLimiting:Distributed:Enabled=true and Redis is configured, so a caller round-robined across
+// replicas is checked against one shared count instead of each replica's own in-memory window.
+// Falls back to today's per-replica FixedWindowLimiter otherwise - zero behavior change for
+// anyone who hasn't opted in.
+static RateLimitPartition<string> CreateRateLimitPartition(
+    HttpContext context, string policyName, string partitionKey, int permitLimit, TimeSpan window)
+{
+    var key = $"{policyName}:{partitionKey}";
+    var distributedEnabled = context.RequestServices
+        .GetRequiredService<IOptions<RateLimitingOptions>>().Value.Enabled;
+    var connectionMultiplexer = context.RequestServices.GetService<IConnectionMultiplexer>();
+
+    if (distributedEnabled && connectionMultiplexer is not null)
+    {
+        return RateLimitPartition.Get(
+            key,
+            _ => new RedisSlidingWindowRateLimiter(
+                connectionMultiplexer, policyName, partitionKey, window, permitLimit));
+    }
+
+    return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+    {
+        PermitLimit = permitLimit,
+        Window = window,
+        QueueLimit = 0,
+        QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+    });
+}
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddCors(options =>
@@ -161,6 +182,25 @@ builder.Services.AddCors(options =>
         var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
         policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod();
     }));
+
+// §13.7.2 (ADR-023): exports to the orbit-otel Collector via OTLP (standard OTEL_EXPORTER_OTLP_*
+// env vars, defaulting to http://localhost:4317). AddRedisInstrumentation()/AddNpgsql() resolve
+// their connection from DI at build time and no-op if none is registered, so this is safe whether
+// or not Redis is configured for this environment.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("orbit-api"))
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddNpgsql()
+        .AddRedisInstrumentation()
+        .AddOtlpExporter())
+    .WithMetrics(metrics => metrics
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddRuntimeInstrumentation()
+        .AddMeter(RateLimitTelemetry.MeterName)
+        .AddOtlpExporter());
 
 var app = builder.Build();
 

@@ -20,6 +20,9 @@ import type {
   SiteCapabilities,
   Sprint,
   SprintReport,
+  CumulativeFlowDiagram,
+  CycleTimeReport,
+  ControlChart,
   Team,
   TeamMembership,
   TenantMembership,
@@ -445,6 +448,12 @@ export const orbitApi = {
     request<Sprint>(`/work-items/${encodeURIComponent(workItemId)}/sprint`, { method: 'DELETE' }),
   getSprintReport: (sprintId: string) =>
     request<SprintReport>(`/sprints/${encodeURIComponent(sprintId)}/report`),
+  getSprintCumulativeFlowDiagram: (sprintId: string) =>
+    request<CumulativeFlowDiagram>(`/sprints/${encodeURIComponent(sprintId)}/reports/cumulative-flow`),
+  getSprintCycleTimeReport: (sprintId: string) =>
+    request<CycleTimeReport>(`/sprints/${encodeURIComponent(sprintId)}/reports/cycle-time`),
+  getSprintControlChart: (sprintId: string) =>
+    request<ControlChart>(`/sprints/${encodeURIComponent(sprintId)}/reports/control-chart`),
   listTeams: () => request<Team[]>('/teams'),
   createTeam: (name: string) =>
     request<Team>('/teams', { method: 'POST', body: JSON.stringify({ name }) }),

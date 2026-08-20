@@ -29,4 +29,25 @@ internal sealed class WorkItemHistoryRepository(OrbitDbContext dbContext) : IWor
             .ToArrayAsync(cancellationToken);
         return new PagedResult<WorkItemHistoryEntry>(items, totalCount);
     }
+
+    public async Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemsAndFieldAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> workItemIds,
+        string fieldName,
+        CancellationToken cancellationToken)
+    {
+        if (workItemIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await dbContext.WorkItemHistoryEntries
+            .AsNoTracking()
+            .Where(entry => entry.TenantId == tenantId
+                && workItemIds.Contains(entry.WorkItemId)
+                && entry.FieldName == fieldName)
+            .OrderBy(entry => entry.ChangedAt)
+            .ThenBy(entry => entry.Id)
+            .ToArrayAsync(cancellationToken);
+    }
 }

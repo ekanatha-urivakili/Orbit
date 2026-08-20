@@ -44,6 +44,16 @@
           "System.Security.Cryptography.Xml": "10.0.11"
         }
       },
+      "Microsoft.AspNetCore.DataProtection.StackExchangeRedis": {
+        "type": "Direct",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "lUeo4YZaLNv0939lSwHuy4L9HSRV6m0J5Zt+SAiZjvo1ors/uK4Mr199zJe8/rHdsdfkT3bmRh+f8YMlXiJEmg==",
+        "dependencies": {
+          "Microsoft.AspNetCore.DataProtection": "10.0.11",
+          "StackExchange.Redis": "2.7.27"
+        }
+      },
       "Microsoft.EntityFrameworkCore": {
         "type": "Direct",
         "requested": "[10.0.0, )",
@@ -169,6 +179,12 @@
         "dependencies": {
           "System.Security.Cryptography.Pkcs": "10.0.11"
         }
+      },
+      "System.Threading.RateLimiting": {
+        "type": "Direct",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "7+n9cNFpC7VIJzBwSyxs6DHNGLP330dJVeeOSdIJt4TiwwazyEvvRuhWLORT41mRxQVGKhiFIZ+In4JKFWS9Ig=="
       },
       "AWSSDK.Core": {
         "type": "Transitive",

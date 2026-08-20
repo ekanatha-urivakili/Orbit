@@ -86,6 +86,10 @@ public sealed class MoveWorkItemHandlerTests
         public Task<PagedResult<WorkItemHistoryEntry>> ListByWorkItemAsync(
             Guid tenantId, Guid workItemId, int skip, int take, CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<WorkItemHistoryEntry>(Entries, Entries.Count));
+        public Task<IReadOnlyList<WorkItemHistoryEntry>> ListByWorkItemsAndFieldAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> workItemIds, string fieldName, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemHistoryEntry>>(
+                Entries.Where(e => workItemIds.Contains(e.WorkItemId) && e.FieldName == fieldName).ToArray());
     }
 
     private sealed class ProjectRepositoryStub(params Project[] projects) : IProjectRepository
