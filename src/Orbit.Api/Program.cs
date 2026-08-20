@@ -238,6 +238,10 @@ app.Use(async (context, next) =>
     context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
     context.Response.Headers.Append("X-Frame-Options", "DENY");
     context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+    // API version policy (§13.5): every response reports the version it was served under, so
+    // clients can detect a version change without a separate lookup. See VersionEndpoints for the
+    // /api/version info endpoint and the deprecation/sunset header convention a future v2 will use.
+    context.Response.Headers.Append("Api-Version", VersionEndpoints.CurrentVersion);
     // SEC-01: Content-Security-Policy. The API returns JSON; script execution and
     // framing should be completely denied. Adjust 'connect-src' when you add CDN
     // or WebSocket endpoints.
@@ -263,6 +267,9 @@ app.MapGet("/health/live", () => Results.Ok(new { status = "healthy" }))
     .ExcludeFromDescription();
 app.MapGet("/health/ready", HealthEndpoints.ReadyAsync)
     .ExcludeFromDescription();
+app.MapGet("/api/version", VersionEndpoints.GetVersion)
+    .WithName("GetApiVersion")
+    .WithTags("Version");
 
 app.MapGroup("/api/v1").MapBootstrapEndpoints();
 app.MapGroup("/api/v1").MapRegistrationEndpoints();

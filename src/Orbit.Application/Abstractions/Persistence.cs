@@ -5,6 +5,7 @@ using Orbit.Domain.Choices;
 using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Idempotency;
 using Orbit.Domain.Messaging;
 using Orbit.Domain.Organizations;
 using Orbit.Domain.Projects;
@@ -259,6 +260,47 @@ public interface IAuthenticationRepository
 public interface IOutboxRepository
 {
     Task AddAsync(OutboxEmailMessage message, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Backs the <c>Idempotency-Key</c> request contract (<see cref="Orbit.Domain.Idempotency.IdempotencyRecord"/>).
+/// All three methods use raw SQL rather than the change tracker so the reservation race between
+/// concurrent replays resolves on the (tenant_id, idempotency_key, request_path) unique constraint,
+/// not an in-process lock - this app runs multiple replicas.
+/// </summary>
+public interface IIdempotencyRecordRepository
+{
+    /// <summary>
+    /// Attempts to reserve a new record for (tenantId, idempotencyKey, requestPath), reclaiming an
+    /// existing row only if it has already expired. Returns <see langword="true"/> when this call
+    /// won the reservation and the caller should execute the mutation; <see langword="false"/> means
+    /// a live record already exists and the caller should inspect it via <see cref="GetAsync"/>.
+    /// </summary>
+    Task<bool> TryReserveAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        string requestPath,
+        DateTimeOffset now,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken);
+
+    /// <summary>Returns the live (non-expired) record, or <see langword="null"/> if none exists.</summary>
+    Task<IdempotencyRecord?> GetAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        string requestPath,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    Task CompleteAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        string requestPath,
+        int statusCode,
+        string? responseBody,
+        string? responseContentType,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
 }
 
 public interface IWorkspaceInvitationRepository

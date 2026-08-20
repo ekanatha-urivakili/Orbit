@@ -5,6 +5,7 @@ using Orbit.Domain.Boards;
 using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
+using Orbit.Domain.Idempotency;
 using Orbit.Domain.Integrations;
 using Orbit.Domain.Messaging;
 using Orbit.Domain.Organizations;
@@ -61,6 +62,7 @@ public sealed class OrbitDbContext(
     public DbSet<WorkItemVote> WorkItemVotes => Set<WorkItemVote>();
     public DbSet<WorkItemWorklog> WorkItemWorklogs => Set<WorkItemWorklog>();
     public DbSet<SlackConnection> SlackConnections => Set<SlackConnection>();
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -114,5 +116,7 @@ public sealed class OrbitDbContext(
             .HasQueryFilter(worklog => worklog.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<SlackConnection>()
             .HasQueryFilter(connection => connection.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<IdempotencyRecord>()
+            .HasQueryFilter(record => record.TenantId == tenantContext.TenantId);
     }
 }

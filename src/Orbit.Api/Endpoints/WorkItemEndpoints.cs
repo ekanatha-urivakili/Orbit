@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.RateLimiting;
+using Orbit.Api.Idempotency;
 using Orbit.Application.Integrations;
 using Orbit.Application.WorkItems;
 using Orbit.Domain.Choices;
@@ -55,7 +56,8 @@ public static class WorkItemEndpoints
             return Results.Created($"/api/v1/work-items/{workItem.Id}", workItem);
         })
         .WithName("CreateWorkItem")
-        .WithTags("Work items");
+        .WithTags("Work items")
+        .AddEndpointFilter<IdempotencyKeyFilter>();
 
         group.MapPatch("/work-items/{workItemId:guid}", async (
             Guid workItemId,
