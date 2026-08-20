@@ -21,10 +21,12 @@ import type {
 
 const countries = ['Global', 'Argentina', 'Brasil', 'Nigeria', 'South Africa', 'US', 'Saudi Arabia', 'Turkey']
 
+const defaultAcceptanceCriteriaTable = '<table><thead><tr><th>As a</th><th>When</th><th>Then</th><th>Dev</th><th>UAT</th><th>Production</th><th>Comments</th></tr></thead><tbody><tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table>'
+
 const blankDetails: Required<Omit<CreateWorkItemInput, 'projectId' | 'summary' | 'description' | 'type' | 'priority'>> = {
   parentId: null,
   epicName: null,
-  acceptanceCriteria: null,
+  acceptanceCriteria: defaultAcceptanceCriteriaTable,
   stepsToConduct: null,
   assigneeUserId: null,
   developerUserId: null,
@@ -199,7 +201,13 @@ export function CreateWorkItemDialog({
           {type === 'Epic' && <Field label="Epic name *"><input required maxLength={255} value={details.epicName ?? ''} onChange={(event) => patch({ epicName: event.target.value || null })} /><Hint>Provide a short name to identify this epic.</Hint></Field>}
           <Field label="Summary *"><input autoFocus required minLength={3} maxLength={255} value={summary} onChange={(event) => setSummary(event.target.value)} /></Field>
           <Field label="Description"><RichTextEditor value={description} onChange={setDescription} placeholder="Describe the outcome, context, and expected behaviour." /></Field>
-          {type === 'Epic' && <Field label="Acceptance criteria"><RichTextEditor value={details.acceptanceCriteria ?? ''} onChange={(html) => patch({ acceptanceCriteria: html || null })} placeholder="Define the acceptance criteria. Use the table button (⊞) in the toolbar to insert a table." /></Field>}
+          <Field label="Acceptance criteria">
+            <RichTextEditor
+              value={details.acceptanceCriteria ?? ''}
+              onChange={(html) => patch({ acceptanceCriteria: html || null })}
+              placeholder="Define the acceptance criteria. Use the table button (⊞) in the toolbar to insert a table."
+            />
+          </Field>
           {type === 'Bug' && <Field label="Steps to conduct action"><textarea value={details.stepsToConduct ?? ''} onChange={(event) => patch({ stepsToConduct: event.target.value || null })} maxLength={32000} rows={4} placeholder="Numbered reproduction steps and expected versus actual result." /></Field>}
 
           <div className="form-row">

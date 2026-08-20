@@ -153,14 +153,30 @@ public sealed class CustomFieldDefinition
             throw new DomainException("A single-choice or multi-choice field needs at least one option.");
         }
 
+        if (options.Count > 100)
+        {
+            throw new DomainException("A custom field cannot have more than 100 choice options.");
+        }
+
         var existingIds = _choiceOptions.Select(option => option.Id).ToHashSet();
+        var assignedIds = new HashSet<Guid>();
+        var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var replacement = new List<CustomFieldChoiceOption>();
         for (var index = 0; index < options.Count; index++)
         {
             var input = options[index];
             ValidateChoiceLabel(input.Label);
-            var id = input.Id is { } existingId && existingIds.Contains(existingId) ? existingId : Guid.CreateVersion7();
-            replacement.Add(new CustomFieldChoiceOption(id, input.Label.Trim(), index));
+            var trimmedLabel = input.Label.Trim();
+            if (!seenLabels.Add(trimmedLabel))
+            {
+                throw new DomainException($"Duplicate choice option '{trimmedLabel}' is not allowed.");
+            }
+
+            var id = input.Id is { } existingId && existingIds.Contains(existingId) && assignedIds.Add(existingId)
+                ? existingId
+                : Guid.CreateVersion7();
+            assignedIds.Add(id);
+            replacement.Add(new CustomFieldChoiceOption(id, trimmedLabel, index));
         }
 
         _choiceOptions.Clear();
@@ -185,7 +201,7 @@ public sealed class CustomFieldDefinition
 
     private static void ValidateChoiceLabel(string label)
     {
-        if (label.Trim().Length is < 1 or > 80)
+        if (string.IsNullOrWhiteSpace(label) || label.Trim().Length is < 1 or > 80)
         {
             throw new DomainException("Choice option label must contain 1 to 80 characters.");
         }

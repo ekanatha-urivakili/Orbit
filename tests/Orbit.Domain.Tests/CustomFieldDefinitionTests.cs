@@ -122,4 +122,64 @@ public sealed class CustomFieldDefinitionTests
         Assert.Equal(lowId, definition.ChoiceOptions.Single(o => o.Order == 1).Id);
         Assert.Equal("Critical", definition.ChoiceOptions.Single(o => o.Order == 2).Label);
     }
+
+    [Fact]
+    public void Create_RejectsMoreThan100ChoiceOptions()
+    {
+        var options = Enumerable.Range(1, 101)
+            .Select(i => new CustomFieldChoiceOptionInput(null, $"Option {i}"))
+            .ToArray();
+
+        var action = () => CustomFieldDefinition.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
+            options, DateTimeOffset.UtcNow);
+
+        var ex = Assert.Throws<DomainException>(action);
+        Assert.Contains("cannot have more than 100 choice options", ex.Message);
+    }
+
+    [Fact]
+    public void Create_RejectsDuplicateChoiceOptionLabels()
+    {
+        var action = () => CustomFieldDefinition.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
+            [new CustomFieldChoiceOptionInput(null, "High"), new CustomFieldChoiceOptionInput(null, "high")],
+            DateTimeOffset.UtcNow);
+
+        var ex = Assert.Throws<DomainException>(action);
+        Assert.Contains("Duplicate choice option", ex.Message);
+    }
+
+    [Fact]
+    public void Create_RejectsWhitespaceOnlyChoiceOptionLabel()
+    {
+        var action = () => CustomFieldDefinition.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
+            [new CustomFieldChoiceOptionInput(null, "   ")],
+            DateTimeOffset.UtcNow);
+
+        var ex = Assert.Throws<DomainException>(action);
+        Assert.Contains("Choice option label must contain", ex.Message);
+    }
+
+    [Fact]
+    public void Update_HandlesDuplicateExistingIdsGracefullyWithoutCrashing()
+    {
+        var definition = CustomFieldDefinition.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.MultiChoice, false, 0,
+            [new CustomFieldChoiceOptionInput(null, "Low")],
+            DateTimeOffset.UtcNow);
+        var lowId = definition.ChoiceOptions.Single().Id;
+
+        definition.Update(
+            "Severity",
+            false,
+            0,
+            true,
+            [new CustomFieldChoiceOptionInput(lowId, "Low"), new CustomFieldChoiceOptionInput(lowId, "Medium")],
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(2, definition.ChoiceOptions.Count);
+        Assert.NotEqual(definition.ChoiceOptions[0].Id, definition.ChoiceOptions[1].Id);
+    }
 }
