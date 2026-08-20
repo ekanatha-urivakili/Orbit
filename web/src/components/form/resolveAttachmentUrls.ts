@@ -7,6 +7,9 @@ export function resolveAttachmentUrls(html: string, attachments?: WorkItemAttach
   doc.querySelectorAll<HTMLElement>('[data-attachment-id]').forEach((element) => {
     const attachment = byId.get(element.getAttribute('data-attachment-id') ?? '')
     if (!attachment) return
+    // downloadUrl is withheld (still scanning, or flagged Infected/Failed) - leave the existing
+    // src/href in place rather than pointing it at nothing.
+    if (!attachment.downloadUrl) return
     if (element instanceof HTMLImageElement) element.src = attachment.downloadUrl
     const link = element.matches('a') ? element : element.querySelector('a')
     if (link instanceof HTMLAnchorElement) link.href = attachment.downloadUrl

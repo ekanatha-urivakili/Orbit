@@ -76,9 +76,13 @@ export function WorkItemAttachments({
                 <FileIcon size={18} className="text-gray-400 flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <a href={attachment.downloadUrl} target="_blank" rel="noreferrer" className="font-medium text-blue-700 hover:underline truncate block">
-                  {attachment.fileName}
-                </a>
+                {attachment.downloadUrl ? (
+                  <a href={attachment.downloadUrl} target="_blank" rel="noreferrer" className="font-medium text-blue-700 hover:underline truncate block">
+                    {attachment.fileName}
+                  </a>
+                ) : (
+                  <span className="font-medium text-gray-500 truncate block">{attachment.fileName} (scanning...)</span>
+                )}
                 <div className="text-xs text-gray-500">
                   {formatSize(attachment.sizeBytes)}
                   {' · '}
@@ -87,9 +91,11 @@ export function WorkItemAttachments({
                   {new Date(attachment.uploadedAt).toLocaleDateString()}
                 </div>
               </div>
-              <a href={attachment.downloadUrl} target="_blank" rel="noreferrer" className="p-1 text-gray-500 hover:text-gray-900" aria-label="Download">
-                <Download size={16} />
-              </a>
+              {attachment.downloadUrl && (
+                <a href={attachment.downloadUrl} target="_blank" rel="noreferrer" className="p-1 text-gray-500 hover:text-gray-900" aria-label="Download">
+                  <Download size={16} />
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => deleteMutation.mutate(attachment.id)}

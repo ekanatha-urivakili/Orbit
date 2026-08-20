@@ -3,11 +3,26 @@ using Orbit.Domain.Common;
 namespace Orbit.Domain.WorkItems;
 
 /// <summary>
+/// Malware-scan lifecycle for an uploaded attachment. An attachment is not downloadable
+/// (<see cref="Application.WorkItems.WorkItemAttachmentDto.DownloadUrl"/> is withheld) until it
+/// reaches <see cref="Clean"/> — see <c>AttachmentScanProcessor</c> for the worker that transitions
+/// it out of <see cref="Pending"/>.
+/// </summary>
+public enum AttachmentScanStatus
+{
+    Pending,
+    Clean,
+    Infected,
+    Failed,
+}
+
+/// <summary>
 /// Metadata for a file uploaded to object storage (MinIO locally, S3-compatible in production) and
 /// linked to a work item. The binary payload never passes through the API process: the client PUTs
 /// directly to <see cref="ObjectKey"/> using a presigned URL, and this row is created only after that
-/// upload succeeds (see <c>ConfirmWorkItemAttachmentCommand</c>). Immutable once created — an
-/// attachment can only be removed, never edited, matching Jira's attachment model.
+/// upload succeeds (see <c>ConfirmWorkItemAttachmentCommand</c>). Immutable once created except for
+/// <see cref="ScanStatus"/> — an attachment can only be removed, never edited, matching Jira's
+/// attachment model.
 /// </summary>
 public sealed class Attachment
 {
@@ -35,6 +50,7 @@ public sealed class Attachment
         ObjectKey = objectKey;
         UploadedByMembershipId = uploadedByMembershipId;
         UploadedAt = now;
+        ScanStatus = AttachmentScanStatus.Pending;
     }
 
     public Guid Id { get; private set; }
@@ -46,6 +62,8 @@ public sealed class Attachment
     public string ObjectKey { get; private set; } = string.Empty;
     public Guid UploadedByMembershipId { get; private set; }
     public DateTimeOffset UploadedAt { get; private set; }
+    public AttachmentScanStatus ScanStatus { get; private set; } = AttachmentScanStatus.Pending;
+    public DateTimeOffset? ScannedAt { get; private set; }
 
     public static Attachment Create(
         Guid tenantId,
@@ -94,5 +112,26 @@ public sealed class Attachment
             objectKey,
             uploadedByMembershipId,
             now);
+    }
+
+    /// <summary>
+    /// Records the outcome of the malware scan (<c>AttachmentScanProcessor</c>). Only a
+    /// <see cref="Pending"/> attachment can be scanned — the scan result is final, matching the
+    /// immutable-once-created model above.
+    /// </summary>
+    public void MarkScanned(AttachmentScanStatus status, DateTimeOffset now)
+    {
+        if (ScanStatus != AttachmentScanStatus.Pending)
+        {
+            throw new DomainException("Attachment has already been scanned.");
+        }
+
+        if (status == AttachmentScanStatus.Pending)
+        {
+            throw new DomainException("A scan result cannot leave the attachment Pending.");
+        }
+
+        ScanStatus = status;
+        ScannedAt = now;
     }
 }

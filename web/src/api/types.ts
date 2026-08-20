@@ -113,6 +113,8 @@ export interface WorkItemHistoryEntry {
   changedAt: string
 }
 
+export type AttachmentScanStatus = 'Pending' | 'Clean' | 'Infected' | 'Failed'
+
 export interface WorkItemAttachment {
   id: string
   workItemId: string
@@ -121,7 +123,9 @@ export interface WorkItemAttachment {
   sizeBytes: number
   uploadedByMembershipId: string
   uploadedAt: string
-  downloadUrl: string
+  scanStatus: AttachmentScanStatus
+  // Withheld until scanStatus is 'Clean' - see the malware-scanning gate on the download path.
+  downloadUrl: string | null
 }
 
 export interface PresignedAttachmentUpload {

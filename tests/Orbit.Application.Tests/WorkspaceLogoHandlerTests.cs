@@ -117,6 +117,12 @@ public sealed class WorkspaceLogoHandlerTests
             DeletedObjectKey = objectKey;
             return Task.CompletedTask;
         }
+
+        public Task<Stream> OpenReadAsync(string objectKey, CancellationToken cancellationToken) =>
+            Task.FromResult<Stream>(new MemoryStream());
+
+        public Task MoveToQuarantineAsync(string objectKey, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

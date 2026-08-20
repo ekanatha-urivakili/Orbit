@@ -359,7 +359,9 @@ export function RichTextEditor({
     setUploading('image')
     try {
       const attachment = await uploadWorkItemAttachment(workItemId, file)
-      editor.chain().focus().setImage({ src: attachment.downloadUrl, alt: attachment.fileName, attachmentId: attachment.id } as never).run()
+      // downloadUrl is null until the malware scan completes - resolveAttachmentUrls fills in the
+      // real src once the work item is redisplayed with a Clean attachment list.
+      editor.chain().focus().setImage({ src: attachment.downloadUrl ?? '', alt: attachment.fileName, attachmentId: attachment.id } as never).run()
       onAttachmentUploaded?.()
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'Image upload failed.')
@@ -380,7 +382,7 @@ export function RichTextEditor({
         fileName: attachment.fileName,
         contentType: attachment.contentType,
         sizeBytes: attachment.sizeBytes,
-        url: attachment.downloadUrl,
+        url: attachment.downloadUrl ?? '',
       }).run()
       onAttachmentUploaded?.()
     } catch (error) {

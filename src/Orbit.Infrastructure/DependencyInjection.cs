@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Orbit.Application.Abstractions;
 using Orbit.Infrastructure.Authorization;
 using Orbit.Infrastructure.Email;
@@ -8,6 +9,7 @@ using Orbit.Infrastructure.Identity;
 using Orbit.Infrastructure.Integrations;
 using Orbit.Infrastructure.Messaging;
 using Orbit.Infrastructure.Persistence;
+using Orbit.Infrastructure.Scanning;
 using Orbit.Infrastructure.Storage;
 
 namespace Orbit.Infrastructure;
@@ -30,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkItemCommentRepository, WorkItemCommentRepository>();
         services.AddScoped<IWorkItemHistoryRepository, WorkItemHistoryRepository>();
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
+        services.AddScoped<IAttachmentScanRequestRepository, AttachmentScanRequestRepository>();
         services.AddScoped<IWorkItemWatcherRepository, WorkItemWatcherRepository>();
         services.AddScoped<IWorkItemVoteRepository, WorkItemVoteRepository>();
         services.AddScoped<IWorkItemWorklogRepository, WorkItemWorklogRepository>();
@@ -64,6 +67,16 @@ public static class DependencyInjection
         services.AddSingleton<IObjectStorageService, S3ObjectStorageService>();
         services.AddHostedService<ObjectStorageBucketInitializer>();
         services.AddScoped<OutboxEmailProcessor>();
+        services.Configure<AttachmentScanningOptions>(configuration.GetSection(AttachmentScanningOptions.SectionName));
+        services.AddSingleton<IAttachmentScanner>(provider =>
+        {
+            var scanningOptions = provider.GetRequiredService<IOptions<AttachmentScanningOptions>>().Value;
+            return scanningOptions.Enabled
+                ? provider.GetRequiredService<ClamAvAttachmentScanner>()
+                : new NoOpAttachmentScanner();
+        });
+        services.AddSingleton<ClamAvAttachmentScanner>();
+        services.AddScoped<AttachmentScanProcessor>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.Configure<LocalTokenOptions>(configuration.GetSection(LocalTokenOptions.SectionName));
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();

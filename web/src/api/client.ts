@@ -188,6 +188,12 @@ export const orbitApi = {
     request<void>(`/work-items/${encodeURIComponent(workItemId)}/attachments/${encodeURIComponent(attachmentId)}`, {
       method: 'DELETE',
     }),
+  // Rejects with 409 while the attachment is still being scanned, or 404 if it was flagged
+  // Infected/Failed - see the malware-scanning gate on the download path.
+  getWorkItemAttachmentDownloadUrl: (workItemId: string, attachmentId: string) =>
+    request<WorkItemAttachment>(
+      `/work-items/${encodeURIComponent(workItemId)}/attachments/${encodeURIComponent(attachmentId)}/download`,
+    ),
   getWorkItemWatchers: (workItemId: string) =>
     request<import('./types').WorkItemWatchers>(`/work-items/${encodeURIComponent(workItemId)}/watchers`),
   watchWorkItem: (workItemId: string) =>

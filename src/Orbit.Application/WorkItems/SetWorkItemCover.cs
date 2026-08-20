@@ -3,6 +3,7 @@ using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
+using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.WorkItems;
 
@@ -44,6 +45,11 @@ public sealed class SetWorkItemCoverHandler(
             if (!attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             {
                 throw new ValidationException("Only image attachments can be used as a cover.");
+            }
+
+            if (attachment.ScanStatus != AttachmentScanStatus.Clean)
+            {
+                throw new ValidationException("Only attachments that have passed malware scanning can be used as a cover.");
             }
         }
 

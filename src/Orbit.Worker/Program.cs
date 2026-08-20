@@ -7,6 +7,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ITenantContext, WorkerTenantContext>();
 builder.Services.AddScoped<ICurrentPrincipal, WorkerCurrentPrincipal>();
 builder.Services.AddHostedService<OutboxDispatchWorker>();
+builder.Services.AddHostedService<AttachmentScanDispatchWorker>();
 
 var host = builder.Build();
 host.Run();

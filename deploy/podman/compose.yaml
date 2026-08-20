@@ -62,6 +62,25 @@ services:
       retries: 15
     restart: unless-stopped
 
+  clamav:
+    # Malware scanning for uploaded attachments (Orbit.Worker's AttachmentScanProcessor talks to
+    # this over clamd's INSTREAM TCP protocol on port 3310). Opt-in: set
+    # AttachmentScanning__Enabled=true for Orbit.Worker to actually use it - otherwise a
+    # NoOpAttachmentScanner runs instead, e.g. in sandboxes without network access to pull this image.
+    image: docker.io/clamav/clamav:1.4
+    ports:
+      - "${CLAMAV_PORT:-3310}:3310"
+    volumes:
+      - orbit_clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s # first boot downloads virus definitions, which is slow
+    restart: unless-stopped
+
 volumes:
   orbit_pgdata:
   orbit_minio_data:
+  orbit_clamav_data:

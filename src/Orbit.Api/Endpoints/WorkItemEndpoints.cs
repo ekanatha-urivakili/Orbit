@@ -380,6 +380,16 @@ public static class WorkItemEndpoints
             .WithName("ConfirmWorkItemAttachment")
             .WithTags("Work items");
 
+        group.MapGet("/work-items/{workItemId:guid}/attachments/{attachmentId:guid}/download", async (
+            Guid workItemId,
+            Guid attachmentId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(
+                new GetWorkItemAttachmentDownloadUrlQuery(workItemId, attachmentId), cancellationToken)))
+            .WithName("GetWorkItemAttachmentDownloadUrl")
+            .WithTags("Work items");
+
         group.MapDelete("/work-items/{workItemId:guid}/attachments/{attachmentId:guid}", async (
             Guid workItemId,
             Guid attachmentId,
