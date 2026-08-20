@@ -228,6 +228,48 @@ public sealed class CustomFieldHandlerTests
         Assert.Equal(lowId, result.ChoiceOptions.Single(o => o.Order == 1).Id);
     }
 
+    [Fact]
+    public void CreateValidator_RejectsMoreThan100ChoiceOptions()
+    {
+        var validator = new CreateCustomFieldValidator();
+        var options = Enumerable.Range(1, 101)
+            .Select(i => new CustomFieldChoiceOptionInput(null, $"Option {i}"))
+            .ToArray();
+
+        var result = validator.Validate(new CreateCustomFieldCommand(
+            Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0, options));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == "ChoiceOptions");
+    }
+
+    [Fact]
+    public void CreateValidator_RejectsWhitespaceOnlyChoiceOptionLabel()
+    {
+        var validator = new CreateCustomFieldValidator();
+        var result = validator.Validate(new CreateCustomFieldCommand(
+            Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
+            [new CustomFieldChoiceOptionInput(null, "   ")]));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName.StartsWith("ChoiceOptions"));
+    }
+
+    [Fact]
+    public void UpdateValidator_RejectsMoreThan100ChoiceOptions()
+    {
+        var validator = new UpdateCustomFieldValidator();
+        var options = Enumerable.Range(1, 101)
+            .Select(i => new CustomFieldChoiceOptionInput(null, $"Option {i}"))
+            .ToArray();
+
+        var result = validator.Validate(new UpdateCustomFieldCommand(
+            Guid.NewGuid(), Guid.NewGuid(), "Severity", false, 0, true, options, 1));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == "ChoiceOptions");
+    }
+
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
 
     private sealed class ProjectRepositoryStub(Project project, ProjectPermission[] allowedPermissions) : IProjectRepository

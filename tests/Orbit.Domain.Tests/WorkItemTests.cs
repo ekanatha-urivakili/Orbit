@@ -238,7 +238,7 @@ public sealed class WorkItemTests
             WorkItemType.Epic, Priority.Medium, DateTimeOffset.UtcNow);
 
         var action = () => item.SetDetails(
-            null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null, null, null, null,
             null, null, null, null);
 
         Assert.Throws<DomainException>(action);
@@ -252,12 +252,44 @@ public sealed class WorkItemTests
             WorkItemType.Spike, Priority.High, DateTimeOffset.UtcNow);
 
         item.SetDetails(
-            null, null, null, null, null, null, null, null, null, null, null, 3,
+            null, null, null, null, null, null, null, null, null, null, null, null, 3,
             [" backend ", "Backend"], [" US "], ["trace.txt"]);
 
         Assert.Equal(["backend"], item.Labels, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(["US"], item.Countries);
         Assert.Equal(3, item.StoryPoints);
+    }
+
+    [Fact]
+    public void SetDetails_SetsDueDate()
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Ship the release", null,
+            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+        var startDate = new DateOnly(2026, 8, 20);
+        var dueDate = new DateOnly(2026, 8, 27);
+
+        item.SetDetails(
+            null, null, null, null, null, null, null, null, null, startDate, dueDate, null,
+            null, null, null, null);
+
+        Assert.Equal(startDate, item.StartDate);
+        Assert.Equal(dueDate, item.DueDate);
+    }
+
+    [Fact]
+    public void SetDetails_RejectsDueDateBeforeStartDate()
+    {
+        var item = WorkItem.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Ship the release", null,
+            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+
+        var action = () => item.SetDetails(
+            null, null, null, null, null, null, null, null, null,
+            new DateOnly(2026, 8, 20), new DateOnly(2026, 8, 10), null,
+            null, null, null, null);
+
+        Assert.Throws<DomainException>(action);
     }
 
     [Fact]
@@ -270,7 +302,7 @@ public sealed class WorkItemTests
 
         item.Update(
             "Updated summary", "Updated description", Priority.High,
-            null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null, null, null, null,
             null, null, null, null, now.AddMinutes(5));
 
         Assert.Equal("Updated summary", item.Summary);
@@ -290,7 +322,7 @@ public sealed class WorkItemTests
 
         var action = () => item.Update(
             "x", null, Priority.Medium,
-            null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null, null, null, null,
             null, null, null, null, now);
 
         Assert.Throws<DomainException>(action);
@@ -306,7 +338,7 @@ public sealed class WorkItemTests
 
         var action = () => item.Update(
             "Plan the release", null, Priority.Medium,
-            null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null, null, null, null,
             null, null, null, null, now);
 
         Assert.Throws<DomainException>(action);

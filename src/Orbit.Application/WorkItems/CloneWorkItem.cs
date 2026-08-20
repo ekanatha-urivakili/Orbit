@@ -56,6 +56,7 @@ public sealed class CloneWorkItemHandler(
             sprintName: null,
             identifiedOn: source.IdentifiedOn,
             startDate: source.StartDate,
+            dueDate: source.DueDate,
             teamId: source.TeamId,
             storyPoints: source.StoryPoints,
             labels: source.Labels,

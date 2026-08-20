@@ -45,6 +45,7 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
         builder.Property(workItem => workItem.SprintName).HasColumnName("sprint_name").HasMaxLength(255);
         builder.Property(workItem => workItem.IdentifiedOn).HasColumnName("identified_on").HasMaxLength(255);
         builder.Property(workItem => workItem.StartDate).HasColumnName("start_date").HasColumnType("date");
+        builder.Property(workItem => workItem.DueDate).HasColumnName("due_date").HasColumnType("date");
         builder.Property(workItem => workItem.TeamId).HasColumnName("team_id");
         builder.Property(workItem => workItem.StoryPoints).HasColumnName("story_points").HasPrecision(10, 2);
         builder.Property(workItem => workItem.Labels).HasColumnName("labels").HasColumnType("text[]");

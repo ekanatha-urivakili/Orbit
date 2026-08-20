@@ -27,7 +27,7 @@ public sealed class UpdateWorkItemHandlerTests
             item.Id, summary, "Updated description", Priority.High,
             /* ParentId */ null, /* EpicName */ null, /* AcceptanceCriteria */ null, /* StepsToConduct */ null,
             /* AssigneeUserId */ null, /* DeveloperUserId */ null, /* ProductOwnerUserId */ null,
-            /* SprintName */ null, /* IdentifiedOn */ null, /* StartDate */ null, /* TeamId */ null,
+            /* SprintName */ null, /* IdentifiedOn */ null, /* StartDate */ null, /* DueDate */ null, /* TeamId */ null,
             /* StoryPoints */ null,
             /* Labels */ null, /* Countries */ null, /* AttachmentNames */ null,
             item.Version);
@@ -57,6 +57,36 @@ public sealed class UpdateWorkItemHandlerTests
         Assert.Equal("Updated description", result.Description);
         Assert.Equal(Priority.High, result.Priority);
         Assert.Equal(2, result.Version);
+    }
+
+    [Fact]
+    public async Task ChangeAssignee_UpdatesOnlyTheAssigneeAndRecordsHistory()
+    {
+        var tenantId = Guid.NewGuid();
+        var item = NewItem(tenantId, Guid.NewGuid());
+        var assignee = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
+        var history = new WorkItemHistoryRepositoryStub();
+        var handler = new ChangeWorkItemAssigneeHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(Guid.NewGuid()),
+            new WorkItemRepositoryStub(item),
+            new TenantMembershipRepositoryStub(tenantId, assignee.Id),
+            new SettingsRepositoryStub([assignee]),
+            new OutboxRepositoryStub(),
+            history,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(
+            new ChangeWorkItemAssigneeCommand(item.Id, assignee.Id, item.Version),
+            CancellationToken.None);
+
+        Assert.Equal(assignee.Id, result.AssigneeUserId);
+        Assert.Equal("Card 1", result.Summary);
+        Assert.Equal(2, result.Version);
+        var entry = Assert.Single(history.Added);
+        Assert.Equal("Assignee", entry.FieldName);
+        Assert.Equal("Assignee", entry.NewValue);
     }
 
     [Fact]
@@ -116,7 +146,7 @@ public sealed class UpdateWorkItemHandlerTests
             item.Id, item.Summary, item.Description, item.Priority,
             item.ParentId, item.EpicName, item.AcceptanceCriteria, item.StepsToConduct,
             item.AssigneeUserId, item.DeveloperUserId, item.ProductOwnerUserId,
-            item.SprintName, item.IdentifiedOn, item.StartDate, item.TeamId, item.StoryPoints,
+            item.SprintName, item.IdentifiedOn, item.StartDate, item.DueDate, item.TeamId, item.StoryPoints,
             item.Labels, item.Countries, null,
             item.Version);
 
@@ -172,7 +202,7 @@ public sealed class UpdateWorkItemHandlerTests
                 Guid.NewGuid(), "Updated summary", null, Priority.Medium,
                 /* ParentId */ null, /* EpicName */ null, /* AcceptanceCriteria */ null, /* StepsToConduct */ null,
                 /* AssigneeUserId */ null, /* DeveloperUserId */ null, /* ProductOwnerUserId */ null,
-                /* SprintName */ null, /* IdentifiedOn */ null, /* StartDate */ null, /* TeamId */ null,
+                /* SprintName */ null, /* IdentifiedOn */ null, /* StartDate */ null, /* DueDate */ null, /* TeamId */ null,
                 /* StoryPoints */ null,
                 /* Labels */ null, /* Countries */ null, /* AttachmentNames */ null,
                 /* ExpectedVersion */ 1),
@@ -245,7 +275,7 @@ public sealed class UpdateWorkItemHandlerTests
         item.SetDetails(
             parentId: null, epicName: null, acceptanceCriteria: null, stepsToConduct: null,
             assigneeUserId: assigneeUserId, developerUserId: null, productOwnerUserId: null,
-            sprintName: null, identifiedOn: null, startDate: null, teamId: null, storyPoints: null,
+            sprintName: null, identifiedOn: null, startDate: null, dueDate: null, teamId: null, storyPoints: null,
             labels: null, countries: null, attachmentNames: null);
         var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
         var outbox = new OutboxRepositoryStub();

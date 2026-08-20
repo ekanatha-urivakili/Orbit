@@ -2929,3 +2929,12 @@ chrome: the epic/type breadcrumb menus now persist, and the header gains copy-li
     work items; navigation commands (Summary/Backlog/Board/Settings) only appear once a project is
     selected. No new search endpoint — scoped to what's already in the React Query cache.
   - *Connect Slack channel* — see the Slack integration above.
+
+### 10.9 QA and Product Management Seeding Sandbox (Implemented v1.34)
+
+**Implemented as of v1.34.** A dedicated database seeding script is provided to initialize a comprehensive, large-scale workspace sandbox for testing complex agile structures (e.g., Initiative-to-Epic-to-Story hierarchies, sprints, teams, and notification loops) under a single database transaction.
+
+- **Transactional Seeding Pipeline (`scripts/seed_orbit_large.sql`):** Seeds **615 work items** (5 Initiatives, 10 Epics, 100 Stories, 500 Sub-tasks, 10 Bugs) associated with **2 teams** (**Alpha Team** and **Beta Team**) and **3 sprints** (**Sprint 1** closed, **Sprint 2** active, **Sprint 3** future) in less than 1 second.
+- **Markdown Acceptance Criteria Generation:** Programmatically populates each Story's `acceptance_criteria` text block with a 5-row Markdown environment check table (specifying `As a`, `when`, `then`, `Dev`, `UAT`, `Production`, `comments` columns).
+- **Outbox Notification Flow Integration:** Links bugs with watchers and assignees. Status transitions triggered on these seeded items immediately dispatch transactional emails to the outbox queue, verified end-to-end via Mailpit (`http://localhost:8025/`).
+- **Seeded Credentials:** Registers dev and QA accounts with a shared password hash corresponding to the local-only development credential `Password@9`.

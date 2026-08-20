@@ -221,6 +221,10 @@ public sealed class CumulativeFlowDiagramHandler(
         {
             end = start;
         }
+        else if (end.DayNumber - start.DayNumber > 366)
+        {
+            end = start.AddDays(366);
+        }
 
         var membershipIntervals = AgileReportData.BuildMembershipIntervals(facts);
 

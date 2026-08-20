@@ -1,7 +1,7 @@
 import { Globe, List, KanbanSquare, Code2, CalendarClock, FileText, FileSpreadsheet, Zap, Plus, Users, Share2, Maximize2, MoreHorizontal } from 'lucide-react'
 import type { Project } from '../../api/types'
 
-export type TabType = 'Summary' | 'Backlog' | 'Board' | 'Development'
+export type TabType = 'Summary' | 'Backlog' | 'Board' | 'Timeline' | 'Development'
 
 export function SubNavigation({ 
   project, 
@@ -54,7 +54,10 @@ export function SubNavigation({
         >
           <Code2 size={16} /> Code
         </button>
-        <button className="flex items-center gap-2 pb-3 px-1 border-b-2 border-transparent font-medium text-sm text-gray-600 hover:text-gray-900 whitespace-nowrap">
+        <button
+          onClick={() => setActiveTab('Timeline')}
+          className={`flex items-center gap-2 pb-3 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'Timeline' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+        >
           <CalendarClock size={16} /> Timeline
         </button>
         <button className="flex items-center gap-2 pb-3 px-1 border-b-2 border-transparent font-medium text-sm text-gray-600 hover:text-gray-900 whitespace-nowrap">

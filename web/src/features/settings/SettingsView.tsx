@@ -497,17 +497,25 @@ function parseChoiceOptionsText(
   text: string,
   existing: CustomFieldDefinition['choiceOptions'],
 ): CustomFieldChoiceOptionInput[] {
-  const existingByLabel = new Map(existing.map((option) => [option.label, option.id]))
+  const existingByLabel = new Map(existing.map((option) => [option.label.toLowerCase(), option.id]))
+  const seen = new Set<string>()
   return text
     .split(',')
     .map((label) => label.trim())
-    .filter((label) => label.length > 0)
-    .map((label) => ({ id: existingByLabel.get(label) ?? null, label }))
+    .filter((label) => {
+      if (label.length === 0) return false
+      const lower = label.toLowerCase()
+      if (seen.has(lower)) return false
+      seen.add(lower)
+      return true
+    })
+    .map((label) => ({ id: existingByLabel.get(label.toLowerCase()) ?? null, label }))
 }
 
 function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: CustomFieldDefinition[] }) {
   const client = useQueryClient()
   const [draft, setDraft] = useState(blankCustomField)
+  const isChoiceType = choiceFieldTypes.includes(draft.fieldType)
   const createMutation = useMutation({
     mutationFn: () =>
       orbitApi.createCustomField(projectId, {
@@ -516,14 +524,13 @@ function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: C
         fieldType: draft.fieldType,
         required: draft.required,
         order: draft.order,
-        choiceOptions: parseChoiceOptionsText(draft.choiceOptionsText, []),
+        choiceOptions: isChoiceType ? parseChoiceOptionsText(draft.choiceOptionsText, []) : [],
       }),
     onSuccess: (created) => {
       setDraft(blankCustomField)
       client.setQueryData<CustomFieldDefinition[]>(['custom-fields', projectId], (current) => [...(current ?? []), created])
     },
   })
-  const isChoiceType = choiceFieldTypes.includes(draft.fieldType)
 
   return (
     <div className="space-y-5">

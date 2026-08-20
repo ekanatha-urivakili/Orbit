@@ -79,6 +79,25 @@ public sealed class AgileReportHandlerTests
     }
 
     [Fact]
+    public async Task CumulativeFlowDiagram_RangeLongerThanAYear_ClampsTo366Days()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
+        var start = new DateOnly(2026, 1, 1);
+        var end = start.AddDays(1000);
+        sprint.Start(null, start, end, DateTimeOffset.UtcNow);
+
+        var handler = new CumulativeFlowDiagramHandler(
+            new TenantContextStub(tenantId), new ProjectRepositoryStub(project), new SprintRepositoryStub(sprint),
+            new SprintScopeFactRepositoryStub(), new WorkItemHistoryRepositoryStub());
+
+        var result = await handler.Handle(new CumulativeFlowDiagramQuery(sprint.Id), CancellationToken.None);
+
+        Assert.Equal(367, result.Points.Count);
+    }
+
+    [Fact]
     public async Task CycleTimeReport_ItemMovesInProgressThenDone_ComputesElapsedDays()
     {
         var tenantId = Guid.NewGuid();

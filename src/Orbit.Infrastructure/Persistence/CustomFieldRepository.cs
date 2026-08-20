@@ -23,7 +23,7 @@ internal sealed class CustomFieldRepository(OrbitDbContext dbContext) : ICustomF
         Guid projectId,
         string key,
         CancellationToken cancellationToken) =>
-        dbContext.CustomFieldDefinitions.SingleOrDefaultAsync(
+        dbContext.CustomFieldDefinitions.AsNoTracking().SingleOrDefaultAsync(
             definition => definition.TenantId == tenantId && definition.ProjectId == projectId && definition.Key == key,
             cancellationToken);
 
@@ -32,6 +32,7 @@ internal sealed class CustomFieldRepository(OrbitDbContext dbContext) : ICustomF
         Guid projectId,
         CancellationToken cancellationToken) =>
         await dbContext.CustomFieldDefinitions
+            .AsNoTracking()
             .Where(definition => definition.TenantId == tenantId && definition.ProjectId == projectId)
             .OrderBy(definition => definition.Order)
             .ThenBy(definition => definition.Label)

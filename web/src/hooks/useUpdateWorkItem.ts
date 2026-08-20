@@ -14,3 +14,16 @@ export function useUpdateWorkItem(projectId: string) {
     },
   })
 }
+
+export function useChangeWorkItemAssignee(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ workItem, assigneeUserId }: { workItem: WorkItem; assigneeUserId: string | null }) =>
+      orbitApi.changeWorkItemAssignee(workItem, assigneeUserId),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<PagedResult<WorkItem>>(['work-items', projectId], (current) =>
+        current && { ...current, items: current.items.map((item) => (item.id === updated.id ? updated : item)) },
+      )
+    },
+  })
+}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { BoardColumn, WorkItem, WorkItemStatus } from '../../api/types'
+import type { BoardColumn, TenantMembership, WorkItem, WorkItemStatus } from '../../api/types'
 import { groupWorkItemsByStatus, neighborsForDrop } from '../../board'
 import { statusMeta } from './constants'
 import { WorkItemCard } from './WorkItemCard'
@@ -8,16 +8,22 @@ export function KanbanBoard({
   columns,
   workItems,
   loading,
+  members = [],
   onStatusChange,
   onReorder,
   onOpen,
+  onAssigneeChange,
+  assigneeChangePending = false,
 }: {
   columns: readonly BoardColumn[]
   workItems: WorkItem[]
   loading: boolean
+  members?: TenantMembership[]
   onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
   onReorder: (workItem: WorkItem, neighbors: { beforeId: string | null; afterId: string | null }) => void
   onOpen?: (workItem: WorkItem) => void
+  onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
+  assigneeChangePending?: boolean
 }) {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverColumnStatus, setDragOverColumnStatus] = useState<WorkItemStatus | null>(null)
@@ -104,8 +110,11 @@ export function KanbanBoard({
                   item={item}
                   columns={orderedColumns}
                   columnCounts={grouped}
+                  members={members}
                   onStatusChange={onStatusChange}
                   onOpen={onOpen}
+                  onAssigneeChange={onAssigneeChange}
+                  assigneeChangePending={assigneeChangePending}
                   dragging={item.id === draggedId}
                   onDragStart={() => setDraggedId(item.id)}
                   onDragEnd={() => {

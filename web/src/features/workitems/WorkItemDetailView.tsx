@@ -17,6 +17,7 @@ import { useUpdateWorkItem } from '../../hooks/useUpdateWorkItem'
 import { Field, Hint } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import { LabelsInput } from '../../components/form/LabelsInput'
+import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemComments } from './WorkItemComments'
 import { WorkItemAttachments } from './WorkItemAttachments'
 import { WorkItemSubtasks } from './WorkItemSubtasks'
@@ -128,6 +129,7 @@ export function WorkItemDetailView({
     sprintName: string | null
     identifiedOn: string | null
     startDate: string | null
+    dueDate: string | null
     teamId: string | null
     storyPoints: number | null
     countries: string[]
@@ -143,6 +145,7 @@ export function WorkItemDetailView({
     sprintName: item.sprintName,
     identifiedOn: item.identifiedOn,
     startDate: item.startDate,
+    dueDate: item.dueDate,
     teamId: item.teamId,
     storyPoints: item.storyPoints,
     countries: item.countries,
@@ -828,24 +831,19 @@ export function WorkItemDetailView({
             <h3>Details</h3>
 
             <Field variant="panel" label="Assignee">
-              <SearchableSelect
-                size="xl"
-                value={details.assigneeUserId ?? ''}
-                onChange={(val) => patch({ assigneeUserId: val || null })}
-                options={[
-                  { value: '', label: 'Unassigned' },
-                  ...members
-                    .filter((member) => member.userId)
-                    .map((member) => ({
-                      value: member.userId ?? '',
-                      label: `${member.displayName ?? 'Unnamed member'}${
-                        profile && member.userId === profile.userId ? ' (me)' : ''
-                      }`,
-                    })),
-                ]}
-                placeholder="Unassigned"
-                searchPlaceholder="Search members…"
-              />
+              <div className="flex items-center gap-2.5">
+                <AssigneePicker
+                  members={members}
+                  value={details.assigneeUserId}
+                  onChange={(assigneeUserId) => patch({ assigneeUserId })}
+                  size="md"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  {details.assigneeUserId
+                    ? members.find((m) => m.userId === details.assigneeUserId)?.displayName ?? 'Unnamed member'
+                    : 'Unassigned'}
+                </span>
+              </div>
             </Field>
 
             <Field variant="panel" label="Reporter">
@@ -958,6 +956,16 @@ export function WorkItemDetailView({
                 lang="en-GB"
                 value={details.startDate ?? ''}
                 onChange={(event) => patch({ startDate: event.target.value || null })}
+              />
+            </Field>
+
+            <Field variant="panel" label="Due date">
+              <input
+                type="date"
+                lang="en-GB"
+                min={details.startDate ?? undefined}
+                value={details.dueDate ?? ''}
+                onChange={(event) => patch({ dueDate: event.target.value || null })}
               />
             </Field>
 

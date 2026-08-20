@@ -161,6 +161,29 @@ The bootstrap-created site super administrator can create additional workspaces 
 beside the workspace selector. Orbit creates the workspace and owner membership in one transaction,
 then rotates the current session into the new workspace.
 
+### Seeding Large Agile Dataset for Local QA/PM Testing
+
+To seed the local database with a massive, realistic agile dataset (5 Initiatives, 10 Epics, 100 Stories with Markdown AC tables, 500 Sub-tasks, 10 Bugs, 2 Teams with 7 members, 3 Sprints, comments, watchers, attachments, and blocking relationships), run:
+
+```bash
+PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit -f scripts/seed_orbit_large.sql
+```
+
+#### How to Log In
+
+The seeded user accounts and the administrator can all log in at `http://localhost:5800/` using the password **`Password@9`**:
+
+- **Admin**: `admin@orbit.com` / `Password@9`
+- **Developer 1**: `dev1@orbit.com` / `Password@9`
+- **Developer 2**: `dev2@orbit.com` / `Password@9`
+- **Developer 3**: `dev3@orbit.com` / `Password@9`
+- **Developer 4**: `dev4@orbit.com` / `Password@9`
+- **Developer 5**: `dev5@orbit.com` / `Password@9`
+- **QA Specialist 1**: `qa1@orbit.com` / `Password@9`
+- **QA Specialist 2**: `qa2@orbit.com` / `Password@9`
+
+You can verify their mail notifications at the local Mailpit inbox (`http://localhost:8025/`).
+
 ## Workspace administration
 
 Once signed in, an owner or administrator can manage teams and workspace membership:

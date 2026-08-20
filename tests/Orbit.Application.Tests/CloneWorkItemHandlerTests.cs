@@ -19,7 +19,7 @@ public sealed class CloneWorkItemHandlerTests
             tenantId, project.Id, 1, "ORB", "Investigate latency", "Some detail", WorkItemType.Bug, Priority.High,
             DateTimeOffset.UtcNow);
         source.SetDetails(
-            null, null, "AC", null, Guid.NewGuid(), null, null, null, null, null, null, 5, ["backend"], [], []);
+            null, null, "AC", null, Guid.NewGuid(), null, null, null, null, null, null, null, 5, ["backend"], [], []);
         var workItems = new WorkItemRepositoryStub(source);
         var history = new WorkItemHistoryRepositoryStub();
         var handler = new CloneWorkItemHandler(

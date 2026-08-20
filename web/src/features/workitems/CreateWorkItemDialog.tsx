@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { Field, Hint } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemTypeIcon } from './typeIcons'
 import { RichTextEditor } from '../../components/form/RichTextEditor'
 import { orbitApi } from '../../api/client'
@@ -21,10 +22,12 @@ import type {
 
 const countries = ['Global', 'Argentina', 'Brasil', 'Nigeria', 'South Africa', 'US', 'Saudi Arabia', 'Turkey']
 
+const defaultAcceptanceCriteriaTable = '<table><thead><tr><th>As a</th><th>When</th><th>Then</th><th>Dev</th><th>UAT</th><th>Production</th><th>Comments</th></tr></thead><tbody><tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table>'
+
 const blankDetails: Required<Omit<CreateWorkItemInput, 'projectId' | 'summary' | 'description' | 'type' | 'priority'>> = {
   parentId: null,
   epicName: null,
-  acceptanceCriteria: null,
+  acceptanceCriteria: defaultAcceptanceCriteriaTable,
   stepsToConduct: null,
   assigneeUserId: null,
   developerUserId: null,
@@ -32,6 +35,7 @@ const blankDetails: Required<Omit<CreateWorkItemInput, 'projectId' | 'summary' |
   sprintName: null,
   identifiedOn: null,
   startDate: null,
+  dueDate: null,
   teamId: null,
   storyPoints: null,
   labels: [],
@@ -199,25 +203,30 @@ export function CreateWorkItemDialog({
           {type === 'Epic' && <Field label="Epic name *"><input required maxLength={255} value={details.epicName ?? ''} onChange={(event) => patch({ epicName: event.target.value || null })} /><Hint>Provide a short name to identify this epic.</Hint></Field>}
           <Field label="Summary *"><input autoFocus required minLength={3} maxLength={255} value={summary} onChange={(event) => setSummary(event.target.value)} /></Field>
           <Field label="Description"><RichTextEditor value={description} onChange={setDescription} placeholder="Describe the outcome, context, and expected behaviour." /></Field>
-          {type === 'Epic' && <Field label="Acceptance criteria"><RichTextEditor value={details.acceptanceCriteria ?? ''} onChange={(html) => patch({ acceptanceCriteria: html || null })} placeholder="Define the acceptance criteria. Use the table button (⊞) in the toolbar to insert a table." /></Field>}
+          <Field label="Acceptance criteria">
+            <RichTextEditor
+              value={details.acceptanceCriteria ?? ''}
+              onChange={(html) => patch({ acceptanceCriteria: html || null })}
+              placeholder="Define the acceptance criteria. Use the table button (⊞) in the toolbar to insert a table."
+            />
+          </Field>
           {type === 'Bug' && <Field label="Steps to conduct action"><textarea value={details.stepsToConduct ?? ''} onChange={(event) => patch({ stepsToConduct: event.target.value || null })} maxLength={32000} rows={4} placeholder="Numbered reproduction steps and expected versus actual result." /></Field>}
 
           <div className="form-row">
             <Field label="Assignee">
-              <SearchableSelect
-                size="xl"
-                value={details.assigneeUserId ?? ''}
-                onChange={(val) => patch({ assigneeUserId: val || null })}
-                options={[
-                  { value: '', label: 'Unassigned' },
-                  ...members.filter((member) => member.userId).map((member) => ({
-                    value: member.userId ?? '',
-                    label: `${member.displayName ?? 'Unnamed member'}${profile && member.userId === profile.userId ? ' (me)' : ''}`,
-                  })),
-                ]}
-                placeholder="Unassigned"
-                searchPlaceholder="Search members…"
-              />
+              <div className="flex items-center gap-2.5 min-h-[38px] settings-control bg-white dark:bg-[#22272b] px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg">
+                <AssigneePicker
+                  members={members}
+                  value={details.assigneeUserId}
+                  onChange={(assigneeUserId) => patch({ assigneeUserId })}
+                  size="md"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  {details.assigneeUserId
+                    ? members.find((m) => m.userId === details.assigneeUserId)?.displayName ?? 'Unnamed member'
+                    : 'Unassigned'}
+                </span>
+              </div>
             </Field>
             <Field label="Priority">
               <SearchableSelect
@@ -316,6 +325,18 @@ export function CreateWorkItemDialog({
                 lang="en-GB"
                 value={details.startDate ?? ''}
                 onChange={(event) => patch({ startDate: event.target.value || null })}
+              />
+            </Field>
+          </div>
+
+          <div className="form-row">
+            <Field label="Due date">
+              <input
+                type="date"
+                lang="en-GB"
+                min={details.startDate ?? undefined}
+                value={details.dueDate ?? ''}
+                onChange={(event) => patch({ dueDate: event.target.value || null })}
               />
             </Field>
           </div>

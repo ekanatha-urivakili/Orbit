@@ -53,6 +53,7 @@ public sealed class WorkItem
     public string? SprintName { get; private set; }
     public string? IdentifiedOn { get; private set; }
     public DateOnly? StartDate { get; private set; }
+    public DateOnly? DueDate { get; private set; }
     public Guid? TeamId { get; private set; }
     public decimal? StoryPoints { get; private set; }
     public string[] Labels { get; private set; } = [];
@@ -117,6 +118,7 @@ public sealed class WorkItem
         string? sprintName,
         string? identifiedOn,
         DateOnly? startDate,
+        DateOnly? dueDate,
         Guid? teamId,
         decimal? storyPoints,
         IEnumerable<string>? labels,
@@ -138,6 +140,11 @@ public sealed class WorkItem
             throw new DomainException("A work item cannot reference itself.");
         }
 
+        if (startDate.HasValue && dueDate.HasValue && dueDate < startDate)
+        {
+            throw new DomainException("Due date cannot be earlier than the start date.");
+        }
+
         ParentId = parentId;
         EpicName = Normalize(epicName, 255, "Epic name");
         AcceptanceCriteria = Normalize(acceptanceCriteria, 32_000, "Acceptance criteria");
@@ -148,6 +155,7 @@ public sealed class WorkItem
         SprintName = Normalize(sprintName, 255, "Sprint");
         IdentifiedOn = Normalize(identifiedOn, 255, "Identified on");
         StartDate = startDate;
+        DueDate = dueDate;
         TeamId = teamId;
         StoryPoints = storyPoints;
         Labels = NormalizeValues(labels, 50, 100, "Label");
@@ -199,6 +207,7 @@ public sealed class WorkItem
         string? sprintName,
         string? identifiedOn,
         DateOnly? startDate,
+        DateOnly? dueDate,
         Guid? teamId,
         decimal? storyPoints,
         IEnumerable<string>? labels,
@@ -232,6 +241,7 @@ public sealed class WorkItem
             sprintName,
             identifiedOn,
             startDate,
+            dueDate,
             teamId,
             storyPoints,
             labels,
@@ -250,6 +260,18 @@ public sealed class WorkItem
         }
 
         Status = status;
+        Version++;
+        UpdatedAt = now;
+    }
+
+    public void ChangeAssignee(Guid? assigneeUserId, DateTimeOffset now)
+    {
+        if (AssigneeUserId == assigneeUserId)
+        {
+            return;
+        }
+
+        AssigneeUserId = assigneeUserId;
         Version++;
         UpdatedAt = now;
     }

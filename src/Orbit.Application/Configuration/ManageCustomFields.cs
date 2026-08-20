@@ -58,8 +58,13 @@ public sealed class CreateCustomFieldValidator : AbstractValidator<CreateCustomF
         RuleFor(command => command.Label).NotEmpty().Length(2, 80);
         RuleFor(command => command.FieldType).IsInEnum();
         RuleFor(command => command.Order).InclusiveBetween(0, 10_000);
+        RuleFor(command => command.ChoiceOptions)
+            .Must(options => options == null || options.Count <= 100)
+            .WithMessage("Cannot specify more than 100 choice options.");
         RuleForEach(command => command.ChoiceOptions).ChildRules(option =>
-            option.RuleFor(o => o.Label).NotEmpty().MaximumLength(80));
+            option.RuleFor(o => o.Label)
+                .Must(l => !string.IsNullOrWhiteSpace(l) && l.Trim().Length is >= 1 and <= 80)
+                .WithMessage("Option label must contain 1 to 80 characters."));
     }
 }
 
@@ -139,8 +144,13 @@ public sealed class UpdateCustomFieldValidator : AbstractValidator<UpdateCustomF
         RuleFor(command => command.Label).NotEmpty().Length(2, 80);
         RuleFor(command => command.Order).InclusiveBetween(0, 10_000);
         RuleFor(command => command.ExpectedVersion).GreaterThan(0);
+        RuleFor(command => command.ChoiceOptions)
+            .Must(options => options == null || options.Count <= 100)
+            .WithMessage("Cannot specify more than 100 choice options.");
         RuleForEach(command => command.ChoiceOptions).ChildRules(option =>
-            option.RuleFor(o => o.Label).NotEmpty().MaximumLength(80));
+            option.RuleFor(o => o.Label)
+                .Must(l => !string.IsNullOrWhiteSpace(l) && l.Trim().Length is >= 1 and <= 80)
+                .WithMessage("Option label must contain 1 to 80 characters."));
     }
 }
 

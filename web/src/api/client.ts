@@ -154,6 +154,12 @@ export const orbitApi = {
       headers: { 'If-Match': `"${workItem.version}"` },
       body: JSON.stringify(input),
     }),
+  changeWorkItemAssignee: (workItem: WorkItem, assigneeUserId: string | null) =>
+    request<WorkItem>(`/work-items/${workItem.id}/assignee`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${workItem.version}"` },
+      body: JSON.stringify({ assigneeUserId }),
+    }),
   changeStatus: (workItem: WorkItem, status: WorkItemStatus) =>
     request<WorkItem>(`/work-items/${workItem.id}/status`, {
       method: 'PATCH',
