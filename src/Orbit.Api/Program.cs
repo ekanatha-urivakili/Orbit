@@ -216,7 +216,7 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
     {
         var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
-        policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod();
+        policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("X-Correlation-Id");
     }));
 
 // §13.7.2 (ADR-023): exports to the orbit-otel Collector via OTLP (standard OTEL_EXPORTER_OTLP_*

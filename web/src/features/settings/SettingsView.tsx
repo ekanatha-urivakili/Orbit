@@ -10,6 +10,7 @@ import { applyTheme } from '../../lib/theme'
 import { getOidcConfig, startOidcLogin } from '../auth/oidcPkce'
 import { Field, Hint, SubmitRow } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { CustomFiltersPanel } from './CustomFiltersPanel'
 import type {
   CreateMembershipInput,
   CustomFieldChoiceOptionInput,
@@ -117,8 +118,6 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
     </div>
   )
 }
-
-import { CustomFiltersPanel } from './CustomFiltersPanel'
 
 interface QueryShape<T> {
   data?: T

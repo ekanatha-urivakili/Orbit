@@ -842,7 +842,7 @@ function App() {
                     onRefresh={() => {
                       queryClient.invalidateQueries({ queryKey: ['work-items'] })
                       queryClient.invalidateQueries({ queryKey: ['sprints'] })
-                      queryClient.invalidateQueries({ queryKey: ['boards'] })
+                      queryClient.invalidateQueries({ queryKey: ['board'] })
                       queryClient.invalidateQueries({ queryKey: ['sprint-insights'] })
                     }}
                     onConfigureColumns={() => setWorkflowEditorOpen(true)}

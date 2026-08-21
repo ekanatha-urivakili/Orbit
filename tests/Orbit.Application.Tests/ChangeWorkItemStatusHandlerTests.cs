@@ -29,7 +29,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
             new WorkItemStatusRepositoryStub(statuses),
-            new BoardRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -63,7 +62,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
             new WorkItemStatusRepositoryStub(statuses),
-            new BoardRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -92,7 +90,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new CurrentPrincipalStub(assigneeAccount.Id),
             new WorkItemRepositoryStub(workItem),
             new WorkItemStatusRepositoryStub(statuses),
-            new BoardRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -122,7 +119,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
             new WorkItemStatusRepositoryStub(statuses),
-            new BoardRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -155,7 +151,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
             new WorkItemStatusRepositoryStub(statuses),
-            new BoardRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -185,7 +180,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
             new WorkItemStatusRepositoryStub(statuses),
-            new BoardRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -220,7 +214,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
             new WorkItemStatusRepositoryStub(statuses),
-            new BoardRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -234,37 +227,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             CancellationToken.None);
 
         Assert.Empty(outbox.Messages);
-    }
-
-    [Fact]
-    public async Task Handle_TransitioningStatus_IncrementsBoardEpoch_WhenBoardExists()
-    {
-        var tenantId = Guid.NewGuid();
-        var authorUserId = Guid.NewGuid();
-        var (workItem, statuses, inProgress) = CreateWorkItem(tenantId, Guid.NewGuid());
-        var backlog = statuses.Single(status => status.Key == "backlog");
-        var board = Board.Create(
-            tenantId, workItem.ProjectId, "Delivery Board", BoardType.Kanban,
-            [new BoardColumnInput(backlog.Id, null, WipLimitMode.Warn)], DateTimeOffset.UtcNow);
-        var handler = new ChangeWorkItemStatusHandler(
-            new TenantContextStub(tenantId),
-            new CurrentPrincipalStub(authorUserId),
-            new WorkItemRepositoryStub(workItem),
-            new WorkItemStatusRepositoryStub(statuses),
-            new BoardRepositoryStub(board),
-            new SprintMembershipRepositoryStub(),
-            new SprintScopeFactRepositoryStub(),
-            new SettingsRepositoryStub([], preferences: []),
-            new OutboxRepositoryStub(),
-            new WorkItemHistoryRepositoryStub(),
-            new UnitOfWorkStub(),
-            TimeProvider.System);
-
-        await handler.Handle(
-            new ChangeWorkItemStatusCommand(workItem.Id, inProgress.Id, workItem.Version),
-            CancellationToken.None);
-
-        Assert.Equal(2, board.Epoch);
     }
 
     private static (WorkItem WorkItem, IReadOnlyList<WorkItemStatusDefinition> Statuses, WorkItemStatusDefinition InProgress) CreateWorkItem(
@@ -365,14 +327,6 @@ public sealed class ChangeWorkItemStatusHandlerTests
             Task.FromResult(false);
 
         public Task RemoveAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
-    }
-
-    private sealed class BoardRepositoryStub(Board? existing = null) : IBoardRepository
-    {
-        public Task AddAsync(Board board, CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public Task<Board?> GetAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
-            Task.FromResult(existing);
     }
 
     private sealed class SprintMembershipRepositoryStub : ISprintMembershipRepository

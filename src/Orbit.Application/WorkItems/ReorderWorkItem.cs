@@ -29,7 +29,6 @@ public sealed class ReorderWorkItemValidator : AbstractValidator<ReorderWorkItem
 public sealed class ReorderWorkItemHandler(
     ITenantContext tenantContext,
     IWorkItemRepository workItems,
-    IBoardRepository boards,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : IRequestHandler<ReorderWorkItemCommand, WorkItemDto>
@@ -62,9 +61,6 @@ public sealed class ReorderWorkItemHandler(
         };
 
         workItem.Reorder(rank, timeProvider.GetUtcNow());
-
-        var board = await boards.GetAsync(tenantContext.TenantId, workItem.ProjectId, cancellationToken);
-        board?.IncrementEpoch();
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);

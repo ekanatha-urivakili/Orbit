@@ -19,11 +19,20 @@ public static class CacheFailOpen
         HybridCacheEntryOptions? options,
         CancellationToken cancellationToken)
     {
+        var factoryInvoked = false;
         try
         {
-            return await cache.GetOrCreateAsync(key, factory, options, cancellationToken: cancellationToken);
+            return await cache.GetOrCreateAsync(
+                key,
+                async token =>
+                {
+                    factoryInvoked = true;
+                    return await factory(token);
+                },
+                options,
+                cancellationToken: cancellationToken);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (!factoryInvoked)
         {
             CacheTelemetry.FailOpenTotal.Add(1);
             logger.LogWarning(exception, "Cache unavailable for {CacheKey}; loading directly", key);

@@ -58,14 +58,14 @@ export function SprintEditDialog({ sprint, onClose }: { sprint: Sprint; onClose:
               <span>Start date *</span>
               <div className="sprint-edit-date-input">
                 <Calendar size={14} />
-                <input type="datetime-local" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+                <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
               </div>
             </label>
             <label className="sprint-edit-field">
               <span>End date *</span>
               <div className="sprint-edit-date-input">
                 <Calendar size={14} />
-                <input type="datetime-local" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+                <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
               </div>
             </label>
           </div>

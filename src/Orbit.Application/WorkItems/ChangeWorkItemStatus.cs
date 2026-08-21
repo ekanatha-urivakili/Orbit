@@ -29,7 +29,6 @@ public sealed class ChangeWorkItemStatusHandler(
     ICurrentPrincipal principal,
     IWorkItemRepository workItems,
     IWorkItemStatusRepository workItemStatuses,
-    IBoardRepository boards,
     ISprintMembershipRepository sprintMemberships,
     ISprintScopeFactRepository sprintScopeFacts,
     ISettingsRepository settings,
@@ -64,9 +63,6 @@ public sealed class ChangeWorkItemStatusHandler(
 
         var now = timeProvider.GetUtcNow();
         workItem.ChangeStatus(newStatus.Id, now);
-
-        var board = await boards.GetAsync(tenantContext.TenantId, workItem.ProjectId, cancellationToken);
-        board?.IncrementEpoch();
 
         // A burndown only moves when an item crosses the Done boundary while it's sprint-scoped;
         // other status moves (e.g. Backlog -> InProgress) don't change remaining points.

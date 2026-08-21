@@ -1,16 +1,7 @@
-import { useState, type ReactNode } from 'react'
-
-function Panel({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7">
-      <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-      {description && <p className="mt-1 mb-6 text-sm text-gray-500">{description}</p>}
-      <div className={description ? '' : 'mt-5'}>{children}</div>
-    </div>
-  )
-}
+import { useState } from 'react'
 import { Field } from '../../components/form/Field'
 import { HelpCircle } from 'lucide-react'
+import { Panel } from './SettingsView'
 
 interface CustomFilter {
   id: string
