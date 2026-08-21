@@ -154,6 +154,7 @@ public sealed class CreateWorkItemStatusHandler(
                 .Append(new BoardColumnInput(definition.Id, null, WipLimitMode.Warn))
                 .ToList();
             board.Update(board.Name, board.Type, columns, now);
+            board.IncrementEpoch();
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

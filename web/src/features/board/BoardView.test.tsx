@@ -89,9 +89,6 @@ const activeSprint: Sprint = {
   goal: 'Ship MVP',
   startDate: '2026-08-19T00:00:00Z',
   endDate: '2026-09-02T00:00:00Z',
-  startedAt: '2026-08-19T00:00:00Z',
-  closedAt: null,
-  reopenedAt: null,
   version: 1,
   workItemIds: ['item-1'],
 }
@@ -202,7 +199,9 @@ describe('BoardView Sprint controls', () => {
 
     fireEvent.click(completeBtn)
     expect(screen.getByText('Complete SCRUM Sprint 1')).toBeInTheDocument()
-    expect(screen.getByText(/1 open work item/)).toBeInTheDocument()
+    expect(screen.getByText(
+      (_, element) => element?.tagName === 'SPAN' && element.textContent === '1 open work item',
+    )).toBeInTheDocument()
   })
 
   it('renders sprint timer and opens countdown popover on click', () => {

@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 function Panel({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -63,7 +63,7 @@ export function CustomFiltersPanel() {
               />
             </Field>
           </div>
-          
+
           <Field variant="panel" label="Filter query *">
             <div className="relative">
               <textarea
@@ -74,8 +74,8 @@ export function CustomFiltersPanel() {
                 placeholder="status = 'To Do' AND assignee = currentUser()"
                 className="w-full font-mono text-sm pr-8"
               />
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
                 title="WQL Syntax Help"
               >
@@ -83,7 +83,7 @@ export function CustomFiltersPanel() {
               </button>
             </div>
           </Field>
-          
+
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="secondary-button" onClick={() => {
               setName('')
@@ -92,8 +92,8 @@ export function CustomFiltersPanel() {
             }}>
               Cancel
             </button>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="primary-button"
               disabled={!name.trim() || !query.trim()}
             >
@@ -115,8 +115,8 @@ export function CustomFiltersPanel() {
                     {filter.query}
                   </code>
                 </div>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="text-red-600 hover:text-red-700 text-sm font-medium"
                   onClick={() => setFilters(filters.filter(f => f.id !== filter.id))}
                 >

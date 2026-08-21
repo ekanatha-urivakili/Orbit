@@ -114,6 +114,7 @@ public sealed class WorkItemStatusHandlerTests
 
         Assert.Equal(2, board.Columns.Count);
         Assert.Contains(board.Columns, column => column.StatusId == result.Id);
+        Assert.Equal(2, board.Epoch);
     }
 
     [Fact]

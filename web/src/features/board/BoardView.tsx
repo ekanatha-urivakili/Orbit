@@ -121,7 +121,6 @@ export function BoardView({
   const [sprintInfoOpen, setSprintInfoOpen] = useState(false)
   const [completeSprintOpen, setCompleteSprintOpen] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
-  const [standUpFilterActive, setStandUpFilterActive] = useState(false)
   const [now] = useState(() => Date.now())
 
   const statusLabels = useMemo(
@@ -342,16 +341,6 @@ export function BoardView({
                 className="absolute right-0 top-full mt-1.5 w-56 bg-white dark:bg-[#1d2125] border border-gray-200 dark:border-[#394047] shadow-2xl rounded-xl py-1.5 z-50 text-xs"
                 onMouseLeave={() => setMoreMenuOpen(false)}
               >
-                <button
-                  type="button"
-                  className="w-full text-left px-3.5 py-2 hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-800 dark:text-gray-200"
-                  onClick={() => {
-                    setMoreMenuOpen(false)
-                    setStandUpFilterActive((curr) => !curr)
-                  }}
-                >
-                  Stand-up
-                </button>
                 <button
                   type="button"
                   className="w-full text-left px-3.5 py-2 hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-800 dark:text-gray-200"

@@ -41,7 +41,11 @@ public static class HealthEndpoints
                 CacheProbeKey, DateTimeOffset.UtcNow.ToString("O"),
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30) },
                 probeToken);
-            await cache.GetStringAsync(CacheProbeKey, probeToken);
+            var cachedValue = await cache.GetStringAsync(CacheProbeKey, probeToken);
+            if (string.IsNullOrEmpty(cachedValue))
+            {
+                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Cache unavailable");
+            }
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
