@@ -55,33 +55,33 @@ export function SprintEditDialog({ sprint, onClose }: { sprint: Sprint; onClose:
 
           <div className="sprint-edit-date-row">
             <label className="sprint-edit-field">
-              <span>Start date</span>
+              <span>Start date *</span>
               <div className="sprint-edit-date-input">
                 <Calendar size={14} />
-                <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+                <input type="datetime-local" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
               </div>
             </label>
             <label className="sprint-edit-field">
-              <span>End date</span>
+              <span>End date *</span>
               <div className="sprint-edit-date-input">
                 <Calendar size={14} />
-                <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+                <input type="datetime-local" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
               </div>
             </label>
           </div>
 
-          <label className="sprint-edit-checkbox" title="Not available yet">
+          <label className="sprint-edit-checkbox toggle-switch" title="Not available yet">
             <input type="checkbox" disabled />
-            <span>Automatically complete sprint on end date</span>
+            <span>Automatically complete sprint</span>
           </label>
 
           <label className="sprint-edit-field">
-            <span>Notes</span>
+            <span>Sprint goal</span>
             <textarea
               value={goal}
               onChange={(event) => setGoal(event.target.value)}
               rows={3}
-              placeholder="Sprint goal or notes (optional)"
+              placeholder=""
             />
           </label>
 
