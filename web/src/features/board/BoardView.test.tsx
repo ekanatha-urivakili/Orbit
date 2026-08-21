@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { BoardView } from './BoardView'
-import type { Board, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
+import type { Board, Sprint, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 
 function selectGroupBy(label: string) {
   fireEvent.click(screen.getByLabelText('Group board by'))
@@ -81,6 +81,21 @@ const statuses: WorkItemStatusDefinition[] = [
   { id: 'Done', key: 'done', name: 'Done', category: 'Done', order: 2, colorToken: 'green', isSystem: true, isDefault: false, version: 1 },
 ]
 
+const activeSprint: Sprint = {
+  id: 'sprint-1',
+  projectId: 'project-1',
+  name: 'SCRUM Sprint 1',
+  state: 'Active',
+  goal: 'Ship MVP',
+  startDate: '2026-08-19T00:00:00Z',
+  endDate: '2026-09-02T00:00:00Z',
+  startedAt: '2026-08-19T00:00:00Z',
+  closedAt: null,
+  reopenedAt: null,
+  version: 1,
+  workItemIds: ['item-1'],
+}
+
 describe('BoardView swimlanes', () => {
   it('renders a single board with no swimlanes by default', () => {
     render(
@@ -159,5 +174,60 @@ describe('BoardView swimlanes', () => {
 
     fireEvent.click(screen.getByText('Ada Lovelace'))
     expect(screen.queryByText('Assigned item')).not.toBeInTheDocument()
+  })
+})
+
+describe('BoardView Sprint controls', () => {
+  it('renders Complete sprint button and triggers CompleteSprintDialog when clicked', () => {
+    const onCompleteSprint = vi.fn()
+    render(
+      <BoardView
+        projectName="Orbit"
+        board={board}
+        statuses={statuses}
+        loading={false}
+        mutation={{ isPending: false, isError: false, error: null }}
+        onSave={vi.fn()}
+        workItems={[makeItem({ id: 'item-1', summary: 'Sprint Item' })]}
+        workItemsLoading={false}
+        activeSprint={activeSprint}
+        onCompleteSprint={onCompleteSprint}
+        onStatusChange={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    const completeBtn = screen.getByRole('button', { name: 'Complete sprint' })
+    expect(completeBtn).toBeInTheDocument()
+
+    fireEvent.click(completeBtn)
+    expect(screen.getByText('Complete SCRUM Sprint 1')).toBeInTheDocument()
+    expect(screen.getByText(/1 open work item/)).toBeInTheDocument()
+  })
+
+  it('renders sprint timer and opens countdown popover on click', () => {
+    render(
+      <BoardView
+        projectName="Orbit"
+        board={board}
+        statuses={statuses}
+        loading={false}
+        mutation={{ isPending: false, isError: false, error: null }}
+        onSave={vi.fn()}
+        workItems={[makeItem({ id: 'item-1', summary: 'Sprint Item' })]}
+        workItemsLoading={false}
+        activeSprint={activeSprint}
+        onCompleteSprint={vi.fn()}
+        onStatusChange={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    const timerBtn = screen.getByLabelText('Sprint countdown')
+    expect(timerBtn).toBeInTheDocument()
+
+    fireEvent.click(timerBtn)
+    expect(screen.getByText('Start date')).toBeInTheDocument()
+    expect(screen.getByText('End date')).toBeInTheDocument()
   })
 })

@@ -795,8 +795,8 @@ function App() {
             )}
 
             {activeTab === 'Board' && (
-              <div className="flex h-full">
-                <div className="flex-1 min-w-0 p-8 pt-10 overflow-y-auto">
+              <div className="flex h-full min-h-[calc(100vh-140px)]">
+                <div className="flex-1 min-w-0 p-6 md:p-8 pt-8 md:pt-10 overflow-y-auto">
                   <BoardView
                     projectName={selectedProject?.name ?? ''}
                     board={boardQuery.data}
@@ -815,6 +815,26 @@ function App() {
                     hiddenFields={boardViewPreferenceQuery.data?.hiddenFields ?? []}
                     columnSizeMode={boardViewPreferenceQuery.data?.columnSizeMode ?? 'Flexible'}
                     hideDoneItemsAfter={boardViewPreferenceQuery.data?.hideDoneItemsAfter ?? 'Never'}
+                    activeSprint={activeSprint}
+                    futureSprints={sprints.filter((s) => s.state === 'Future')}
+                    onCompleteSprint={(sprint, rolloverTargetSprintId) =>
+                      completeSprintMutation.mutate({ sprint, rolloverTargetSprintId })
+                    }
+                    completeSprintPending={completeSprintMutation.isPending}
+                    onToggleInsights={() => setSprintInsightsOpen((curr) => !curr)}
+                    isInsightsOpen={sprintInsightsOpen}
+                    onToggleSettings={() => setBoardViewSettingsOpen((curr) => !curr)}
+                    isSettingsOpen={boardViewSettingsOpen}
+                    onRefresh={() => {
+                      queryClient.invalidateQueries({ queryKey: ['work-items'] })
+                      queryClient.invalidateQueries({ queryKey: ['sprints'] })
+                      queryClient.invalidateQueries({ queryKey: ['boards'] })
+                      queryClient.invalidateQueries({ queryKey: ['sprint-insights'] })
+                    }}
+                    onConfigureColumns={() => setWorkflowEditorOpen(true)}
+                    onEditSprint={(sprint) => setSprintEditTarget(sprint)}
+                    onManageWorkflows={() => setWorkflowEditorOpen(true)}
+                    onCreateWorkItem={() => setCreateOpen(true)}
                     headerMenuExtras={[
                       ...(activeSprint ? [{ label: 'Sprint insights', onClick: () => setSprintInsightsOpen(true) }] : []),
                       { label: 'View settings', onClick: () => setBoardViewSettingsOpen(true) },

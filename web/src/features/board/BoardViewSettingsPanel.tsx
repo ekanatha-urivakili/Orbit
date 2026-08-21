@@ -4,10 +4,6 @@ import { Search, X } from 'lucide-react'
 import { orbitApi } from '../../api/client'
 import type { BoardColumnSizeMode, HideDoneItemsAfter } from '../../api/types'
 
-// Matches the reference "Show fields" list. `key: null` means the toggle has no rendering effect
-// in Orbit yet (Orbit has no equivalent data - e.g. no "Reporter" concept, no Confluence
-// integration) and is shown disabled rather than as a live-but-inert control, so a checked toggle
-// always means something real is happening on the card.
 const CARD_FIELDS: { key: string | null; label: string; alwaysOn?: boolean }[] = [
   { key: 'assignee', label: 'Assignee' },
   { key: null, label: 'Card cover' },
@@ -29,7 +25,6 @@ const CARD_FIELDS: { key: string | null; label: string; alwaysOn?: boolean }[] =
   { key: 'summary', label: 'Summary', alwaysOn: true },
   { key: null, label: 'Team' },
   { key: 'updated', label: 'Updated' },
-  { key: 'workItemKey', label: 'Work item key' },
 ]
 
 const HIDE_DONE_OPTIONS: { value: HideDoneItemsAfter; label: string }[] = [
@@ -71,12 +66,14 @@ export function BoardViewSettingsPanel({ projectId, onClose }: { projectId: stri
 
   if (!preference) {
     return (
-      <aside className="view-settings-panel">
-        <div className="view-settings-panel-header">
-          <h2>View settings</h2>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}><X size={16} /></button>
+      <aside className="w-[360px] shrink-0 border-l border-gray-200 dark:border-[#394047] bg-white dark:bg-[#1d2125] h-full overflow-y-auto z-20">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-[#394047]">
+          <h2 className="text-base font-bold text-[#172b4d] dark:text-gray-100">View settings</h2>
+          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
+            <X size={18} />
+          </button>
         </div>
-        <p className="px-4 py-4 text-sm text-gray-500">{query.isError ? query.error.message : 'Loading…'}</p>
+        <p className="px-5 py-6 text-sm text-gray-500">{query.isError ? query.error.message : 'Loading…'}</p>
       </aside>
     )
   }
@@ -89,18 +86,24 @@ export function BoardViewSettingsPanel({ projectId, onClose }: { projectId: stri
   }
 
   return (
-    <aside className="view-settings-panel">
-      <div className="view-settings-panel-header">
-        <h2>View settings</h2>
-        <button className="icon-button" type="button" aria-label="Close" onClick={onClose}><X size={16} /></button>
+    <aside className="w-[360px] shrink-0 border-l border-gray-200 dark:border-[#394047] bg-white dark:bg-[#1d2125] h-full overflow-y-auto z-20">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-[#394047]">
+        <h2 className="text-base font-bold text-[#172b4d] dark:text-gray-100">View settings</h2>
+        <button className="icon-button text-gray-500 hover:text-gray-700" type="button" aria-label="Close" onClick={onClose}>
+          <X size={18} />
+        </button>
       </div>
-      <div className="view-settings-panel-body">
-        {pendingError && <p className="form-error">{pendingError}</p>}
 
-        <label className="view-settings-field">
-          <span className="view-settings-label">Hide done work items after:</span>
+      <div className="p-5 space-y-6">
+        {pendingError && <p className="form-error text-xs">{pendingError}</p>}
+
+        {/* Hide done work items */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+            Hide done work items after:
+          </label>
           <select
-            className="view-settings-select"
+            className="w-full border border-gray-300 dark:border-[#394047] rounded-md px-3 py-2 text-xs bg-white dark:bg-[#22272b] text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={preference.hideDoneItemsAfter}
             onChange={(event) =>
               mutation.mutate({
@@ -111,63 +114,119 @@ export function BoardViewSettingsPanel({ projectId, onClose }: { projectId: stri
             }
           >
             {HIDE_DONE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <div className="view-settings-field">
-          <span className="view-settings-label">Column size</span>
-          <p className="view-settings-hint">Choose whether columns keep a fixed width or grow to fill available space.</p>
-          <div className="view-settings-toggle-group">
-            {(['Fixed', 'Flexible'] as BoardColumnSizeMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={`view-settings-toggle-button${preference.columnSizeMode === mode ? ' is-active' : ''}`}
-                onClick={() =>
-                  mutation.mutate({ hideDoneItemsAfter: preference.hideDoneItemsAfter, columnSizeMode: mode, hiddenFields: preference.hiddenFields })
-                }
-              >
-                {mode}
-              </button>
-            ))}
+        {/* Column size */}
+        <div className="space-y-2">
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">Column size</label>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            Choose whether columns keep a fixed width or grow to fill available space.
+          </p>
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            {/* Fixed Option */}
+            <button
+              type="button"
+              onClick={() =>
+                mutation.mutate({
+                  hideDoneItemsAfter: preference.hideDoneItemsAfter,
+                  columnSizeMode: 'Fixed',
+                  hiddenFields: preference.hiddenFields,
+                })
+              }
+              className={`flex flex-col items-center justify-center p-3 rounded-lg border text-xs transition-all ${
+                preference.columnSizeMode === 'Fixed'
+                  ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-semibold ring-1 ring-blue-600'
+                  : 'border-gray-200 dark:border-[#394047] hover:bg-gray-50 dark:hover:bg-[#22272b] text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              <div className="flex gap-1 mb-2 items-center justify-center h-7">
+                <div className="w-2.5 h-6 rounded-sm bg-gray-300 dark:bg-gray-600" />
+                <div className="w-2.5 h-6 rounded-sm bg-gray-300 dark:bg-gray-600" />
+                <div className="w-2.5 h-6 rounded-sm bg-gray-300 dark:bg-gray-600" />
+              </div>
+              <span>Fixed</span>
+            </button>
+
+            {/* Flexible Option */}
+            <button
+              type="button"
+              onClick={() =>
+                mutation.mutate({
+                  hideDoneItemsAfter: preference.hideDoneItemsAfter,
+                  columnSizeMode: 'Flexible',
+                  hiddenFields: preference.hiddenFields,
+                })
+              }
+              className={`flex flex-col items-center justify-center p-3 rounded-lg border text-xs transition-all ${
+                preference.columnSizeMode === 'Flexible'
+                  ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-semibold ring-1 ring-blue-600'
+                  : 'border-gray-200 dark:border-[#394047] hover:bg-gray-50 dark:hover:bg-[#22272b] text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              <div className="flex gap-1 mb-2 items-center justify-center h-7 w-full px-2">
+                <div className="flex-1 h-6 rounded-sm bg-gray-300 dark:bg-gray-600" />
+                <div className="flex-1 h-6 rounded-sm bg-gray-300 dark:bg-gray-600" />
+                <div className="flex-1 h-6 rounded-sm bg-gray-300 dark:bg-gray-600" />
+              </div>
+              <span>Flexible</span>
+            </button>
           </div>
         </div>
 
-        <div className="view-settings-field">
-          <span className="view-settings-label">Show fields</span>
-          <div className="view-settings-search">
-            <Search size={13} />
+        {/* Show fields */}
+        <div className="space-y-3 pt-2">
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">Show fields</label>
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
             <input
               type="text"
               placeholder="Search fields"
               value={fieldSearch}
               onChange={(event) => setFieldSearch(event.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 border border-gray-300 dark:border-[#394047] rounded-md text-xs bg-white dark:bg-[#22272b] text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
-          <ul className="view-settings-field-list">
+
+          <div className="divide-y divide-gray-100 dark:divide-[#394047] max-h-[360px] overflow-y-auto">
             {filteredFields.map((field) => {
               const disabled = field.key === null
-              const checked = field.alwaysOn || (field.key !== null && !preference.hiddenFields.includes(field.key))
+              const isChecked = field.alwaysOn || (field.key !== null && !preference.hiddenFields.includes(field.key))
+
               return (
-                <li key={field.label} className={disabled ? 'is-unavailable' : undefined}>
-                  <span>{field.label}</span>
+                <div key={field.label} className="flex items-center justify-between py-2 text-xs">
+                  <span className={disabled ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-200 font-medium'}>
+                    {field.label}
+                  </span>
                   <button
                     type="button"
                     role="switch"
-                    aria-checked={checked}
+                    aria-checked={isChecked}
                     disabled={disabled || field.alwaysOn}
-                    title={disabled ? 'Not available yet' : undefined}
-                    className={`view-settings-switch${checked ? ' is-on' : ''}`}
                     onClick={() => field.key && toggleField(field.key)}
+                    className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      disabled
+                        ? 'opacity-30 cursor-not-allowed bg-gray-200'
+                        : isChecked
+                        ? 'bg-green-600'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    }`}
                   >
-                    <span className="view-settings-switch-knob" />
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        isChecked ? 'translate-x-3' : 'translate-x-0'
+                      }`}
+                    />
                   </button>
-                </li>
+                </div>
               )
             })}
-          </ul>
+          </div>
         </div>
       </div>
     </aside>

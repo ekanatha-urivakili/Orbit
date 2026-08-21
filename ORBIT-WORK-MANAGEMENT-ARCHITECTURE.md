@@ -2991,3 +2991,90 @@ chrome: the epic/type breadcrumb menus now persist, and the header gains copy-li
 - **Markdown Acceptance Criteria Generation:** Programmatically populates each Story's `acceptance_criteria` text block with a 5-row Markdown environment check table (specifying `As a`, `when`, `then`, `Dev`, `UAT`, `Production`, `comments` columns).
 - **Outbox Notification Flow Integration:** Links bugs with watchers and assignees. Status transitions triggered on these seeded items immediately dispatch transactional emails to the outbox queue, verified end-to-end via Mailpit (`http://localhost:8025/`).
 - **Seeded Credentials:** Registers dev and QA accounts with a shared password hash corresponding to the local-only development credential `Password@9`.
+
+### 10.10 Board Column, Sprint, and Workflow Configuration (Visual Builders)
+
+**Proposed — based on Jira parity analysis.** To provide an intuitive, visual experience for workspace and project administrators, Orbit will introduce drag-and-drop builders for core agile configurations:
+
+#### Board Column Mapping (Simplified & Advanced Modes)
+Boards must support mapping an underlying workflow status to a specific board column. 
+- **Simplified Mode:** Provides a drag-and-drop interface to assign "Hidden statuses" into active board columns (e.g., *To Do*, *In Progress*, *In Review*, *Ready for QA*, *Done*).
+- **Advanced Mode:** Enables setting Work-In-Progress (WIP) limits per column, as well as the ability to move or remove columns. 
+
+```mermaid
+flowchart LR
+    subgraph Statuses
+        S1[To Do]
+        S2[In Progress]
+        S3[In Review]
+        S4[Ready for QA]
+        S5[Done]
+        S6[Hidden/Unmapped]
+    end
+    
+    subgraph Columns
+        C1[Column: To Do]
+        C2[Column: In Progress]
+        C3[Column: In Review]
+        C4[Column: Ready for QA]
+        C5[Column: Done]
+    end
+    
+    S1 --> C1
+    S2 --> C2
+    S3 --> C3
+    S4 --> C4
+    S5 --> C5
+```
+
+#### Sprint Editing & Auto-Completion
+Sprints are managed via an explicit state machine. The `Edit Sprint` UI will expose:
+- **Sprint Metadata:** Sprint Name, Sprint Goal.
+- **Temporal Bounds:** Explicit Start Date and End Date.
+- **Auto-complete Toggle:** An automation feature to automatically close the sprint and roll over incomplete work to the next sprint or backlog when the End Date is reached.
+
+#### Visual Workflow Editor, Rules, and AI Agents
+A node-and-edge visual graph builder will replace the purely tabular workflow status definition UI, allowing admins to map out complex lifecycles. 
+
+**Transitions & Global Transitions**
+- **Nodes:** Represent `WorkItemStatusDefinition` states.
+- **Edges (Transitions):** Represent valid state changes. Orbit will support defining "Global Transitions" (e.g., *Allow transitions from any status*) to simplify complex graphs where tickets can jump straight to `Done` or `In Progress` from any state.
+
+**Workflow Rules Engine**
+Transitions can be guarded or augmented by business rules. The visual builder exposes these under three categories:
+- **Conditions (Restrict transition):** Evaluated *before* the transition is presented to the user. E.g., restricting transitions based on the status of subtasks, checking if a field holds a specific value, or restricting based on past state/user interactions.
+- **Validators (Validate details):** Evaluated *during* the transition attempt. Blocks the transition if conditions aren't met (e.g., validating parent item status, requiring specific permissions, or validating field structures).
+- **Post-Functions (Perform actions):** Executed *after* the transition succeeds. Used to automate side effects like assigning the work item, copying field values, or updating related fields.
+
+**Workflow AI Agents**
+- The visual builder introduces an **"Add Agent"** capability bound to specific transitions. This allows workspace administrators to attach AI-driven automated prompts (e.g., summarizing release notes when a ticket moves to *Done*, or generating test cases when moving to *Ready for QA*) directly into the workflow lifecycle.
+- When configuring an Agent for a transition, the administrator can select from an existing library (*"Browse agents"*) or construct a brand new AI prompt/behavior (*"Create agent"*).
+
+```mermaid
+stateDiagram-v2
+    [*] --> TODO : Create
+    TODO --> IN_PROGRESS : Any
+    
+    IN_PROGRESS --> IN_REVIEW : Any
+    note right of IN_REVIEW
+        Rule: Validate parent status
+        Rule: Copy field value
+    end note
+    
+    IN_REVIEW --> READY_FOR_QA : Any
+    note right of READY_FOR_QA
+        Agent: Generate test cases
+    end note
+    
+    READY_FOR_QA --> DONE : Any
+    note right of DONE
+        Rule: Restrict on subtask status
+    end note
+    
+    note left of TODO : "Any" represents the ability to jump to this status from any other status in the workflow.
+```
+
+### 10.11 Saved Custom Filters (WQL)
+**Proposed — based on Jira parity analysis.** To allow users to rapidly slice and view work items, Orbit will introduce a dedicated **Custom Filters** management interface under Workspace settings.
+- **Form Structure:** Admins and users can save a filter by defining a **Name**, a **Description**, and a raw **Filter query** (written in Orbit's WQL - Work Query Language).
+- **Reusability:** These saved filters can then be applied universally to configure Board columns, populate backlog lists, or drive reporting timelines without requiring users to rewrite complex query logic.
