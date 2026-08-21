@@ -9,13 +9,13 @@ namespace Orbit.Application.Access;
 public sealed record AssignGroupProjectRoleCommand(
     Guid ProjectId,
     Guid GroupId,
-    ProjectRole Role) : ICommand<ProjectGroupRoleAssignmentDto>;
+    Guid RoleId) : ICommand<ProjectGroupRoleAssignmentDto>;
 
 public sealed record ProjectGroupRoleAssignmentDto(
     Guid Id,
     Guid ProjectId,
     Guid GroupId,
-    ProjectRole Role,
+    Guid RoleId,
     DateTimeOffset CreatedAt)
 {
     public static ProjectGroupRoleAssignmentDto From(ProjectGroupRoleAssignment assignment) =>
@@ -23,7 +23,7 @@ public sealed record ProjectGroupRoleAssignmentDto(
             assignment.Id,
             assignment.ProjectId,
             assignment.GroupId,
-            assignment.Role,
+            assignment.RoleId,
             assignment.CreatedAt);
 }
 
@@ -33,7 +33,7 @@ public sealed class AssignGroupProjectRoleValidator : AbstractValidator<AssignGr
     {
         RuleFor(command => command.ProjectId).NotEmpty();
         RuleFor(command => command.GroupId).NotEmpty();
-        RuleFor(command => command.Role).IsInEnum();
+        RuleFor(command => command.RoleId).NotEmpty();
     }
 }
 
@@ -42,6 +42,7 @@ public sealed class AssignGroupProjectRoleHandler(
     IProjectRepository projects,
     IDirectoryGroupRepository groups,
     IProjectGroupRoleRepository projectGroupRoles,
+    IRoleRepository roles,
     ISettingsRepository settings,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
@@ -62,6 +63,8 @@ public sealed class AssignGroupProjectRoleHandler(
             request.GroupId,
             cancellationToken)
             ?? throw new NotFoundException("Group was not found.");
+        _ = await roles.GetAsync(tenantContext.TenantId, request.RoleId, cancellationToken)
+            ?? throw new NotFoundException("Role was not found.");
 
         var assignment = await projectGroupRoles.GetAsync(
             tenantContext.TenantId,
@@ -74,13 +77,13 @@ public sealed class AssignGroupProjectRoleHandler(
                 tenantContext.TenantId,
                 request.ProjectId,
                 request.GroupId,
-                request.Role,
+                request.RoleId,
                 timeProvider.GetUtcNow());
             await projectGroupRoles.AddAsync(assignment, cancellationToken);
         }
         else
         {
-            assignment.ChangeRole(request.Role);
+            assignment.ChangeRole(request.RoleId);
         }
 
         var workspace = await settings.GetWorkspaceAsync(tenantContext.TenantId, cancellationToken)

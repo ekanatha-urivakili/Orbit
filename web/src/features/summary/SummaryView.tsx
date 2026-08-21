@@ -81,8 +81,9 @@ export function SummaryView({
     return item.assigneeUserId === assigneeFilter
   })
 
-  const sevenDaysAgo = Date.now() - sevenDaysMs
-  const nextSevenDays = Date.now() + sevenDaysMs
+  const [now] = useState(() => Date.now())
+  const sevenDaysAgo = now - sevenDaysMs
+  const nextSevenDays = now + sevenDaysMs
 
   const createdRecently = filteredItems.filter((item) => new Date(item.createdAt).getTime() >= sevenDaysAgo).length
   const updatedRecently = filteredItems.filter((item) => new Date(item.updatedAt).getTime() >= sevenDaysAgo).length
@@ -91,11 +92,10 @@ export function SummaryView({
   ).length
   const dueSoonRecently = filteredItems.filter((item) => {
     if (item.status === 'Done') return false
-    if (!item.identifiedOn && !item.description) return false
-    const match = item.description?.match(/Due date:\s*(\d{4}-\d{2}-\d{2})/)
-    if (!match) return false
-    const dueTime = new Date(match[1]).getTime()
-    return dueTime >= Date.now() && dueTime <= nextSevenDays
+    const dueDateSource = item.dueDate ?? item.description?.match(/Due date:\s*(\d{4}-\d{2}-\d{2})/)?.[1]
+    if (!dueDateSource) return false
+    const dueTime = new Date(dueDateSource).getTime()
+    return dueTime >= now && dueTime <= nextSevenDays
   }).length
 
   const statusCounts = groupWorkItemsByStatus(allStatuses, filteredItems)
@@ -103,14 +103,15 @@ export function SummaryView({
     .map((status) => ({ status, ...statusMeta[status] }))
     .filter((column) => (statusCounts.get(column.status)?.length ?? 0) > 0)
 
-  let offset = 0
-  const segments = nonEmptyStatuses.map((column) => {
+  const segmentLengths = nonEmptyStatuses.map((column) => {
     const count = statusCounts.get(column.status)?.length ?? 0
-    const length = filteredItems.length === 0 ? 0 : (count / filteredItems.length) * circumference
-    const segment = { column, dasharray: `${length} ${circumference}`, dashoffset: -offset }
-    offset += length
-    return segment
+    return filteredItems.length === 0 ? 0 : (count / filteredItems.length) * circumference
   })
+  const segments = nonEmptyStatuses.map((column, index) => ({
+    column,
+    dasharray: `${segmentLengths[index]} ${circumference}`,
+    dashoffset: -segmentLengths.slice(0, index).reduce((sum, length) => sum + length, 0),
+  }))
 
   const sortedActivity = [...filteredItems]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())

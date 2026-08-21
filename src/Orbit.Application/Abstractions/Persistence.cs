@@ -369,6 +369,7 @@ public interface IBootstrapRepository
         Workspace workspace,
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken);
 }
 
@@ -389,6 +390,7 @@ public interface ISignUpRepository
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
         RefreshSession refreshSession,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -406,6 +408,7 @@ public interface ISignUpRepository
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
         GoogleSignInHandoff handoff,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken);
 }
 
@@ -418,6 +421,7 @@ public interface IWorkspaceProvisioningRepository
         Workspace workspace,
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         Guid currentTenantId,
         CancellationToken cancellationToken);
 
@@ -432,6 +436,7 @@ public interface IWorkspaceProvisioningRepository
     Task AddWorkspaceToOrganizationAsync(
         Workspace workspace,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         Guid currentTenantId,
         CancellationToken cancellationToken);
 }
@@ -441,6 +446,17 @@ public interface ITenantAuthorization
     bool CanCreateProject();
     bool CanCreateMembership(TenantRole role);
     bool CanManageTeams();
+    bool CanManageRoles();
+}
+
+public interface IRoleRepository
+{
+    Task AddAsync(Role role, CancellationToken cancellationToken);
+    Task<Role?> GetAsync(Guid tenantId, Guid roleId, CancellationToken cancellationToken);
+    Task<Role?> GetByNameAsync(Guid tenantId, string name, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Role>> ListByTenantAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<bool> HasAssignmentsAsync(Guid tenantId, Guid roleId, CancellationToken cancellationToken);
+    Task RemoveAsync(Role role, CancellationToken cancellationToken);
 }
 
 public interface ITeamRepository

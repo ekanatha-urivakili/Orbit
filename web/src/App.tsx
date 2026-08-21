@@ -587,6 +587,21 @@ function App() {
   if (projectsQuery.isPending) return <LoadingScreen />
   if (projectsQuery.isError) return <ErrorScreen message={projectsQuery.error.message} />
 
+  const backlogError =
+    createSprintMutation.error?.message ??
+    startSprintMutation.error?.message ??
+    completeSprintMutation.error?.message ??
+    reopenSprintMutation.error?.message ??
+    assignToSprintMutation.error?.message ??
+    removeFromSprintMutation.error?.message ??
+    assigneeMutation.error?.message ??
+    null
+  const boardTabError =
+    statusMutation.error?.message ??
+    reorderMutation.error?.message ??
+    assigneeMutation.error?.message ??
+    null
+
   return (
     <div className="min-h-screen bg-white">
       <CommandPalette
@@ -622,6 +637,12 @@ function App() {
           <span>A new version of Orbit is available.</span>
           <button onClick={applyUpdate} className="ml-4 text-sm font-medium underline">Reload</button>
         </div>
+      )}
+      {activeView === 'project' && activeTab === 'Backlog' && backlogError && (
+        <div className="error-banner m-4">{backlogError}</div>
+      )}
+      {activeView === 'project' && activeTab === 'Board' && boardTabError && (
+        <div className="error-banner m-4">{boardTabError}</div>
       )}
       {createWorkspaceOpen && (
         <CreateWorkspaceDialog
@@ -740,24 +761,11 @@ function App() {
                 onOpenWorkItem={(workItem) => handleOpenWorkItemOverlay(workItem, 'drawer')}
                 onAssigneeChange={handleAssigneeChange}
                 assigneeChangePending={assigneeMutation.isPending}
-                error={
-                  createSprintMutation.error?.message ??
-                  startSprintMutation.error?.message ??
-                  completeSprintMutation.error?.message ??
-                  reopenSprintMutation.error?.message ??
-                  assignToSprintMutation.error?.message ??
-                  removeFromSprintMutation.error?.message ??
-                  assigneeMutation.error?.message ??
-                  null
-                }
               />
             )}
 
             {activeTab === 'Board' && (
-              <div className="p-8">
-                {statusMutation.isError && <div className="error-banner">{statusMutation.error.message}</div>}
-                {reorderMutation.isError && <div className="error-banner">{reorderMutation.error.message}</div>}
-                {assigneeMutation.isError && <div className="error-banner">{assigneeMutation.error.message}</div>}
+              <div className="p-8 pt-10">
                 <BoardView
                   projectName={selectedProject?.name ?? ''}
                   board={boardQuery.data}

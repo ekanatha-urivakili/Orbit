@@ -391,6 +391,7 @@ public sealed class GoogleOAuthHandlerTests
             OrganizationMembership organizationMembership,
             TenantMembership ownerMembership,
             RefreshSession refreshSession,
+            IReadOnlyList<Role> systemRoles,
             CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -402,6 +403,7 @@ public sealed class GoogleOAuthHandlerTests
             OrganizationMembership organizationMembership,
             TenantMembership ownerMembership,
             GoogleSignInHandoff handoff,
+            IReadOnlyList<Role> systemRoles,
             CancellationToken cancellationToken)
         {
             Account = account;

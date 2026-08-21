@@ -85,6 +85,7 @@ public sealed class CreateWorkspaceHandler(
             workspace,
             organizationMembership,
             ownerMembership,
+            Role.SeedSystemRoles(workspace.Id, now),
             tenantContext.TenantId,
             cancellationToken);
 
@@ -143,7 +144,11 @@ public sealed class CreateWorkspaceInOrganizationHandler(
             TenantRole.Owner,
             now);
         await repository.AddWorkspaceToOrganizationAsync(
-            workspace, ownerMembership, tenantContext.TenantId, cancellationToken);
+            workspace,
+            ownerMembership,
+            Role.SeedSystemRoles(workspace.Id, now),
+            tenantContext.TenantId,
+            cancellationToken);
 
         return new CreatedWorkspaceDto(
             workspace.Id,

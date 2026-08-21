@@ -218,7 +218,7 @@ public sealed class WorkspaceSetting
     }
 }
 
-public sealed class WorkspaceTypographySetting
+public sealed partial class WorkspaceTypographySetting
 {
     private WorkspaceTypographySetting()
     {
@@ -311,13 +311,16 @@ public sealed class WorkspaceTypographySetting
     private static string ValidateColor(string color)
     {
         var normalized = color.Trim();
-        if (!System.Text.RegularExpressions.Regex.IsMatch(normalized, "^#[0-9a-fA-F]{6}$"))
+        if (!HexColorRegex().IsMatch(normalized))
         {
             throw new DomainException("Font color must be a hex color in the form #rrggbb.");
         }
 
         return normalized;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex("^#[0-9a-fA-F]{6}$")]
+    private static partial System.Text.RegularExpressions.Regex HexColorRegex();
 
     private static int ValidateFontSize(int sizePx)
     {

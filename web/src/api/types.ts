@@ -345,8 +345,16 @@ export interface TypographySetting {
 
 export type PrincipalType = 'User' | 'ServiceAccount'
 export type TenantRole = 'Owner' | 'Administrator' | 'Member'
-export type ProjectRole = 'Administrator' | 'Member' | 'Viewer'
 export type MembershipTier = 'Standard' | 'Guest'
+export type ProjectPermission = 'View' | 'CreateWorkItem' | 'TransitionWorkItem' | 'Administer'
+
+export interface Role {
+  id: string
+  name: string
+  isSystem: boolean
+  permissions: ProjectPermission[]
+  createdAt: string
+}
 
 export interface TenantMembership {
   id: string
@@ -373,7 +381,7 @@ export interface ProjectRoleAssignment {
   id: string
   projectId: string
   membershipId: string
-  role: ProjectRole
+  roleId: string
   createdAt: string
 }
 

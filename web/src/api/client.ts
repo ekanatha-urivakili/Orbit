@@ -11,9 +11,10 @@ import type {
   ExternalIdentitySummary,
   PagedResult,
   Project,
-  ProjectRole,
+  ProjectPermission,
   ProjectRoleAssignment,
   ProjectSetting,
+  Role,
   Profile,
   NotificationPreference,
   SessionSummary,
@@ -439,11 +440,22 @@ export const orbitApi = {
     request<TenantMembership>('/memberships', { method: 'POST', body: JSON.stringify(input) }),
   listProjectRoles: (projectId: string) =>
     request<ProjectRoleAssignment[]>(`/projects/${encodeURIComponent(projectId)}/roles`),
-  assignProjectRole: (projectId: string, membershipId: string, role: ProjectRole) =>
+  assignProjectRole: (projectId: string, membershipId: string, roleId: string) =>
     request<ProjectRoleAssignment>(
       `/projects/${encodeURIComponent(projectId)}/roles/${encodeURIComponent(membershipId)}`,
-      { method: 'PUT', body: JSON.stringify({ role }) },
+      { method: 'PUT', body: JSON.stringify({ roleId }) },
     ),
+  listRoles: () => request<Role[]>('/roles'),
+  createRole: (name: string, permissions: ProjectPermission[]) =>
+    request<Role>('/roles', { method: 'POST', body: JSON.stringify({ name, permissions }) }),
+  renameRole: (roleId: string, name: string) =>
+    request<Role>(`/roles/${encodeURIComponent(roleId)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  updateRolePermissions: (roleId: string, permissions: ProjectPermission[]) =>
+    request<Role>(`/roles/${encodeURIComponent(roleId)}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    }),
+  deleteRole: (roleId: string) => request<void>(`/roles/${encodeURIComponent(roleId)}`, { method: 'DELETE' }),
   changeMembershipRole: (membershipId: string, role: TenantRole) =>
     request<TenantMembership>(`/memberships/${encodeURIComponent(membershipId)}/role`, {
       method: 'PUT',

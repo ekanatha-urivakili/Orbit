@@ -86,9 +86,11 @@ export function WorkItemDetailView({
 }) {
   const queryClient = useQueryClient()
   const [currentType, setCurrentType] = useState<WorkItemType>(item.type)
-  useEffect(() => {
+  const [currentTypeItemId, setCurrentTypeItemId] = useState(item.id)
+  if (item.id !== currentTypeItemId) {
+    setCurrentTypeItemId(item.id)
     setCurrentType(item.type)
-  }, [item.type])
+  }
   const [typeMenuOpen, setTypeMenuOpen] = useState(false)
   const [epicPopupOpen, setEpicPopupOpen] = useState(false)
   const [epicMenuOpen, setEpicMenuOpen] = useState(false)

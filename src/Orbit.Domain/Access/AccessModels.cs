@@ -28,19 +28,129 @@ public enum MembershipTier
     Guest
 }
 
-public enum ProjectRole
-{
-    Administrator,
-    Member,
-    Viewer
-}
-
 public enum ProjectPermission
 {
     View,
     CreateWorkItem,
     TransitionWorkItem,
     Administer
+}
+
+/// <summary>
+/// A tenant-defined, named set of <see cref="ProjectPermission"/>s that can be granted to memberships
+/// or directory groups on a project via <see cref="ProjectRoleAssignment"/>/<see cref="ProjectGroupRoleAssignment"/>.
+/// Every tenant is seeded with three <see cref="IsSystem"/> roles (Administrator/Member/Viewer,
+/// reproducing the permission sets the old <c>ProjectRole</c> enum hardcoded) via <see cref="SeedSystemRoles"/>;
+/// system roles cannot be renamed or deleted but their permissions can still be edited, since the point of
+/// this schema is fully user-defined permission sets, not just user-defined names.
+/// </summary>
+public sealed class Role
+{
+    private readonly List<RolePermission> _permissions = [];
+
+    private Role()
+    {
+    }
+
+    private Role(Guid id, Guid tenantId, string name, bool isSystem, DateTimeOffset createdAt)
+    {
+        Id = id;
+        TenantId = tenantId;
+        Name = name;
+        IsSystem = isSystem;
+        CreatedAt = createdAt;
+    }
+
+    public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
+    public string Name { get; private set; } = string.Empty;
+    public bool IsSystem { get; private set; }
+    public DateTimeOffset CreatedAt { get; private set; }
+    public IReadOnlyCollection<RolePermission> Permissions => _permissions;
+
+    public static Role Create(
+        Guid tenantId,
+        string name,
+        bool isSystem,
+        IEnumerable<ProjectPermission> permissions,
+        DateTimeOffset now)
+    {
+        if (tenantId == Guid.Empty)
+        {
+            throw new DomainException("Tenant id is required.");
+        }
+
+        var role = new Role(Guid.CreateVersion7(), tenantId, NormalizeName(name), isSystem, now);
+        foreach (var permission in permissions.Distinct())
+        {
+            role._permissions.Add(new RolePermission(role.Id, permission));
+        }
+
+        return role;
+    }
+
+    public static IReadOnlyList<Role> SeedSystemRoles(Guid tenantId, DateTimeOffset now) =>
+    [
+        Create(tenantId, "Administrator", isSystem: true,
+            [ProjectPermission.View, ProjectPermission.CreateWorkItem, ProjectPermission.TransitionWorkItem, ProjectPermission.Administer],
+            now),
+        Create(tenantId, "Member", isSystem: true,
+            [ProjectPermission.View, ProjectPermission.CreateWorkItem, ProjectPermission.TransitionWorkItem],
+            now),
+        Create(tenantId, "Viewer", isSystem: true, [ProjectPermission.View], now),
+    ];
+
+    public void Rename(string name)
+    {
+        if (IsSystem)
+        {
+            throw new DomainException("A system role cannot be renamed.");
+        }
+
+        Name = NormalizeName(name);
+    }
+
+    public void GrantPermission(ProjectPermission permission)
+    {
+        if (!_permissions.Any(p => p.Permission == permission))
+        {
+            _permissions.Add(new RolePermission(Id, permission));
+        }
+    }
+
+    public void RevokePermission(ProjectPermission permission) =>
+        _permissions.RemoveAll(p => p.Permission == permission);
+
+    private static string NormalizeName(string name)
+    {
+        var normalized = name.Trim();
+        if (normalized.Length is < 1 or > 100)
+        {
+            throw new DomainException("Role name must contain 1 to 100 characters.");
+        }
+
+        return normalized;
+    }
+}
+
+/// <summary>
+/// A single (<see cref="RoleId"/>, <see cref="Permission"/>) grant row backing <see cref="Role.Permissions"/>.
+/// Plain data holder, not an aggregate of its own - created/removed only through <see cref="Role"/>.
+/// </summary>
+public sealed class RolePermission
+{
+    private RolePermission()
+    {
+    }
+
+    internal RolePermission(Guid roleId, ProjectPermission permission)
+    {
+        RoleId = roleId;
+        Permission = permission;
+    }
+
+    public Guid RoleId { get; private set; }
+    public ProjectPermission Permission { get; private set; }
 }
 
 public sealed class TenantMembership
@@ -203,14 +313,14 @@ public sealed class ProjectRoleAssignment
         Guid tenantId,
         Guid projectId,
         Guid membershipId,
-        ProjectRole role,
+        Guid roleId,
         DateTimeOffset createdAt)
     {
         Id = id;
         TenantId = tenantId;
         ProjectId = projectId;
         MembershipId = membershipId;
-        Role = role;
+        RoleId = roleId;
         CreatedAt = createdAt;
     }
 
@@ -218,19 +328,19 @@ public sealed class ProjectRoleAssignment
     public Guid TenantId { get; private set; }
     public Guid ProjectId { get; private set; }
     public Guid MembershipId { get; private set; }
-    public ProjectRole Role { get; private set; }
+    public Guid RoleId { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
     public static ProjectRoleAssignment Create(
         Guid tenantId,
         Guid projectId,
         Guid membershipId,
-        ProjectRole role,
+        Guid roleId,
         DateTimeOffset now)
     {
-        if (tenantId == Guid.Empty || projectId == Guid.Empty || membershipId == Guid.Empty)
+        if (tenantId == Guid.Empty || projectId == Guid.Empty || membershipId == Guid.Empty || roleId == Guid.Empty)
         {
-            throw new DomainException("Tenant, project, and membership ids are required.");
+            throw new DomainException("Tenant, project, membership, and role ids are required.");
         }
 
         return new ProjectRoleAssignment(
@@ -238,13 +348,18 @@ public sealed class ProjectRoleAssignment
             tenantId,
             projectId,
             membershipId,
-            role,
+            roleId,
             now);
     }
 
-    public void ChangeRole(ProjectRole role)
+    public void ChangeRole(Guid roleId)
     {
-        Role = role;
+        if (roleId == Guid.Empty)
+        {
+            throw new DomainException("Role id is required.");
+        }
+
+        RoleId = roleId;
     }
 }
 
@@ -265,14 +380,14 @@ public sealed class ProjectGroupRoleAssignment
         Guid tenantId,
         Guid projectId,
         Guid groupId,
-        ProjectRole role,
+        Guid roleId,
         DateTimeOffset createdAt)
     {
         Id = id;
         TenantId = tenantId;
         ProjectId = projectId;
         GroupId = groupId;
-        Role = role;
+        RoleId = roleId;
         CreatedAt = createdAt;
     }
 
@@ -280,19 +395,19 @@ public sealed class ProjectGroupRoleAssignment
     public Guid TenantId { get; private set; }
     public Guid ProjectId { get; private set; }
     public Guid GroupId { get; private set; }
-    public ProjectRole Role { get; private set; }
+    public Guid RoleId { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
     public static ProjectGroupRoleAssignment Create(
         Guid tenantId,
         Guid projectId,
         Guid groupId,
-        ProjectRole role,
+        Guid roleId,
         DateTimeOffset now)
     {
-        if (tenantId == Guid.Empty || projectId == Guid.Empty || groupId == Guid.Empty)
+        if (tenantId == Guid.Empty || projectId == Guid.Empty || groupId == Guid.Empty || roleId == Guid.Empty)
         {
-            throw new DomainException("Tenant, project, and group ids are required.");
+            throw new DomainException("Tenant, project, group, and role ids are required.");
         }
 
         return new ProjectGroupRoleAssignment(
@@ -300,12 +415,17 @@ public sealed class ProjectGroupRoleAssignment
             tenantId,
             projectId,
             groupId,
-            role,
+            roleId,
             now);
     }
 
-    public void ChangeRole(ProjectRole role)
+    public void ChangeRole(Guid roleId)
     {
-        Role = role;
+        if (roleId == Guid.Empty)
+        {
+            throw new DomainException("Role id is required.");
+        }
+
+        RoleId = roleId;
     }
 }

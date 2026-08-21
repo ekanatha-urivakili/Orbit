@@ -298,6 +298,7 @@ api.MapIdentityEndpoints();
 api.MapWorkspaceEndpoints();
 api.MapSettingsEndpoints();
 api.MapAccessEndpoints();
+api.MapRoleEndpoints();
 api.MapInvitationAdminEndpoints();
 api.MapTeamEndpoints();
 api.MapGroupEndpoints();

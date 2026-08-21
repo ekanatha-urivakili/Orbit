@@ -32,6 +32,11 @@ export function CommandPalette({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
 
+  const closePalette = () => {
+    setOpen(false)
+    setQuery('')
+  }
+
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -39,7 +44,7 @@ export function CommandPalette({
         setOpen(true)
       }
       if (event.key === 'Escape') {
-        setOpen(false)
+        closePalette()
       }
     }
     const handleOpenEvent = () => setOpen(true)
@@ -50,10 +55,6 @@ export function CommandPalette({
       window.removeEventListener('orbit:open-command-palette', handleOpenEvent)
     }
   }, [])
-
-  useEffect(() => {
-    if (!open) setQuery('')
-  }, [open])
 
   const commands = useMemo<Command[]>(() => {
     const navigationCommands: Command[] = hasSelectedProject
@@ -96,14 +97,14 @@ export function CommandPalette({
 
   const runAndClose = (command: Command) => {
     command.run()
-    setOpen(false)
+    closePalette()
   }
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 px-4 pt-24"
       role="dialog"
-      onClick={() => setOpen(false)}
+      onClick={closePalette}
     >
       <div
         className="w-full max-w-lg rounded-xl bg-white dark:bg-[#1d2125] shadow-2xl overflow-hidden"

@@ -63,6 +63,21 @@ DECLARE
     v_attachment_id UUID;
     v_attachment_key VARCHAR(255);
     v_admin_uid UUID;
+    v_attachment_ids UUID[] := '{}';
+
+    -- Roles & custom fields
+    v_member_role_id UUID;
+    v_cf_release_phase_id UUID;
+    v_cf_customer_impact_id UUID;
+    v_cf_regression_severity_id UUID;
+    v_cf_security_review_id UUID;
+    v_cf_target_release_id UUID;
+    v_choice_alpha_id UUID;
+    v_choice_beta_id UUID;
+    v_choice_ga_id UUID;
+    v_choice_low_id UUID;
+    v_choice_medium_id UUID;
+    v_choice_high_id UUID;
 BEGIN
     RAISE NOTICE 'Starting seed script execution...';
 
@@ -91,7 +106,7 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM site_role_assignments WHERE user_id = v_admin_uid AND site_role = 'SuperAdministrator') THEN
-        INSERT INTO site_role_assignments(user_id, site_role, created_at)
+        INSERT INTO site_role_assignments(user_id, site_role, granted_at)
         VALUES (v_admin_uid, 'SuperAdministrator', NOW());
     END IF;
 
@@ -475,7 +490,181 @@ BEGIN
 
         -- Update work_items table arrays to list attachments
         UPDATE work_items SET attachment_names = array_append(attachment_names, 'layout_screenshot_' || i || '.png') WHERE id = v_story_ids[i];
+
+        v_attachment_ids := array_append(v_attachment_ids, v_attachment_id);
     END LOOP;
+
+    ----------------------------------------------------------------------------
+    -- 12. Grant every seeded dev/QA member the "Member" project role
+    ----------------------------------------------------------------------------
+    -- Without this, dev1-5/qa1-2 (TenantRole 'Member', no tenant-wide access shortcut)
+    -- would have zero visibility into the seeded project under the query-level permission
+    -- model (Domain.Access.ProjectAccessQuery) - only c_admin_membership_id (Owner) could
+    -- see it. Every tenant is seeded with three system roles (Administrator/Member/Viewer,
+    -- see Role.SeedSystemRoles) at provisioning time, so "Member" always exists here.
+    RAISE NOTICE 'Assigning project roles to seeded members...';
+    SELECT id INTO v_member_role_id FROM roles WHERE tenant_id = c_tenant_id AND name = 'Member';
+    IF v_member_role_id IS NOT NULL THEN
+        FOR i IN 1..array_length(v_membership_ids, 1) LOOP
+            INSERT INTO project_role_assignments(id, tenant_id, project_id, membership_id, role_id, created_at)
+            VALUES (gen_random_uuid(), c_tenant_id, c_project_id, v_membership_ids[i], v_member_role_id, NOW())
+            ON CONFLICT (tenant_id, project_id, membership_id) DO UPDATE SET role_id = EXCLUDED.role_id;
+        END LOOP;
+    END IF;
+
+    ----------------------------------------------------------------------------
+    -- 13. Seed project-scoped custom fields and their values
+    ----------------------------------------------------------------------------
+    RAISE NOTICE 'Seeding custom field definitions...';
+
+    SELECT id INTO v_cf_release_phase_id FROM custom_field_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'release_phase';
+    IF v_cf_release_phase_id IS NULL THEN
+        v_cf_release_phase_id := gen_random_uuid();
+        INSERT INTO custom_field_definitions(tenant_id, id, project_id, key, label, field_type, required, "order", enabled, applicable_types, version, created_at, updated_at)
+        VALUES (c_tenant_id, v_cf_release_phase_id, c_project_id, 'release_phase', 'Release Phase', 'SingleChoice', false, 0, true, '{}', 1, NOW(), NOW());
+
+        v_choice_alpha_id := gen_random_uuid();
+        v_choice_beta_id := gen_random_uuid();
+        v_choice_ga_id := gen_random_uuid();
+        INSERT INTO custom_field_choice_options(tenant_id, custom_field_definition_id, id, label, "order") VALUES
+        (c_tenant_id, v_cf_release_phase_id, v_choice_alpha_id, 'Alpha', 0),
+        (c_tenant_id, v_cf_release_phase_id, v_choice_beta_id, 'Beta', 1),
+        (c_tenant_id, v_cf_release_phase_id, v_choice_ga_id, 'GA', 2);
+    ELSE
+        SELECT id INTO v_choice_alpha_id FROM custom_field_choice_options WHERE tenant_id = c_tenant_id AND custom_field_definition_id = v_cf_release_phase_id AND label = 'Alpha';
+        SELECT id INTO v_choice_beta_id FROM custom_field_choice_options WHERE tenant_id = c_tenant_id AND custom_field_definition_id = v_cf_release_phase_id AND label = 'Beta';
+        SELECT id INTO v_choice_ga_id FROM custom_field_choice_options WHERE tenant_id = c_tenant_id AND custom_field_definition_id = v_cf_release_phase_id AND label = 'GA';
+    END IF;
+
+    SELECT id INTO v_cf_customer_impact_id FROM custom_field_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'customer_impact';
+    IF v_cf_customer_impact_id IS NULL THEN
+        v_cf_customer_impact_id := gen_random_uuid();
+        INSERT INTO custom_field_definitions(tenant_id, id, project_id, key, label, field_type, required, "order", enabled, applicable_types, version, created_at, updated_at)
+        VALUES (c_tenant_id, v_cf_customer_impact_id, c_project_id, 'customer_impact', 'Customer Impact', 'Text', false, 1, true, '{}', 1, NOW(), NOW());
+    END IF;
+
+    SELECT id INTO v_cf_regression_severity_id FROM custom_field_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'regression_severity';
+    IF v_cf_regression_severity_id IS NULL THEN
+        v_cf_regression_severity_id := gen_random_uuid();
+        INSERT INTO custom_field_definitions(tenant_id, id, project_id, key, label, field_type, required, "order", enabled, applicable_types, version, created_at, updated_at)
+        VALUES (c_tenant_id, v_cf_regression_severity_id, c_project_id, 'regression_severity', 'Regression Severity', 'SingleChoice', false, 2, true, ARRAY['Bug'], 1, NOW(), NOW());
+
+        v_choice_low_id := gen_random_uuid();
+        v_choice_medium_id := gen_random_uuid();
+        v_choice_high_id := gen_random_uuid();
+        INSERT INTO custom_field_choice_options(tenant_id, custom_field_definition_id, id, label, "order") VALUES
+        (c_tenant_id, v_cf_regression_severity_id, v_choice_low_id, 'Low', 0),
+        (c_tenant_id, v_cf_regression_severity_id, v_choice_medium_id, 'Medium', 1),
+        (c_tenant_id, v_cf_regression_severity_id, v_choice_high_id, 'High', 2);
+    ELSE
+        SELECT id INTO v_choice_low_id FROM custom_field_choice_options WHERE tenant_id = c_tenant_id AND custom_field_definition_id = v_cf_regression_severity_id AND label = 'Low';
+        SELECT id INTO v_choice_medium_id FROM custom_field_choice_options WHERE tenant_id = c_tenant_id AND custom_field_definition_id = v_cf_regression_severity_id AND label = 'Medium';
+        SELECT id INTO v_choice_high_id FROM custom_field_choice_options WHERE tenant_id = c_tenant_id AND custom_field_definition_id = v_cf_regression_severity_id AND label = 'High';
+    END IF;
+
+    SELECT id INTO v_cf_security_review_id FROM custom_field_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'needs_security_review';
+    IF v_cf_security_review_id IS NULL THEN
+        v_cf_security_review_id := gen_random_uuid();
+        INSERT INTO custom_field_definitions(tenant_id, id, project_id, key, label, field_type, required, "order", enabled, applicable_types, version, created_at, updated_at)
+        VALUES (c_tenant_id, v_cf_security_review_id, c_project_id, 'needs_security_review', 'Needs Security Review', 'Checkbox', false, 3, true, '{}', 1, NOW(), NOW());
+    END IF;
+
+    SELECT id INTO v_cf_target_release_id FROM custom_field_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'target_release';
+    IF v_cf_target_release_id IS NULL THEN
+        v_cf_target_release_id := gen_random_uuid();
+        INSERT INTO custom_field_definitions(tenant_id, id, project_id, key, label, field_type, required, "order", enabled, applicable_types, version, created_at, updated_at)
+        VALUES (c_tenant_id, v_cf_target_release_id, c_project_id, 'target_release', 'Target Release', 'Date', false, 4, true, '{}', 1, NOW(), NOW());
+    END IF;
+
+    RAISE NOTICE 'Seeding custom field values for stories and bugs...';
+    FOR i IN 1..10 LOOP
+        INSERT INTO work_item_custom_field_values(id, tenant_id, work_item_id, custom_field_definition_id, "values", created_at, updated_at) VALUES
+        (gen_random_uuid(), c_tenant_id, v_story_ids[i], v_cf_release_phase_id, ARRAY[(CASE WHEN i <= 4 THEN v_choice_ga_id WHEN i <= 7 THEN v_choice_beta_id ELSE v_choice_alpha_id END)::text], NOW(), NOW()),
+        (gen_random_uuid(), c_tenant_id, v_story_ids[i], v_cf_customer_impact_id, ARRAY['Affects ' || (i * 120) || ' active accounts across the EU region.'], NOW(), NOW()),
+        (gen_random_uuid(), c_tenant_id, v_story_ids[i], v_cf_target_release_id, ARRAY[(CURRENT_DATE + (i || ' days')::interval)::date::text], NOW(), NOW())
+        ON CONFLICT DO NOTHING;
+    END LOOP;
+
+    FOR i IN 1..10 LOOP
+        INSERT INTO work_item_custom_field_values(id, tenant_id, work_item_id, custom_field_definition_id, "values", created_at, updated_at) VALUES
+        (gen_random_uuid(), c_tenant_id, v_bug_ids[i], v_cf_regression_severity_id, ARRAY[(CASE WHEN i <= 3 THEN v_choice_high_id WHEN i <= 7 THEN v_choice_medium_id ELSE v_choice_low_id END)::text], NOW(), NOW()),
+        (gen_random_uuid(), c_tenant_id, v_bug_ids[i], v_cf_security_review_id, ARRAY[(CASE WHEN i <= 2 THEN 'true' ELSE 'false' END)], NOW(), NOW())
+        ON CONFLICT DO NOTHING;
+    END LOOP;
+
+    ----------------------------------------------------------------------------
+    -- 14. Populate modern work_items columns: due_date, team_id, flag, cover, archive
+    ----------------------------------------------------------------------------
+    RAISE NOTICE 'Populating due dates, team assignment, flags, cover, archive...';
+    FOR i IN 1..100 LOOP
+        UPDATE work_items
+        SET due_date = CURRENT_DATE + ((i % 30) || ' days')::interval,
+            team_id = CASE WHEN i % 2 = 0 THEN v_team_alpha_id ELSE v_team_beta_id END
+        WHERE id = v_story_ids[i];
+    END LOOP;
+
+    -- Flag the two highest-priority initiatives for follow-up
+    UPDATE work_items SET "IsFlagged" = true WHERE id IN (v_initiative_ids[1], v_initiative_ids[2]);
+
+    -- Give the first story a cover image (from the attachments seeded in step 11)
+    IF array_length(v_attachment_ids, 1) > 0 THEN
+        UPDATE work_items SET "CoverAttachmentId" = v_attachment_ids[1] WHERE id = v_story_ids[1];
+    END IF;
+
+    -- Archive the last bug as a resolved/closed-out example
+    UPDATE work_items SET "IsArchived" = true, "ArchivedAt" = NOW() WHERE id = v_bug_ids[10];
+
+    ----------------------------------------------------------------------------
+    -- 15. Seed worklogs (developer time spent)
+    ----------------------------------------------------------------------------
+    RAISE NOTICE 'Seeding work item worklogs...';
+    FOR i IN 1..20 LOOP
+        v_user_idx := ((i - 1) % 5) + 1;
+        INSERT INTO work_item_worklogs(id, tenant_id, work_item_id, author_membership_id, minutes_spent, work_date, description, created_at)
+        VALUES (gen_random_uuid(), c_tenant_id, v_story_ids[i], v_membership_ids[v_user_idx], 30 * ((i % 8) + 1), CURRENT_DATE - (i || ' days')::interval, 'Implementation and code review time for ' || (SELECT summary FROM work_items WHERE id = v_story_ids[i]), NOW());
+    END LOOP;
+
+    ----------------------------------------------------------------------------
+    -- 16. Seed work item history entries (audit trail)
+    ----------------------------------------------------------------------------
+    RAISE NOTICE 'Seeding work item history entries...';
+    FOR i IN 1..15 LOOP
+        INSERT INTO work_item_history_entries(id, tenant_id, work_item_id, changed_by_membership_id, field_name, old_value, new_value, changed_at)
+        VALUES (gen_random_uuid(), c_tenant_id, v_story_ids[i], c_admin_membership_id, 'Status', 'Selected', 'InProgress', NOW() - (i || ' hours')::interval);
+    END LOOP;
+    FOR i IN 1..10 LOOP
+        INSERT INTO work_item_history_entries(id, tenant_id, work_item_id, changed_by_membership_id, field_name, old_value, new_value, changed_at)
+        VALUES (gen_random_uuid(), c_tenant_id, v_bug_ids[i], c_admin_membership_id, 'Priority', 'Medium', 'High', NOW() - (i || ' hours')::interval);
+    END LOOP;
+
+    ----------------------------------------------------------------------------
+    -- 17. Seed votes on key epics and bugs
+    ----------------------------------------------------------------------------
+    RAISE NOTICE 'Seeding work item votes...';
+    FOR i IN 1..5 LOOP
+        FOR j IN 1..3 LOOP
+            INSERT INTO work_item_votes(id, tenant_id, work_item_id, user_id, created_at)
+            VALUES (gen_random_uuid(), c_tenant_id, v_epic_ids[i], v_user_ids[j], NOW())
+            ON CONFLICT DO NOTHING;
+        END LOOP;
+    END LOOP;
+    FOR i IN 1..5 LOOP
+        INSERT INTO work_item_votes(id, tenant_id, work_item_id, user_id, created_at)
+        VALUES (gen_random_uuid(), c_tenant_id, v_bug_ids[i], v_user_ids[6], NOW())
+        ON CONFLICT DO NOTHING;
+    END LOOP;
+
+    ----------------------------------------------------------------------------
+    -- 18. Seed workspace typography settings and project settings
+    ----------------------------------------------------------------------------
+    RAISE NOTICE 'Seeding workspace typography and project settings...';
+    INSERT INTO workspace_typography_settings(tenant_id, left_font_family, left_font_color, left_font_size_px, middle_font_family, middle_font_color, middle_font_size_px, right_font_family, right_font_color, right_font_size_px, control_height_px, control_font_size_px, version, updated_at)
+    VALUES (c_tenant_id, 'Inter', '#172B4D', 13, 'Inter', '#172B4D', 13, 'Inter', '#6B778C', 12, 32, 13, 1, NOW())
+    ON CONFLICT (tenant_id) DO NOTHING;
+
+    INSERT INTO project_settings(tenant_id, project_id, default_work_item_type, default_priority, enable_releases, enable_time_tracking, repository_url, version, updated_at)
+    VALUES (c_tenant_id, c_project_id, 'Story', 'Medium', true, true, 'https://github.com/orbit-work/orbit', 1, NOW())
+    ON CONFLICT (tenant_id, project_id) DO NOTHING;
 
     RAISE NOTICE 'Database seeding completed successfully!';
 END $$;

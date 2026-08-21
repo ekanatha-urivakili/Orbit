@@ -17,4 +17,8 @@ internal sealed class TenantAuthorization(ICurrentPrincipal principal) : ITenant
     public bool CanManageTeams() =>
         principal.IsDevelopmentBypass
         || principal.TenantRole is TenantRole.Owner or TenantRole.Administrator;
+
+    public bool CanManageRoles() =>
+        principal.IsDevelopmentBypass
+        || principal.TenantRole is TenantRole.Owner or TenantRole.Administrator;
 }

@@ -18,7 +18,6 @@ internal static class ProjectAccessQuery
         var tenantWideAccess = principal.MembershipTier != MembershipTier.Guest
             && (principal.IsDevelopmentBypass || principal.TenantRole is TenantRole.Owner or TenantRole.Administrator);
         var membershipId = principal.MembershipId;
-        var allowedRoles = ProjectPermissionRoles.For(permission);
 
         return dbContext.Projects.Where(project =>
             project.TenantId == tenantId
@@ -27,11 +26,13 @@ internal static class ProjectAccessQuery
                     assignment.TenantId == tenantId
                     && assignment.ProjectId == project.Id
                     && assignment.MembershipId == membershipId
-                    && allowedRoles.Contains(assignment.Role))
+                    && dbContext.RolePermissions.Any(rolePermission =>
+                        rolePermission.RoleId == assignment.RoleId && rolePermission.Permission == permission))
                 || dbContext.ProjectGroupRoleAssignments.Any(assignment =>
                     assignment.TenantId == tenantId
                     && assignment.ProjectId == project.Id
-                    && allowedRoles.Contains(assignment.Role)
+                    && dbContext.RolePermissions.Any(rolePermission =>
+                        rolePermission.RoleId == assignment.RoleId && rolePermission.Permission == permission)
                     && dbContext.GroupMemberships.Any(groupMembership =>
                         groupMembership.TenantId == tenantId
                         && groupMembership.GroupId == assignment.GroupId

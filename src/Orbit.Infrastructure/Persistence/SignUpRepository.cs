@@ -23,6 +23,7 @@ internal sealed class SignUpRepository(OrbitDbContext dbContext) : ISignUpReposi
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
         RefreshSession refreshSession,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken)
     {
         // No ambient tenant transaction exists yet (unauthenticated request), so app.tenant_id must
@@ -43,6 +44,7 @@ internal sealed class SignUpRepository(OrbitDbContext dbContext) : ISignUpReposi
         await dbContext.WorkItemTypeDefinitions.AddRangeAsync(
             WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
             cancellationToken);
+        await dbContext.Roles.AddRangeAsync(systemRoles, cancellationToken);
         await dbContext.RefreshSessions.AddAsync(refreshSession, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -56,6 +58,7 @@ internal sealed class SignUpRepository(OrbitDbContext dbContext) : ISignUpReposi
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
         GoogleSignInHandoff handoff,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -72,6 +75,7 @@ internal sealed class SignUpRepository(OrbitDbContext dbContext) : ISignUpReposi
         await dbContext.WorkItemTypeDefinitions.AddRangeAsync(
             WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
             cancellationToken);
+        await dbContext.Roles.AddRangeAsync(systemRoles, cancellationToken);
         await dbContext.GoogleSignInHandoffs.AddAsync(handoff, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

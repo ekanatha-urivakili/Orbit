@@ -29,7 +29,7 @@ public sealed class AccessModelTests
             Guid.NewGuid(),
             Guid.Empty,
             Guid.NewGuid(),
-            ProjectRole.Member,
+            Guid.NewGuid(),
             DateTimeOffset.UtcNow);
 
         Assert.Throws<DomainException>(action);

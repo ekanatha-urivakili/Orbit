@@ -32,7 +32,6 @@ interface BacklogViewProps {
   onOpenWorkItem: (workItem: WorkItem) => void
   onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
   assigneeChangePending?: boolean
-  error: string | null
 }
 
 export function BacklogView({
@@ -50,7 +49,6 @@ export function BacklogView({
   onOpenWorkItem,
   onAssigneeChange,
   assigneeChangePending = false,
-  error,
 }: BacklogViewProps) {
   const activeSprint = sprints.find((sprint) => sprint.state === 'Active')
   const futureSprints = sprints.filter((sprint) => sprint.state === 'Future')
@@ -223,8 +221,7 @@ export function BacklogView({
   })
 
   return (
-    <div className="p-6 md:p-8 w-full">
-      {error && <div className="error-banner mb-4">{error}</div>}
+    <div className="p-6 md:p-8 pt-8 md:pt-10 w-full">
       <div className="mb-6">
         <FilterBar
           searchTerm={searchTerm}

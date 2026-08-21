@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<IDirectoryGroupRepository, DirectoryGroupRepository>();
         services.AddScoped<IGroupMembershipRepository, GroupMembershipRepository>();
         services.AddScoped<IProjectGroupRoleRepository, ProjectGroupRoleRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IBoardRepository, BoardRepository>();
         services.AddScoped<ISprintRepository, SprintRepository>();
         services.AddScoped<ISprintMembershipRepository, SprintMembershipRepository>();

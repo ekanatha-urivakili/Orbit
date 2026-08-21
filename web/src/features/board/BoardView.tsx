@@ -135,7 +135,7 @@ export function BoardView({
       </div>
       {mutation.isError && <div className="error-banner">{mutation.error?.message}</div>}
 
-      <div className="flex flex-wrap items-center gap-4 mb-6 mt-4">
+      <div className="flex flex-wrap items-center gap-4 mb-6 mt-6">
         <FilterBar
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}

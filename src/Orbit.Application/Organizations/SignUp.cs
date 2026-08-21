@@ -95,6 +95,7 @@ public sealed class SignUpHandler(
             organizationMembership,
             ownerMembership,
             session,
+            Role.SeedSystemRoles(workspace.Id, now),
             cancellationToken);
 
         var accessToken = tokenIssuer.IssueUserToken(account.Id, workspace.Id, session.Id, now);

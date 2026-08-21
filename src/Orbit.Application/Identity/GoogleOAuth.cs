@@ -242,7 +242,8 @@ public sealed class HandleGoogleCallbackHandler(
         var handoff = GoogleSignInHandoff.Create(HandoffCodeCodec.Hash(code), account.Id, workspace.Id, now);
 
         await signUpRepository.ProvisionExternalAccountAsync(
-            account, externalIdentity, organization, workspace, organizationMembership, ownerMembership, handoff, cancellationToken);
+            account, externalIdentity, organization, workspace, organizationMembership, ownerMembership, handoff,
+            Role.SeedSystemRoles(workspace.Id, now), cancellationToken);
 
         return code;
     }
