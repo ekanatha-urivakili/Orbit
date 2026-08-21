@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "lint:docs": "cd .. && web/node_modules/.bin/markdownlint-cli2 README.md ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md CI-CD-PLAN.md",
+    "lint:docs": "cd .. && web/node_modules/.bin/markdownlint-cli2 README.md ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md CI-CD-PLAN.md OBSERVABILITY-CACHING-ARCHITECTURE.md",
     "preview": "vite preview"
   },
   "dependencies": {
