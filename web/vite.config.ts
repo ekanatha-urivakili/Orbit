@@ -59,6 +59,9 @@ export default defineConfig({
           if (id.includes('@tanstack/react-query')) {
             return 'vendor-query'
           }
+          if (id.includes('@sentry/react')) {
+            return 'vendor-sentry'
+          }
         },
       },
     },
