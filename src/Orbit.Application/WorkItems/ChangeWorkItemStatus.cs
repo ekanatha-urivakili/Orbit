@@ -126,6 +126,7 @@ public sealed class ChangeWorkItemStatusHandler(
                 continue;
             }
 
+            var userPreference = await settings.GetUserPreferenceAsync(userId, cancellationToken);
             var email = OutboxEmailMessage.Create(
                 account.NormalizedEmail,
                 $"{workItem.Key} moved to {newStatus}",
@@ -135,6 +136,7 @@ public sealed class ChangeWorkItemStatusHandler(
                 moved from {previousStatus} to {newStatus}.</p>
                 """,
                 now);
+            email.ScheduleFor(NotificationScheduling.ComputeNotBefore(preference, userPreference?.TimeZone, now));
             await outbox.AddAsync(email, cancellationToken);
         }
     }

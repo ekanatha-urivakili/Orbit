@@ -145,6 +145,8 @@ public sealed class AddWorkItemCommentHandler(
             .ToDictionary(a => a.Id);
         var preferences = (await settings.GetNotificationPreferencesAsync(mentionedUserIds, cancellationToken))
             .ToDictionary(p => p.UserId);
+        var userPreferences = (await settings.GetUserPreferencesAsync(mentionedUserIds, cancellationToken))
+            .ToDictionary(p => p.UserId);
         var now = timeProvider.GetUtcNow();
 
         foreach (var userId in mentionedUserIds)
@@ -162,6 +164,7 @@ public sealed class AddWorkItemCommentHandler(
                 continue;
             }
 
+            userPreferences.TryGetValue(userId, out var userPreference);
             var email = OutboxEmailMessage.Create(
                 mentionedAccount.NormalizedEmail,
                 $"You were mentioned in {workItem.Key}",
@@ -171,6 +174,7 @@ public sealed class AddWorkItemCommentHandler(
                 <strong>{System.Net.WebUtility.HtmlEncode(workItem.Key)}: {System.Net.WebUtility.HtmlEncode(workItem.Summary)}</strong>.</p>
                 """,
                 now);
+            email.ScheduleFor(NotificationScheduling.ComputeNotBefore(preference, userPreference?.TimeZone, now));
             await outbox.AddAsync(email, cancellationToken);
         }
     }
@@ -190,6 +194,8 @@ public sealed class AddWorkItemCommentHandler(
             .ToDictionary(a => a.Id);
         var preferences = (await settings.GetNotificationPreferencesAsync(watcherUserIds, cancellationToken))
             .ToDictionary(p => p.UserId);
+        var userPreferences = (await settings.GetUserPreferencesAsync(watcherUserIds, cancellationToken))
+            .ToDictionary(p => p.UserId);
         var now = timeProvider.GetUtcNow();
 
         foreach (var userId in watcherUserIds)
@@ -207,6 +213,7 @@ public sealed class AddWorkItemCommentHandler(
                 continue;
             }
 
+            userPreferences.TryGetValue(userId, out var userPreference);
             var email = OutboxEmailMessage.Create(
                 watcherAccount.NormalizedEmail,
                 $"New comment on {workItem.Key}",
@@ -217,6 +224,7 @@ public sealed class AddWorkItemCommentHandler(
                 which you're watching.</p>
                 """,
                 now);
+            email.ScheduleFor(NotificationScheduling.ComputeNotBefore(preference, userPreference?.TimeZone, now));
             await outbox.AddAsync(email, cancellationToken);
         }
     }

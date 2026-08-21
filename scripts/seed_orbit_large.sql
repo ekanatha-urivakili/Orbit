@@ -62,8 +62,45 @@ DECLARE
     v_bug_target_id UUID;
     v_attachment_id UUID;
     v_attachment_key VARCHAR(255);
+    v_admin_uid UUID;
 BEGIN
     RAISE NOTICE 'Starting seed script execution...';
+
+    ----------------------------------------------------------------------------
+    -- 0. Resolve Target Workspace, Project, and Admin User (admin@orbit.com)
+    ----------------------------------------------------------------------------
+    IF NOT EXISTS (SELECT 1 FROM workspaces WHERE id = c_tenant_id) THEN
+        SELECT id INTO c_tenant_id FROM workspaces ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM projects WHERE tenant_id = c_tenant_id AND id = c_project_id) THEN
+        SELECT id, key INTO c_project_id, c_project_key FROM projects WHERE tenant_id = c_tenant_id ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    -- Ensure admin@orbit.com account exists with matching Argon2id hash
+    SELECT id INTO v_admin_uid FROM user_accounts WHERE normalized_email = 'ADMIN@ORBIT.COM';
+    IF v_admin_uid IS NULL THEN
+        v_admin_uid := gen_random_uuid();
+        INSERT INTO user_accounts(id, normalized_email, display_name, status, created_at, updated_at, version)
+        VALUES (v_admin_uid, 'ADMIN@ORBIT.COM', 'Admin', 'Active', NOW(), NOW(), 1);
+
+        INSERT INTO local_credentials(user_id, password_hash, hash_algorithm, hash_parameters_version, changed_at)
+        VALUES (v_admin_uid, c_shared_password_hash, 'Argon2id', 1, NOW());
+    ELSE
+        UPDATE local_credentials SET password_hash = c_shared_password_hash WHERE user_id = v_admin_uid;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM site_role_assignments WHERE user_id = v_admin_uid AND site_role = 'SuperAdministrator') THEN
+        INSERT INTO site_role_assignments(user_id, site_role, created_at)
+        VALUES (v_admin_uid, 'SuperAdministrator', NOW());
+    END IF;
+
+    SELECT id INTO c_admin_membership_id FROM tenant_memberships WHERE tenant_id = c_tenant_id AND user_id = v_admin_uid;
+    IF c_admin_membership_id IS NULL THEN
+        c_admin_membership_id := gen_random_uuid();
+        INSERT INTO tenant_memberships(id, tenant_id, principal_type, tenant_role, is_active, created_at, user_id, tier)
+        VALUES (c_admin_membership_id, c_tenant_id, 'User', 'Owner', true, NOW(), v_admin_uid, 'Standard');
+    END IF;
 
     ----------------------------------------------------------------------------
     -- 1. Create Dev & QA Users

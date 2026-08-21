@@ -4,6 +4,7 @@ using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Application.Settings;
 using Orbit.Domain.Access;
+using Orbit.Domain.Choices;
 using Orbit.Domain.Configuration;
 
 namespace Orbit.Application.Configuration;
@@ -24,7 +25,8 @@ public sealed record CustomFieldDefinitionDto(
     int Order,
     bool Enabled,
     long Version,
-    IReadOnlyList<CustomFieldChoiceOptionDto> ChoiceOptions)
+    IReadOnlyList<CustomFieldChoiceOptionDto> ChoiceOptions,
+    IReadOnlyList<WorkItemType> ApplicableTypes)
 {
     public static CustomFieldDefinitionDto From(CustomFieldDefinition definition) =>
         new(
@@ -37,7 +39,8 @@ public sealed record CustomFieldDefinitionDto(
             definition.Order,
             definition.Enabled,
             definition.Version,
-            [.. definition.ChoiceOptions.OrderBy(option => option.Order).Select(CustomFieldChoiceOptionDto.From)]);
+            [.. definition.ChoiceOptions.OrderBy(option => option.Order).Select(CustomFieldChoiceOptionDto.From)],
+            definition.ApplicableTypes);
 }
 
 public sealed record CreateCustomFieldCommand(
@@ -47,7 +50,8 @@ public sealed record CreateCustomFieldCommand(
     CustomFieldType FieldType,
     bool Required,
     int Order,
-    IReadOnlyList<CustomFieldChoiceOptionInput> ChoiceOptions) : ICommand<CustomFieldDefinitionDto>;
+    IReadOnlyList<CustomFieldChoiceOptionInput> ChoiceOptions,
+    IReadOnlyList<WorkItemType> ApplicableTypes) : ICommand<CustomFieldDefinitionDto>;
 
 public sealed class CreateCustomFieldValidator : AbstractValidator<CreateCustomFieldCommand>
 {
@@ -65,6 +69,7 @@ public sealed class CreateCustomFieldValidator : AbstractValidator<CreateCustomF
             option.RuleFor(o => o.Label)
                 .Must(l => !string.IsNullOrWhiteSpace(l) && l.Trim().Length is >= 1 and <= 80)
                 .WithMessage("Option label must contain 1 to 80 characters."));
+        RuleForEach(command => command.ApplicableTypes).IsInEnum();
     }
 }
 
@@ -99,6 +104,7 @@ public sealed class CreateCustomFieldHandler(
             request.Required,
             request.Order,
             request.ChoiceOptions,
+            request.ApplicableTypes,
             timeProvider.GetUtcNow());
         await repository.AddAsync(definition, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -134,6 +140,7 @@ public sealed record UpdateCustomFieldCommand(
     int Order,
     bool Enabled,
     IReadOnlyList<CustomFieldChoiceOptionInput> ChoiceOptions,
+    IReadOnlyList<WorkItemType> ApplicableTypes,
     long ExpectedVersion) : ICommand<CustomFieldDefinitionDto>;
 
 public sealed class UpdateCustomFieldValidator : AbstractValidator<UpdateCustomFieldCommand>
@@ -151,6 +158,7 @@ public sealed class UpdateCustomFieldValidator : AbstractValidator<UpdateCustomF
             option.RuleFor(o => o.Label)
                 .Must(l => !string.IsNullOrWhiteSpace(l) && l.Trim().Length is >= 1 and <= 80)
                 .WithMessage("Option label must contain 1 to 80 characters."));
+        RuleForEach(command => command.ApplicableTypes).IsInEnum();
     }
 }
 
@@ -179,6 +187,7 @@ public sealed class UpdateCustomFieldHandler(
             request.Order,
             request.Enabled,
             request.ChoiceOptions,
+            request.ApplicableTypes,
             timeProvider.GetUtcNow());
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return CustomFieldDefinitionDto.From(definition);

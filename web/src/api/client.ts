@@ -117,6 +117,7 @@ export const orbitApi = {
       required: boolean
       order: number
       choiceOptions: CustomFieldChoiceOptionInput[]
+      applicableTypes: WorkItemType[]
     },
   ) =>
     request<CustomFieldDefinition>(`/projects/${encodeURIComponent(projectId)}/custom-fields`, {
@@ -125,7 +126,7 @@ export const orbitApi = {
     }),
   updateCustomField: (
     projectId: string,
-    input: Pick<CustomFieldDefinition, 'id' | 'label' | 'required' | 'order' | 'enabled' | 'version'> & {
+    input: Pick<CustomFieldDefinition, 'id' | 'label' | 'required' | 'order' | 'enabled' | 'version' | 'applicableTypes'> & {
       choiceOptions: CustomFieldChoiceOptionInput[]
     },
   ) =>
@@ -140,6 +141,7 @@ export const orbitApi = {
           order: input.order,
           enabled: input.enabled,
           choiceOptions: input.choiceOptions,
+          applicableTypes: input.applicableTypes,
         }),
       },
     ),
@@ -564,4 +566,9 @@ export const orbitApi = {
     }),
   unlinkExternalIdentity: (identityId: string) =>
     request<void>(`/me/external-identities/${encodeURIComponent(identityId)}`, { method: 'DELETE' }),
+  startGoogleAccountLink: (returnUrl?: string) =>
+    request<{ authorizeUrl: string }>('/me/external-identities/google/link-url', {
+      method: 'POST',
+      body: JSON.stringify({ returnUrl }),
+    }),
 }

@@ -717,7 +717,7 @@ export function WorkItemDetailView({
           </div>
 
           <WorkItemAttachments workItemId={item.id} members={members} />
-          <WorkItemCustomFields workItemId={item.id} projectId={item.projectId} />
+          <WorkItemCustomFields workItemId={item.id} projectId={item.projectId} workItemType={currentType} />
           {project && (
             <WorkItemSubtasks
               parent={item}

@@ -28,6 +28,20 @@ internal sealed class SettingsRepository(OrbitDbContext dbContext) : ISettingsRe
     public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
         dbContext.UserPreferences.SingleOrDefaultAsync(preference => preference.UserId == userId, cancellationToken);
 
+    public async Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await dbContext.UserPreferences
+            .Where(preference => userIds.Contains(preference.UserId))
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<NotificationPreference?> GetNotificationPreferenceAsync(
         Guid userId,
         CancellationToken cancellationToken) =>

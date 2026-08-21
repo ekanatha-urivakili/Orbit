@@ -491,7 +491,44 @@ function ItemTypeRow({ definition }: { definition: WorkItemTypeDefinition }) {
 
 const customFieldTypes: CustomFieldType[] = ['Text', 'Number', 'Date', 'SingleChoice', 'MultiChoice', 'Checkbox']
 const choiceFieldTypes: CustomFieldType[] = ['SingleChoice', 'MultiChoice']
-const blankCustomField = { key: '', label: '', fieldType: 'Text' as CustomFieldType, required: false, order: 0, choiceOptionsText: '' }
+const workItemTypesForScreens: WorkItemType[] =
+  ['Initiative', 'Epic', 'Task', 'Story', 'Spike', 'Test', 'Feature', 'Request', 'Bug', 'Subtask']
+const blankCustomField = {
+  key: '',
+  label: '',
+  fieldType: 'Text' as CustomFieldType,
+  required: false,
+  order: 0,
+  choiceOptionsText: '',
+  applicableTypes: [] as WorkItemType[],
+}
+
+function ApplicableTypesPicker({
+  value,
+  onChange,
+}: {
+  value: WorkItemType[]
+  onChange: (types: WorkItemType[]) => void
+}) {
+  return (
+    <Field variant="panel" label="Applies to (all types if none selected)">
+      <div className="flex flex-wrap gap-3">
+        {workItemTypesForScreens.map((type) => (
+          <label key={type} className="inline-flex items-center gap-1.5 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={value.includes(type)}
+              onChange={() =>
+                onChange(value.includes(type) ? value.filter((t) => t !== type) : [...value, type])
+              }
+            />
+            {type}
+          </label>
+        ))}
+      </div>
+    </Field>
+  )
+}
 
 function parseChoiceOptionsText(
   text: string,
@@ -525,6 +562,7 @@ function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: C
         required: draft.required,
         order: draft.order,
         choiceOptions: isChoiceType ? parseChoiceOptionsText(draft.choiceOptionsText, []) : [],
+        applicableTypes: draft.applicableTypes,
       }),
     onSuccess: (created) => {
       setDraft(blankCustomField)
@@ -534,7 +572,7 @@ function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: C
 
   return (
     <div className="space-y-5">
-      <Panel title="Add a custom field" description="Definitions only for now - not yet available on work items.">
+      <Panel title="Add a custom field" description="Shows on the work item detail view for whichever types it applies to.">
         <form onSubmit={(event) => { event.preventDefault(); createMutation.mutate() }} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field variant="panel" label="Key">
@@ -577,6 +615,10 @@ function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: C
               </Field>
             )}
           </div>
+          <ApplicableTypesPicker
+            value={draft.applicableTypes}
+            onChange={(applicableTypes) => setDraft((current) => ({ ...current, applicableTypes }))}
+          />
           <SubmitRow mutation={createMutation} />
         </form>
       </Panel>
@@ -631,6 +673,12 @@ function CustomFieldRow({ projectId, field }: { projectId: string; field: Custom
           </Field>
         </div>
       )}
+      <div className="mt-3">
+        <ApplicableTypesPicker
+          value={draft.applicableTypes}
+          onChange={(applicableTypes) => setDraft((current) => ({ ...current, applicableTypes }))}
+        />
+      </div>
       <SubmitRow mutation={mutation} />
     </form>
   )
@@ -1067,6 +1115,10 @@ function SecurityPanel() {
     mutationFn: (identityId: string) => orbitApi.unlinkExternalIdentity(identityId),
     onSuccess: () => client.invalidateQueries({ queryKey: ['linked-identities'] }),
   })
+  const linkGoogleMutation = useMutation({
+    mutationFn: () => orbitApi.startGoogleAccountLink(window.location.origin),
+    onSuccess: ({ authorizeUrl }) => { window.location.href = authorizeUrl },
+  })
   const oidcConfigured = getOidcConfig() !== null
 
   if (!authenticated) {
@@ -1147,13 +1199,25 @@ function SecurityPanel() {
             ))}
           </ul>
         )}
-        {oidcConfigured && (
+        <div className="mt-4 flex gap-2">
           <button
-            onClick={() => startOidcLogin('link')}
-            className="mt-4 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => linkGoogleMutation.mutate()}
+            disabled={linkGoogleMutation.isPending}
+            className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
-            Link SSO identity
+            Link Google account
           </button>
+          {oidcConfigured && (
+            <button
+              onClick={() => startOidcLogin('link')}
+              className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Link SSO identity
+            </button>
+          )}
+        </div>
+        {linkGoogleMutation.isError && (
+          <p className="mt-2 text-xs text-red-600">{linkGoogleMutation.error.message}</p>
         )}
       </Panel>
       <div className="divide-y divide-gray-200 rounded-lg border border-gray-200">

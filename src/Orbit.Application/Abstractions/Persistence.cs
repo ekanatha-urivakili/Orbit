@@ -77,6 +77,15 @@ public interface ISettingsRepository
         IReadOnlyCollection<Guid> userIds,
         CancellationToken cancellationToken);
     Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Bulk variant of <see cref="GetUserPreferenceAsync"/> so notification-delivery scheduling
+    /// (quiet hours need the recipient's time zone) can resolve a fan-out recipient set without
+    /// one query per recipient.
+    /// </summary>
+    Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken);
     Task<NotificationPreference?> GetNotificationPreferenceAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>

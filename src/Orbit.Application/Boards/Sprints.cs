@@ -322,6 +322,8 @@ internal static class SprintNotifications
             .ToDictionary(account => account.Id);
         var preferences = (await settings.GetNotificationPreferencesAsync(recipientIds, cancellationToken))
             .ToDictionary(preference => preference.UserId);
+        var userPreferences = (await settings.GetUserPreferencesAsync(recipientIds, cancellationToken))
+            .ToDictionary(preference => preference.UserId);
 
         foreach (var userId in recipientIds)
         {
@@ -338,6 +340,7 @@ internal static class SprintNotifications
                 continue;
             }
 
+            userPreferences.TryGetValue(userId, out var userPreference);
             var email = OutboxEmailMessage.Create(
                 account.NormalizedEmail,
                 $"Sprint '{sprint.Name}' {eventLabel}",
@@ -346,6 +349,7 @@ internal static class SprintNotifications
                 <p>Sprint <strong>{System.Net.WebUtility.HtmlEncode(sprint.Name)}</strong> has {eventLabel}.</p>
                 """,
                 now);
+            email.ScheduleFor(NotificationScheduling.ComputeNotBefore(preference, userPreference?.TimeZone, now));
             await outbox.AddAsync(email, cancellationToken);
         }
     }

@@ -33,7 +33,9 @@ public sealed class GoogleOAuthHandlerTests
 
         var result = await handler.Handle(new HandleGoogleCallbackCommand("code", "login"), CancellationToken.None);
 
+        Assert.NotNull(result.HandoffCode);
         Assert.NotEmpty(result.HandoffCode);
+        Assert.False(result.Linked);
         var handoff = Assert.Single(repository.SignInHandoffs);
         Assert.Equal(account.Id, handoff.UserId);
         Assert.Equal(workspace.Id, handoff.TenantId);
@@ -81,7 +83,9 @@ public sealed class GoogleOAuthHandlerTests
 
         var result = await handler.Handle(new HandleGoogleCallbackCommand("code", "login"), CancellationToken.None);
 
+        Assert.NotNull(result.HandoffCode);
         Assert.NotEmpty(result.HandoffCode);
+        Assert.False(result.Linked);
         Assert.NotNull(signUpRepository.Organization);
         Assert.NotNull(signUpRepository.Workspace);
         Assert.Equal("nobody@example.test", signUpRepository.Account!.NormalizedEmail);
@@ -103,7 +107,9 @@ public sealed class GoogleOAuthHandlerTests
 
         var result = await handler.Handle(new HandleGoogleCallbackCommand("code", "register"), CancellationToken.None);
 
+        Assert.NotNull(result.HandoffCode);
         Assert.NotEmpty(result.HandoffCode);
+        Assert.False(result.Linked);
         Assert.NotNull(signUpRepository.Organization);
         Assert.NotNull(signUpRepository.Workspace);
         Assert.Equal(signUpRepository.Organization!.Id, signUpRepository.Workspace!.OrganizationId);
@@ -127,6 +133,126 @@ public sealed class GoogleOAuthHandlerTests
         var action = () => handler.Handle(new HandleGoogleCallbackCommand("code", "bad-state"), CancellationToken.None);
 
         await Assert.ThrowsAsync<AuthenticationException>(action);
+    }
+
+    [Fact]
+    public async Task Callback_LinkMode_LinksIdentityToEmbeddedUserId_WithoutIssuingHandoff()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var account = UserAccount.Create("member@example.test", "Member", now);
+        var repository = new AuthRepositoryStub();
+        repository.Account = account;
+
+        var handler = new HandleGoogleCallbackHandler(
+            new GoogleOAuthClientStub(),
+            new GoogleIdTokenValidatorStub(new VerifiedGoogleIdentity("google-sub-1", "member@example.test", true, "Member")),
+            new PassthroughStateCodec(),
+            repository,
+            new SignUpRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(
+            new HandleGoogleCallbackCommand("code", $"link|{account.Id:D}|"), CancellationToken.None);
+
+        Assert.True(result.Linked);
+        Assert.Null(result.HandoffCode);
+        var linked = Assert.Single(repository.ExternalIdentities);
+        Assert.Equal(account.Id, linked.UserId);
+        Assert.Equal("google-sub-1", linked.Subject);
+        Assert.Empty(repository.SignInHandoffs);
+    }
+
+    [Fact]
+    public async Task Callback_LinkMode_AlreadyLinkedToSameAccount_IsNoOpSuccess()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var account = UserAccount.Create("member@example.test", "Member", now);
+        var identity = ExternalIdentity.Create(account.Id, "https://accounts.google.com", "google-sub-1", now);
+        var repository = new AuthRepositoryStub();
+        repository.Account = account;
+        repository.ExternalIdentities.Add(identity);
+
+        var handler = new HandleGoogleCallbackHandler(
+            new GoogleOAuthClientStub(),
+            new GoogleIdTokenValidatorStub(new VerifiedGoogleIdentity("google-sub-1", "member@example.test", true, "Member")),
+            new PassthroughStateCodec(),
+            repository,
+            new SignUpRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(
+            new HandleGoogleCallbackCommand("code", $"link|{account.Id:D}|"), CancellationToken.None);
+
+        Assert.True(result.Linked);
+        Assert.Single(repository.ExternalIdentities);
+    }
+
+    [Fact]
+    public async Task Callback_LinkMode_AlreadyLinkedToDifferentAccount_ThrowsConflict()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var account = UserAccount.Create("member@example.test", "Member", now);
+        var otherAccountId = Guid.NewGuid();
+        var identity = ExternalIdentity.Create(otherAccountId, "https://accounts.google.com", "google-sub-1", now);
+        var repository = new AuthRepositoryStub();
+        repository.Account = account;
+        repository.ExternalIdentities.Add(identity);
+
+        var handler = new HandleGoogleCallbackHandler(
+            new GoogleOAuthClientStub(),
+            new GoogleIdTokenValidatorStub(new VerifiedGoogleIdentity("google-sub-1", "member@example.test", true, "Member")),
+            new PassthroughStateCodec(),
+            repository,
+            new SignUpRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            new HandleGoogleCallbackCommand("code", $"link|{account.Id:D}|"), CancellationToken.None);
+
+        await Assert.ThrowsAsync<ConflictException>(action);
+    }
+
+    [Fact]
+    public async Task Callback_LinkMode_VerifiedEmailMismatch_ThrowsConflict()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var account = UserAccount.Create("member@example.test", "Member", now);
+        var repository = new AuthRepositoryStub();
+        repository.Account = account;
+
+        var handler = new HandleGoogleCallbackHandler(
+            new GoogleOAuthClientStub(),
+            new GoogleIdTokenValidatorStub(new VerifiedGoogleIdentity("google-sub-1", "someone-else@example.test", true, "Someone Else")),
+            new PassthroughStateCodec(),
+            repository,
+            new SignUpRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var action = () => handler.Handle(
+            new HandleGoogleCallbackCommand("code", $"link|{account.Id:D}|"), CancellationToken.None);
+
+        await Assert.ThrowsAsync<ConflictException>(action);
+        Assert.Empty(repository.ExternalIdentities);
+    }
+
+    [Fact]
+    public async Task StartGoogleLink_EmbedsUserId_InAuthorizeUrlState()
+    {
+        var userId = Guid.NewGuid();
+        var handler = new StartGoogleLinkHandler(
+            new CurrentPrincipalStub(userId),
+            new GoogleOAuthClientStub(),
+            new PassthroughStateCodec(),
+            TimeProvider.System);
+
+        var authorizeUrl = await handler.Handle(
+            new StartGoogleLinkCommand("https://app.example.test"), CancellationToken.None);
+
+        Assert.Contains($"link|{userId:D}|https://app.example.test", authorizeUrl);
     }
 
     [Fact]
@@ -176,7 +302,9 @@ public sealed class GoogleOAuthHandlerTests
 
         var result = await handler.Handle(new HandleGoogleCallbackCommand("code", "login|http://localhost:5800"), CancellationToken.None);
 
+        Assert.NotNull(result.HandoffCode);
         Assert.NotEmpty(result.HandoffCode);
+        Assert.False(result.Linked);
         Assert.Equal("http://localhost:5800", result.ReturnUrl);
     }
 
@@ -398,5 +526,16 @@ public sealed class GoogleOAuthHandlerTests
             SignInHandoffs.Remove(handoff);
             return Task.FromResult(handoff.IsUsable(now) ? handoff : null);
         }
+    }
+
+    private sealed class CurrentPrincipalStub(Guid? userId) : ICurrentPrincipal
+    {
+        public Guid? UserId => userId;
+        public Guid? SessionId => null;
+        public Guid MembershipId => Guid.NewGuid();
+        public PrincipalType PrincipalType => PrincipalType.User;
+        public TenantRole TenantRole => TenantRole.Member;
+        public MembershipTier MembershipTier => MembershipTier.Standard;
+        public bool IsDevelopmentBypass => true;
     }
 }

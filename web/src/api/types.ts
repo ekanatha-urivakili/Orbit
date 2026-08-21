@@ -186,6 +186,8 @@ export interface CustomFieldDefinition {
   enabled: boolean
   version: number
   choiceOptions: CustomFieldChoiceOption[]
+  /** The screen registry: which work item types this field shows on. Empty means every type. */
+  applicableTypes: WorkItemType[]
 }
 
 export interface WorkItemCustomFieldValue {

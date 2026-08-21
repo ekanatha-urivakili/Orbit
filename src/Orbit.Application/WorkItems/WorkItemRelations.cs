@@ -68,6 +68,7 @@ internal static class WorkItemRelations
             return;
         }
 
+        var userPreference = await settings.GetUserPreferenceAsync(assigneeUserId, cancellationToken);
         var email = OutboxEmailMessage.Create(
             account.NormalizedEmail,
             $"You were assigned to {workItem.Key}",
@@ -76,6 +77,7 @@ internal static class WorkItemRelations
             <p>You were assigned to <strong>{System.Net.WebUtility.HtmlEncode(workItem.Key)}: {System.Net.WebUtility.HtmlEncode(workItem.Summary)}</strong>.</p>
             """,
             now);
+        email.ScheduleFor(NotificationScheduling.ComputeNotBefore(preference, userPreference?.TimeZone, now));
         await outbox.AddAsync(email, cancellationToken);
     }
 

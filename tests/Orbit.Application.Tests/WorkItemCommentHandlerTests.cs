@@ -76,6 +76,39 @@ public sealed class WorkItemCommentHandlerTests
     }
 
     [Fact]
+    public async Task Handle_MentionedUserHasDailyDigest_SchedulesEmailInsteadOfImmediateSend()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var mentionedAccount = UserAccount.Create("mentioned@example.com", "Mentioned User", DateTimeOffset.UtcNow);
+        var preference = NotificationPreference.Create(mentionedAccount.Id, DateTimeOffset.UtcNow);
+        preference.Update(true, true, DigestCadence.Daily, null, null, false, DateTimeOffset.UtcNow);
+        var workItem = CreateWorkItem(tenantId);
+        var settings = new SettingsRepositoryStub([mentionedAccount], [preference]);
+        var outbox = new OutboxRepositoryStub();
+        var now = TimeProvider.System.GetUtcNow();
+        var handler = new AddWorkItemCommentHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(authorUserId),
+            new WorkItemRepositoryStub(workItem),
+            new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(),
+            new TenantMembershipRepositoryStub(),
+            settings,
+            outbox,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new AddWorkItemCommentCommand(workItem.Id, $"Hey @{{{mentionedAccount.Id}}}, take a look"),
+            CancellationToken.None);
+
+        var email = Assert.Single(outbox.Messages);
+        Assert.NotNull(email.NotBefore);
+        Assert.True(email.NotBefore > now);
+    }
+
+    [Fact]
     public async Task Handle_SelfMentionWithoutSelfNotify_DoesNotEnqueueOutboxEmail()
     {
         var tenantId = Guid.NewGuid();
@@ -340,6 +373,10 @@ public sealed class WorkItemCommentHandlerTests
 
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
+
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
 
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>

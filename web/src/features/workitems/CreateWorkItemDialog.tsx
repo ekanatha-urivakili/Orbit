@@ -2,11 +2,13 @@ import { useState, type FormEvent } from 'react'
 import { Paperclip, X } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
+import { useDraft } from '../../hooks/useDraft'
 import { Field, Hint } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemTypeIcon } from './typeIcons'
 import { RichTextEditor } from '../../components/form/RichTextEditor'
+import { isRichTextEmpty } from '../../components/form/editorConstants'
 import { orbitApi } from '../../api/client'
 import type {
   CreateWorkItemInput,
@@ -86,6 +88,19 @@ export function CreateWorkItemDialog({
   const mutation = useCreateWorkItem(project.id)
   const typeLabel = types.find((itemType) => itemType.id === type)?.label ?? type
 
+  const draftValue = { summary, description, details, labelsText }
+  const { discard: discardDraft } = useDraft(
+    `create-work-item:${project.id}:${parent?.id ?? 'root'}`,
+    draftValue,
+    (restored) => {
+      setSummary(restored.summary)
+      setDescription(restored.description)
+      setDetails(restored.details)
+      setLabelsText(restored.labelsText)
+    },
+    (v) => v.summary.trim().length === 0 && isRichTextEmpty(v.description),
+  )
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     
@@ -121,6 +136,7 @@ export function CreateWorkItemDialog({
             queryClient.invalidateQueries({ queryKey: ['sprints', project.id] })
           }
           queryClient.invalidateQueries({ queryKey: ['work-items', project.id] })
+          discardDraft()
 
           if (!createAnother) {
             onClose()

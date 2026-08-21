@@ -224,15 +224,24 @@ function App() {
   useEffect(() => {
     const url = new URL(window.location.href)
     const handoffCode = url.searchParams.get('googleAuth')
+    const googleLinked = url.searchParams.get('googleLinked')
     const googleError = url.searchParams.get('googleAuthError')
-    if (!handoffCode && !googleError) return
+    if (!handoffCode && !googleLinked && !googleError) return
 
     url.searchParams.delete('googleAuth')
+    url.searchParams.delete('googleLinked')
     url.searchParams.delete('googleAuthError')
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
 
     if (googleError) {
       setOidcError(googleError)
+      return
+    }
+
+    if (googleLinked) {
+      // "Link Google account" (Settings > Account security) returns here with no new session to
+      // exchange - the browser's existing session carried through the OAuth redirect unchanged.
+      queryClient.invalidateQueries({ queryKey: ['linked-identities'] })
       return
     }
 

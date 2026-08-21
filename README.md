@@ -151,15 +151,11 @@ curl -X POST http://localhost:5014/api/v1/auth/login \
   --data '{"email":"admin@example.com","password":"ReplaceWithStrongPassword123","rememberMe":false}'
 ```
 
-Omitting `rememberMe` (or passing `false`) issues a session lasting about one day; passing `true` extends it to about thirty days. The application header also offers "Sign in with Google," a backend-brokered OAuth flow (`GET /auth/google/start`, `/auth/google/callback`, `POST /auth/google/exchange`) that never exposes a Google client secret or raw Google ID token to the browser — the callback redirect carries only a single-use, hashed handoff code that the frontend immediately exchanges for a session.
+Omitting `rememberMe` (or passing `false`) issues a session lasting about one day; passing `true` extends it to about thirty days. The login screen also offers "Sign in with Google," a backend-brokered OAuth flow (`GET /auth/google/start`, `/auth/google/callback`, `POST /auth/google/exchange`) that never exposes a Google client secret or raw Google ID token to the browser — the callback redirect carries only a single-use, hashed handoff code that the frontend immediately exchanges for a session.
 
-Accounts belonging to multiple workspaces can select the active workspace from the application
-header. The switch is authorized server-side and rotates the refresh session into the selected
-workspace; changing `X-Tenant-Id` or browser storage alone never grants access.
+Accounts belonging to multiple workspaces can select the active workspace from the workspace selector on the Home page (Quickstart / Home). The switch is authorized server-side and rotates the refresh session into the selected workspace; changing `X-Tenant-Id` or browser storage alone never grants access.
 
-The bootstrap-created site super administrator can create additional workspaces from the plus button
-beside the workspace selector. Orbit creates the workspace and owner membership in one transaction,
-then rotates the current session into the new workspace.
+The bootstrap-created site super administrator can create additional workspaces from the plus button beside the workspace selector on the Home page. Orbit creates the workspace and owner membership in one transaction, then rotates the current session into the new workspace.
 
 ### Seeding Large Agile Dataset for Local QA/PM Testing
 

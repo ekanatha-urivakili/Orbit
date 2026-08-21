@@ -9,7 +9,7 @@ public sealed class WorkItemCustomFieldValueTests
     private static CustomFieldDefinition CreateDefinition(
         CustomFieldType fieldType, IReadOnlyList<CustomFieldChoiceOptionInput>? choiceOptions = null) =>
         CustomFieldDefinition.Create(
-            Guid.NewGuid(), Guid.NewGuid(), "field", "Field", fieldType, false, 0, choiceOptions ?? [],
+            Guid.NewGuid(), Guid.NewGuid(), "field", "Field", fieldType, false, 0, choiceOptions ?? [], [],
             DateTimeOffset.UtcNow);
 
     [Fact]

@@ -1,4 +1,6 @@
 using MediatR;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Orbit.Application.Identity;
 using Orbit.Application.Settings;
 using Orbit.Domain.Settings;
@@ -164,6 +166,20 @@ public static class IdentityEndpoints
         .WithName("LinkExternalIdentity")
         .WithTags("Identity");
 
+        group.MapPost("/me/external-identities/google/link-url", async (
+            LinkGoogleAccountRequest request,
+            HttpContext httpContext,
+            IConfiguration configuration,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var safeReturnUrl = GoogleOAuthEndpoints.ResolveSafeReturnUrl(request.ReturnUrl, httpContext, configuration);
+            var authorizeUrl = await sender.Send(new StartGoogleLinkCommand(safeReturnUrl), cancellationToken);
+            return Results.Ok(new { authorizeUrl });
+        })
+        .WithName("StartGoogleAccountLink")
+        .WithTags("Identity");
+
         group.MapDelete("/me/external-identities/{identityId:guid}", async (
             Guid identityId,
             ISender sender,
@@ -197,4 +213,6 @@ public static class IdentityEndpoints
         bool SelfNotify);
 
     public sealed record LinkExternalIdentityRequest(string IdentityToken);
+
+    public sealed record LinkGoogleAccountRequest(string? ReturnUrl);
 }
