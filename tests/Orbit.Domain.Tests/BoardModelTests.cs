@@ -97,6 +97,27 @@ public sealed class BoardModelTests
     }
 
     [Fact]
+    public void Board_Create_StartsEpochAtOne()
+    {
+        var board = Board.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "Delivery Board", BoardType.Kanban, DefaultColumns, DateTimeOffset.UtcNow);
+
+        Assert.Equal(1, board.Epoch);
+    }
+
+    [Fact]
+    public void Board_IncrementEpoch_IncreasesByOne()
+    {
+        var board = Board.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "Delivery Board", BoardType.Kanban, DefaultColumns, DateTimeOffset.UtcNow);
+
+        board.IncrementEpoch();
+        board.IncrementEpoch();
+
+        Assert.Equal(3, board.Epoch);
+    }
+
+    [Fact]
     public void Board_Update_BumpsVersionAndTimestamp()
     {
         var now = DateTimeOffset.UtcNow;

@@ -2,6 +2,7 @@ using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Application.WorkItems;
 using Orbit.Domain.Access;
+using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
 using Orbit.Domain.Common;
 using Orbit.Domain.WorkItems;
@@ -26,6 +27,7 @@ public sealed class ReorderWorkItemHandlerTests
         var handler = new ReorderWorkItemHandler(
             new TenantContextStub(tenantId),
             new WorkItemRepositoryStub(before, target, after),
+            new BoardRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -46,6 +48,7 @@ public sealed class ReorderWorkItemHandlerTests
         var handler = new ReorderWorkItemHandler(
             new TenantContextStub(tenantId),
             new WorkItemRepositoryStub(before, target),
+            new BoardRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -66,6 +69,7 @@ public sealed class ReorderWorkItemHandlerTests
         var handler = new ReorderWorkItemHandler(
             new TenantContextStub(tenantId),
             new WorkItemRepositoryStub(target, after),
+            new BoardRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -86,6 +90,7 @@ public sealed class ReorderWorkItemHandlerTests
         var handler = new ReorderWorkItemHandler(
             new TenantContextStub(tenantId),
             new WorkItemRepositoryStub(before, target),
+            new BoardRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -105,6 +110,7 @@ public sealed class ReorderWorkItemHandlerTests
         var handler = new ReorderWorkItemHandler(
             new TenantContextStub(tenantId),
             new WorkItemRepositoryStub(target, otherProjectNeighbor),
+            new BoardRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -122,6 +128,7 @@ public sealed class ReorderWorkItemHandlerTests
         var handler = new ReorderWorkItemHandler(
             new TenantContextStub(tenantId),
             new WorkItemRepositoryStub(),
+            new BoardRepositoryStub(),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -130,6 +137,30 @@ public sealed class ReorderWorkItemHandlerTests
             CancellationToken.None);
 
         await Assert.ThrowsAsync<NotFoundException>(action);
+    }
+
+    [Fact]
+    public async Task Handle_IncrementsBoardEpoch_WhenBoardExists()
+    {
+        var tenantId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var before = NewItem(tenantId, projectId, 1);
+        var target = NewItem(tenantId, projectId, 2);
+        var board = Board.Create(
+            tenantId, projectId, "Delivery Board", BoardType.Kanban,
+            [new BoardColumnInput(Guid.NewGuid(), null, WipLimitMode.Warn)], DateTimeOffset.UtcNow);
+        var handler = new ReorderWorkItemHandler(
+            new TenantContextStub(tenantId),
+            new WorkItemRepositoryStub(before, target),
+            new BoardRepositoryStub(board),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new ReorderWorkItemCommand(target.Id, before.Id, null, target.Version),
+            CancellationToken.None);
+
+        Assert.Equal(2, board.Epoch);
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
@@ -164,6 +195,14 @@ public sealed class ReorderWorkItemHandlerTests
         public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
             Task.FromResult(false);
         public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class BoardRepositoryStub(Board? existing = null) : IBoardRepository
+    {
+        public Task AddAsync(Board board, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<Board?> GetAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult(existing);
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

@@ -49,6 +49,13 @@ public sealed class Board
     public string Name { get; private set; } = string.Empty;
     public BoardType Type { get; private set; }
     public long Version { get; private set; }
+
+    /// <summary>
+    /// Bumped on any write affecting the board (column/config update, item transition, rank
+    /// change - OBSERVABILITY-CACHING-ARCHITECTURE.md §5.2 row 1), separate from Version's
+    /// optimistic-concurrency role. Mirrors Workspace.AuthorizationEpoch/Project.ConfigEpoch.
+    /// </summary>
+    public long Epoch { get; private set; } = 1;
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public IReadOnlyList<BoardColumn> Columns => _columns;
@@ -79,6 +86,8 @@ public sealed class Board
         Version++;
         UpdatedAt = now;
     }
+
+    public void IncrementEpoch() => Epoch++;
 
     private void ReplaceColumns(IReadOnlyList<BoardColumnInput> columns)
     {

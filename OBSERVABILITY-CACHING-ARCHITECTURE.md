@@ -193,7 +193,7 @@ sequenceDiagram
     participant W as Worker (OutboxEmailProcessor)
 
     PWA->>MW: POST /api/v1/work-items (X-Correlation-Id?)
-    MW->>MW: validate/generate CorrelationId;<br/>set httpContext.TraceIdentifier;<br/>add X-Correlation-Id response header;<br/>open log scope {CorrelationId, TraceId}
+    MW->>MW: validate/generate CorrelationId,<br/>set httpContext.TraceIdentifier,<br/>add X-Correlation-Id response header,<br/>open log scope (CorrelationId, TraceId)
     Note over MW: TraceId comes free from Activity.Current -<br/>no manual span tagging needed
     MW->>AuthZ: forward
     alt 401 / 429 / 403
@@ -202,7 +202,7 @@ sequenceDiagram
     else authorized
         AuthZ->>TTM: forward
         TTM->>PG: BEGIN, set_config(app.tenant_id)
-        TTM->>TTM: SetTenant; open nested log scope {TenantId}
+        TTM->>TTM: SetTenant, open nested log scope (TenantId)
         TTM->>H: forward
         H->>VK: cache-aside read (authz/context)
         H->>PG: INSERT work_item, INSERT outbox(trace_parent=current)
@@ -244,6 +244,8 @@ sequenceDiagram
 | Project/workflow/custom-field config | L1 + L2 via `HybridCache` | Epoch-bumped (`Workspace`/`Project` config epoch column) on config write | TTL ceiling 5 min; small, bounded entry | Read on every item render; changes rarely; smallest, safest win |
 | WQL query result pages | L2 only via `HybridCache` (`DisableLocalCache`) | TTL-only (short, e.g. 15-30 s) | TTL ceiling 30 s; max one page (existing page-size limit) per entry | Matches §8.3's WQL budget; TTL-only (not epoch) because WQL result sets are too broad to enumerate a precise invalidation set cheaply. `DisableLocalCache` keeps per-query-key cardinality out of process memory (principle 4) while still getting single-flight de-duplication on a miss (principle 6) |
 | Work item single-read ETag | HTTP `ETag`/`If-None-Match`, not a server cache | N/A | N/A | Already implied by the main doc's §8.3 "ETag caching" note — a client-side/conditional-GET optimization, not a new Valkey entry |
+
+**Implementation status (rollout step 7):** row 1 is implemented for the board's own columns/config (`GetBoardQuery`, epoch-bumped from `UpdateBoardHandler`, `ChangeWorkItemStatusHandler`, and `ReorderWorkItemHandler`) — `Board` in this codebase holds columns/config only, not a combined board+cards+rank read model, so "cards, rank" in this row's label describes the *invalidation triggers*, not a single cached payload; work items shown on a board are fetched separately via the existing `ListWorkItemsQuery`, which is not cached under this row. Row 3 (WQL) is **not implemented and not implementable yet** — WQL (parser, handler, `/api/v1/search` endpoint) does not exist anywhere in this codebase as of this rollout; row 3 is blocked on WQL shipping first, not a caching-scope decision.
 
 ### 5.3 Cache flow — read and epoch invalidation
 

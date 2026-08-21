@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Boards;
 using Orbit.Application.Common;
@@ -11,6 +14,13 @@ namespace Orbit.Application.Tests;
 
 public sealed class BoardHandlerTests
 {
+    private static HybridCache CreateHybridCache()
+    {
+        var services = new ServiceCollection();
+        services.AddHybridCache();
+        return services.BuildServiceProvider().GetRequiredService<HybridCache>();
+    }
+
     [Fact]
     public async Task GetBoard_ReturnsZeroVersionSentinel_WhenNoBoardExists()
     {
@@ -21,11 +31,50 @@ public sealed class BoardHandlerTests
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.View]),
             new BoardRepositoryStub(),
-            new WorkItemStatusRepositoryStub(statuses));
+            new WorkItemStatusRepositoryStub(statuses),
+            CreateHybridCache(),
+            NullLogger<GetBoardHandler>.Instance);
 
         var result = await handler.Handle(new GetBoardQuery(project.Id), CancellationToken.None);
 
         Assert.Equal(0, result.Version);
+    }
+
+    [Fact]
+    public async Task GetBoard_ReflectsAWriteMadeAfterAnEarlierCachedRead()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
+        var backlog = statuses.Single(status => status.Key == "backlog");
+        var existing = Board.Create(
+            tenantId, project.Id, "Delivery Board", BoardType.Kanban,
+            [new BoardColumnInput(backlog.Id, null, WipLimitMode.Warn)], DateTimeOffset.UtcNow);
+        var boards = new BoardRepositoryStub { Existing = existing };
+        var cache = CreateHybridCache();
+        var getHandler = new GetBoardHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.View, ProjectPermission.Administer]),
+            boards,
+            new WorkItemStatusRepositoryStub(statuses),
+            cache,
+            NullLogger<GetBoardHandler>.Instance);
+        var updateHandler = new UpdateBoardHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.View, ProjectPermission.Administer]),
+            boards,
+            new WorkItemStatusRepositoryStub(statuses),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var before = await getHandler.Handle(new GetBoardQuery(project.Id), CancellationToken.None);
+        await updateHandler.Handle(
+            new UpdateBoardCommand(project.Id, "Renamed Board", BoardType.Scrum, [], existing.Version),
+            CancellationToken.None);
+        var after = await getHandler.Handle(new GetBoardQuery(project.Id), CancellationToken.None);
+
+        Assert.Equal("Delivery Board", before.Name);
+        Assert.Equal("Renamed Board", after.Name);
     }
 
     [Fact]
