@@ -24,7 +24,7 @@ public sealed class CustomFieldHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new CreateCustomFieldCommand(project.Id, "Severity", "Severity", CustomFieldType.Text, false, 10, []),
+            new CreateCustomFieldCommand(project.Id, "Severity", "Severity", CustomFieldType.Text, false, 10, [], []),
             CancellationToken.None);
 
         Assert.Equal("severity", result.Key);
@@ -41,7 +41,7 @@ public sealed class CustomFieldHandlerTests
         var repository = new RepositoryStub();
         repository.Definitions.Add(
             CustomFieldDefinition.Create(
-                tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], DateTimeOffset.UtcNow));
+                tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], [], DateTimeOffset.UtcNow));
         var handler = new CreateCustomFieldHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
@@ -50,7 +50,7 @@ public sealed class CustomFieldHandlerTests
             TimeProvider.System);
 
         var action = () => handler.Handle(
-            new CreateCustomFieldCommand(project.Id, "Severity", "Severity level", CustomFieldType.Text, false, 20, []),
+            new CreateCustomFieldCommand(project.Id, "Severity", "Severity level", CustomFieldType.Text, false, 20, [], []),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<ConflictException>(action);
@@ -69,7 +69,7 @@ public sealed class CustomFieldHandlerTests
             TimeProvider.System);
 
         var action = () => handler.Handle(
-            new CreateCustomFieldCommand(project.Id, "severity", "Severity", CustomFieldType.Text, false, 0, []),
+            new CreateCustomFieldCommand(project.Id, "severity", "Severity", CustomFieldType.Text, false, 0, [], []),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<NotFoundException>(action);
@@ -89,7 +89,7 @@ public sealed class CustomFieldHandlerTests
 
         var action = () => handler.Handle(
             new CreateCustomFieldCommand(
-                otherTenantProject.Id, "severity", "Severity", CustomFieldType.Text, false, 0, []),
+                otherTenantProject.Id, "severity", "Severity", CustomFieldType.Text, false, 0, [], []),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<NotFoundException>(action);
@@ -103,10 +103,10 @@ public sealed class CustomFieldHandlerTests
         var repository = new RepositoryStub();
         repository.Definitions.Add(
             CustomFieldDefinition.Create(
-                tenantId, project.Id, "b-field", "B Field", CustomFieldType.Text, false, 20, [], DateTimeOffset.UtcNow));
+                tenantId, project.Id, "b-field", "B Field", CustomFieldType.Text, false, 20, [], [], DateTimeOffset.UtcNow));
         repository.Definitions.Add(
             CustomFieldDefinition.Create(
-                tenantId, project.Id, "a-field", "A Field", CustomFieldType.Text, false, 10, [], DateTimeOffset.UtcNow));
+                tenantId, project.Id, "a-field", "A Field", CustomFieldType.Text, false, 10, [], [], DateTimeOffset.UtcNow));
         var handler = new ListCustomFieldsHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.View]),
@@ -123,7 +123,7 @@ public sealed class CustomFieldHandlerTests
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var definition = CustomFieldDefinition.Create(
-            tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], DateTimeOffset.UtcNow);
+            tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], [], DateTimeOffset.UtcNow);
         var repository = new RepositoryStub();
         repository.Definitions.Add(definition);
         var unitOfWork = new UnitOfWorkStub();
@@ -135,7 +135,7 @@ public sealed class CustomFieldHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new UpdateCustomFieldCommand(project.Id, definition.Id, "Severity level", true, 15, false, [], definition.Version),
+            new UpdateCustomFieldCommand(project.Id, definition.Id, "Severity level", true, 15, false, [], [], definition.Version),
             CancellationToken.None);
 
         Assert.Equal("severity", result.Key);
@@ -151,7 +151,7 @@ public sealed class CustomFieldHandlerTests
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var definition = CustomFieldDefinition.Create(
-            tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], DateTimeOffset.UtcNow);
+            tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], [], DateTimeOffset.UtcNow);
         var repository = new RepositoryStub();
         repository.Definitions.Add(definition);
         var handler = new UpdateCustomFieldHandler(
@@ -163,7 +163,7 @@ public sealed class CustomFieldHandlerTests
 
         var action = () => handler.Handle(
             new UpdateCustomFieldCommand(
-                project.Id, definition.Id, "Severity level", true, 15, true, [], definition.Version + 1),
+                project.Id, definition.Id, "Severity level", true, 15, true, [], [], definition.Version + 1),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<ConcurrencyException>(action);
@@ -175,7 +175,7 @@ public sealed class CustomFieldHandlerTests
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var definition = CustomFieldDefinition.Create(
-            tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], DateTimeOffset.UtcNow);
+            tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], [], DateTimeOffset.UtcNow);
         var repository = new RepositoryStub();
         repository.Definitions.Add(definition);
         var handler = new UpdateCustomFieldHandler(
@@ -186,7 +186,7 @@ public sealed class CustomFieldHandlerTests
             TimeProvider.System);
 
         var action = () => handler.Handle(
-            new UpdateCustomFieldCommand(project.Id, definition.Id, "Severity level", true, 15, true, [], definition.Version),
+            new UpdateCustomFieldCommand(project.Id, definition.Id, "Severity level", true, 15, true, [], [], definition.Version),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<NotFoundException>(action);
@@ -199,8 +199,7 @@ public sealed class CustomFieldHandlerTests
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var definition = CustomFieldDefinition.Create(
             tenantId, project.Id, "severity", "Severity", CustomFieldType.SingleChoice, false, 10,
-            [new CustomFieldChoiceOptionInput(null, "Low"), new CustomFieldChoiceOptionInput(null, "High")],
-            DateTimeOffset.UtcNow);
+            [new CustomFieldChoiceOptionInput(null, "Low"), new CustomFieldChoiceOptionInput(null, "High")], [], DateTimeOffset.UtcNow);
         var lowId = definition.ChoiceOptions.Single(o => o.Label == "Low").Id;
         var repository = new RepositoryStub();
         repository.Definitions.Add(definition);
@@ -220,6 +219,7 @@ public sealed class CustomFieldHandlerTests
                 10,
                 true,
                 [new CustomFieldChoiceOptionInput(null, "Critical"), new CustomFieldChoiceOptionInput(lowId, "Low")],
+                [],
                 definition.Version),
             CancellationToken.None);
 
@@ -237,7 +237,7 @@ public sealed class CustomFieldHandlerTests
             .ToArray();
 
         var result = validator.Validate(new CreateCustomFieldCommand(
-            Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0, options));
+            Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0, options, []));
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == "ChoiceOptions");
@@ -249,7 +249,7 @@ public sealed class CustomFieldHandlerTests
         var validator = new CreateCustomFieldValidator();
         var result = validator.Validate(new CreateCustomFieldCommand(
             Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
-            [new CustomFieldChoiceOptionInput(null, "   ")]));
+            [new CustomFieldChoiceOptionInput(null, "   ")], []));
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName.StartsWith("ChoiceOptions"));
@@ -264,7 +264,7 @@ public sealed class CustomFieldHandlerTests
             .ToArray();
 
         var result = validator.Validate(new UpdateCustomFieldCommand(
-            Guid.NewGuid(), Guid.NewGuid(), "Severity", false, 0, true, options, 1));
+            Guid.NewGuid(), Guid.NewGuid(), "Severity", false, 0, true, options, [], 1));
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == "ChoiceOptions");

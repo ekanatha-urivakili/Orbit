@@ -87,6 +87,7 @@ public sealed class BootstrapHandlerTests
             Workspace workspace,
             OrganizationMembership organizationMembership,
             TenantMembership ownerMembership,
+            IReadOnlyList<Role> systemRoles,
             CancellationToken cancellationToken)
         {
             Account = account;

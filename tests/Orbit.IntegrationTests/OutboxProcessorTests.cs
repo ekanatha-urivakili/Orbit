@@ -49,6 +49,49 @@ public sealed class OutboxProcessorTests : IClassFixture<OrbitApiFactory>
     }
 
     [Fact]
+    public async Task ProcessPendingAsync_MessageScheduledInFuture_SkipsUntilDue()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<OrbitDbContext>();
+        var emailSender = new FakeEmailSender();
+        var processor = new OutboxEmailProcessor(
+            dbContext,
+            emailSender,
+            TimeProvider.System,
+            NullLogger<OutboxEmailProcessor>.Instance);
+
+        var message = OutboxEmailMessage.Create(
+            "digest@example.test",
+            "Digest Subject",
+            "<p>Test Body</p>",
+            DateTimeOffset.UtcNow);
+        message.ScheduleFor(DateTimeOffset.UtcNow.AddHours(1));
+
+        await dbContext.OutboxEmailMessages.AddAsync(message);
+        await dbContext.SaveChangesAsync();
+
+        await processor.ProcessPendingAsync(CancellationToken.None);
+
+        var stillPending = await dbContext.OutboxEmailMessages
+            .AsNoTracking()
+            .SingleAsync(m => m.Id == message.Id);
+        Assert.Null(stillPending.PublishedAt);
+        Assert.DoesNotContain(emailSender.SentMessages, m => m.ToEmail == "digest@example.test");
+
+        await dbContext.OutboxEmailMessages
+            .Where(m => m.Id == message.Id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.NotBefore, DateTimeOffset.UtcNow.AddMinutes(-1)));
+
+        await processor.ProcessPendingAsync(CancellationToken.None);
+
+        var nowDue = await dbContext.OutboxEmailMessages
+            .AsNoTracking()
+            .SingleAsync(m => m.Id == message.Id);
+        Assert.NotNull(nowDue.PublishedAt);
+        Assert.Contains(emailSender.SentMessages, m => m.ToEmail == "digest@example.test");
+    }
+
+    [Fact]
     public async Task ProcessPendingAsync_OnSendFailure_RecordsAttemptAndLastError()
     {
         using var scope = _factory.Services.CreateScope();

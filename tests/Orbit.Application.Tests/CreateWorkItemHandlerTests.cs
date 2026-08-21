@@ -29,6 +29,7 @@ public sealed class CreateWorkItemHandlerTests
             new CurrentPrincipalStub(),
             projects,
             new WorkItemTypeRepositoryStub(tenantId),
+            new WorkItemStatusRepositoryStub(tenantId, project.Id),
             workItems,
             new TenantMembershipRepositoryStub(),
             new TeamRepositoryStub(),
@@ -57,6 +58,7 @@ public sealed class CreateWorkItemHandlerTests
             new CurrentPrincipalStub(),
             new ProjectRepositoryStub(project),
             new WorkItemTypeRepositoryStub(tenantId, WorkItemType.Story),
+            new WorkItemStatusRepositoryStub(tenantId, project.Id),
             new WorkItemRepositoryStub(),
             new TenantMembershipRepositoryStub(),
             new TeamRepositoryStub(),
@@ -86,6 +88,7 @@ public sealed class CreateWorkItemHandlerTests
             new CurrentPrincipalStub(),
             new ProjectRepositoryStub(project),
             new WorkItemTypeRepositoryStub(tenantId),
+            new WorkItemStatusRepositoryStub(tenantId, project.Id),
             new WorkItemRepositoryStub(),
             new TenantMembershipRepositoryStub(tenantId, assigneeUserId),
             new TeamRepositoryStub(),
@@ -116,6 +119,7 @@ public sealed class CreateWorkItemHandlerTests
             new CurrentPrincipalStub(),
             new ProjectRepositoryStub(project),
             new WorkItemTypeRepositoryStub(tenantId),
+            new WorkItemStatusRepositoryStub(tenantId, project.Id),
             new WorkItemRepositoryStub(),
             new TenantMembershipRepositoryStub(),
             new TeamRepositoryStub(),
@@ -232,6 +236,34 @@ public sealed class CreateWorkItemHandlerTests
                 definitions.Where(definition => definition.TenantId == requestedTenantId).ToArray());
     }
 
+    private sealed class WorkItemStatusRepositoryStub(Guid tenantId, Guid projectId) : IWorkItemStatusRepository
+    {
+        private readonly IReadOnlyList<WorkItemStatusDefinition> statuses =
+            WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, projectId, DateTimeOffset.UtcNow);
+
+        public Task AddAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task AddRangeAsync(IReadOnlyCollection<WorkItemStatusDefinition> definitions, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<WorkItemStatusDefinition?> GetAsync(
+            Guid requestedTenantId, Guid requestedProjectId, Guid statusId, CancellationToken cancellationToken) =>
+            Task.FromResult(statuses.SingleOrDefault(status => status.Id == statusId));
+
+        public Task<IReadOnlyList<WorkItemStatusDefinition>> ListByProjectAsync(
+            Guid requestedTenantId, Guid requestedProjectId, CancellationToken cancellationToken) =>
+            Task.FromResult(statuses);
+
+        public Task<WorkItemStatusDefinition?> GetDefaultAsync(
+            Guid requestedTenantId, Guid requestedProjectId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkItemStatusDefinition?>(statuses.OrderBy(status => status.Order).First());
+
+        public Task<bool> IsInUseAsync(Guid requestedTenantId, Guid requestedProjectId, Guid statusId, string statusKey, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public Task RemoveAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     private sealed class UnitOfWorkStub : IUnitOfWork
     {
         public int SaveCount { get; private set; }
@@ -302,6 +334,10 @@ public sealed class CreateWorkItemHandlerTests
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
 
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
+
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
@@ -324,6 +360,10 @@ public sealed class CreateWorkItemHandlerTests
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
 
+        public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BoardViewPreference?>(null);
+
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -339,6 +379,9 @@ public sealed class CreateWorkItemHandlerTests
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

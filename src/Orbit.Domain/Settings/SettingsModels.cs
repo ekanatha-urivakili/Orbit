@@ -218,7 +218,7 @@ public sealed class WorkspaceSetting
     }
 }
 
-public sealed class WorkspaceTypographySetting
+public sealed partial class WorkspaceTypographySetting
 {
     private WorkspaceTypographySetting()
     {
@@ -311,13 +311,16 @@ public sealed class WorkspaceTypographySetting
     private static string ValidateColor(string color)
     {
         var normalized = color.Trim();
-        if (!System.Text.RegularExpressions.Regex.IsMatch(normalized, "^#[0-9a-fA-F]{6}$"))
+        if (!HexColorRegex().IsMatch(normalized))
         {
             throw new DomainException("Font color must be a hex color in the form #rrggbb.");
         }
 
         return normalized;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex("^#[0-9a-fA-F]{6}$")]
+    private static partial System.Text.RegularExpressions.Regex HexColorRegex();
 
     private static int ValidateFontSize(int sizePx)
     {
@@ -395,6 +398,84 @@ public sealed class ProjectSetting
         EnableReleases = enableReleases;
         EnableTimeTracking = enableTimeTracking;
         RepositoryUrl = normalizedRepositoryUrl;
+        Version++;
+        UpdatedAt = now;
+    }
+}
+
+public enum HideDoneItemsAfter
+{
+    Never,
+    OneDay,
+    OneWeek,
+    TwoWeeks,
+    OneMonth
+}
+
+public enum BoardColumnSizeMode
+{
+    Fixed,
+    Flexible
+}
+
+/// <summary>
+/// A single user's per-project overrides for the board "View settings" panel (field visibility,
+/// column sizing, hide-done-after). Every field defaults to shown/visible; a field only appears in
+/// <see cref="HiddenFields"/> once a user has explicitly turned it off, so every other viewer keeps
+/// seeing the platform default until they too opt out.
+/// </summary>
+public sealed class BoardViewPreference
+{
+    private BoardViewPreference()
+    {
+    }
+
+    private BoardViewPreference(Guid tenantId, Guid userId, Guid projectId, DateTimeOffset now)
+    {
+        TenantId = tenantId;
+        UserId = userId;
+        ProjectId = projectId;
+        HideDoneItemsAfter = HideDoneItemsAfter.Never;
+        ColumnSizeMode = BoardColumnSizeMode.Flexible;
+        HiddenFields = [];
+        Version = 1;
+        UpdatedAt = now;
+    }
+
+    public Guid TenantId { get; private set; }
+    public Guid UserId { get; private set; }
+    public Guid ProjectId { get; private set; }
+    public HideDoneItemsAfter HideDoneItemsAfter { get; private set; }
+    public BoardColumnSizeMode ColumnSizeMode { get; private set; }
+    public string[] HiddenFields { get; private set; } = [];
+    public long Version { get; private set; }
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    public static BoardViewPreference Create(Guid tenantId, Guid userId, Guid projectId, DateTimeOffset now) =>
+        tenantId == Guid.Empty || userId == Guid.Empty || projectId == Guid.Empty
+            ? throw new DomainException("Tenant, user, and project ids are required.")
+            : new BoardViewPreference(tenantId, userId, projectId, now);
+
+    public void Update(
+        HideDoneItemsAfter hideDoneItemsAfter,
+        BoardColumnSizeMode columnSizeMode,
+        IEnumerable<string> hiddenFields,
+        DateTimeOffset now)
+    {
+        var normalized = hiddenFields
+            .Where(field => !string.IsNullOrWhiteSpace(field))
+            .Select(field => field.Trim().ToLowerInvariant())
+            .Distinct()
+            .OrderBy(field => field, StringComparer.Ordinal)
+            .ToArray();
+        if (normalized.Length > 50)
+        {
+            throw new DomainException("Too many hidden fields.");
+        }
+
+        HideDoneItemsAfter = hideDoneItemsAfter;
+        ColumnSizeMode = columnSizeMode;
+        HiddenFields = normalized;
         Version++;
         UpdatedAt = now;
     }

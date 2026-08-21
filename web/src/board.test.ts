@@ -25,7 +25,7 @@ const item: WorkItem = {
   countries: [],
   attachmentNames: [],
   type: 'Story',
-  status: 'InProgress',
+  statusId: 'InProgress',
   priority: 'High',
   rank: 1024,
   isFlagged: false,

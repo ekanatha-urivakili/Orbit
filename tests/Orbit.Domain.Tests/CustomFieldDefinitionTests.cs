@@ -1,3 +1,4 @@
+using Orbit.Domain.Choices;
 using Orbit.Domain.Common;
 using Orbit.Domain.Configuration;
 
@@ -13,7 +14,7 @@ public sealed class CustomFieldDefinitionTests
 
         var definition = CustomFieldDefinition.Create(
             tenantId, projectId, " Story-Points-Target ", " Story points target ", CustomFieldType.Number, true, 10,
-            [], DateTimeOffset.UtcNow);
+            [], [], DateTimeOffset.UtcNow);
 
         Assert.Equal("story-points-target", definition.Key);
         Assert.Equal("Story points target", definition.Label);
@@ -29,7 +30,7 @@ public sealed class CustomFieldDefinitionTests
     {
         var action = () => CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "not a valid key!", "Label", CustomFieldType.Text, false, 0, [],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
         Assert.Throws<DomainException>(action);
     }
@@ -39,9 +40,9 @@ public sealed class CustomFieldDefinitionTests
     {
         var definition = CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.Text, false, 0, [],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
-        definition.Update("Severity level", true, 5, false, [], DateTimeOffset.UtcNow);
+        definition.Update("Severity level", true, 5, false, [], [], DateTimeOffset.UtcNow);
 
         Assert.Equal("severity", definition.Key);
         Assert.Equal(CustomFieldType.Text, definition.FieldType);
@@ -57,9 +58,9 @@ public sealed class CustomFieldDefinitionTests
     {
         var definition = CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.Text, false, 0, [],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
-        var action = () => definition.Update("Severity", false, 10_001, true, [], DateTimeOffset.UtcNow);
+        var action = () => definition.Update("Severity", false, 10_001, true, [], [], DateTimeOffset.UtcNow);
 
         Assert.Throws<DomainException>(action);
     }
@@ -69,7 +70,7 @@ public sealed class CustomFieldDefinitionTests
     {
         var action = () => CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.Text, false, 0,
-            [new CustomFieldChoiceOptionInput(null, "High")], DateTimeOffset.UtcNow);
+            [new CustomFieldChoiceOptionInput(null, "High")], [], DateTimeOffset.UtcNow);
 
         Assert.Throws<DomainException>(action);
     }
@@ -79,7 +80,7 @@ public sealed class CustomFieldDefinitionTests
     {
         var action = () => CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0, [],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
         Assert.Throws<DomainException>(action);
     }
@@ -90,7 +91,7 @@ public sealed class CustomFieldDefinitionTests
         var definition = CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
             [new CustomFieldChoiceOptionInput(null, "Low"), new CustomFieldChoiceOptionInput(null, "High")],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
         Assert.Equal(2, definition.ChoiceOptions.Count);
         Assert.Equal(["Low", "High"], definition.ChoiceOptions.OrderBy(o => o.Order).Select(o => o.Label));
@@ -104,7 +105,7 @@ public sealed class CustomFieldDefinitionTests
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.MultiChoice, false, 0,
             [new CustomFieldChoiceOptionInput(null, "Low"), new CustomFieldChoiceOptionInput(null, "Medium"),
              new CustomFieldChoiceOptionInput(null, "High")],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
         var lowId = definition.ChoiceOptions.Single(o => o.Label == "Low").Id;
         var highId = definition.ChoiceOptions.Single(o => o.Label == "High").Id;
 
@@ -115,7 +116,7 @@ public sealed class CustomFieldDefinitionTests
             true,
             [new CustomFieldChoiceOptionInput(highId, "High"), new CustomFieldChoiceOptionInput(lowId, "Low"),
              new CustomFieldChoiceOptionInput(null, "Critical")],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
         Assert.Equal(3, definition.ChoiceOptions.Count);
         Assert.Equal(highId, definition.ChoiceOptions.Single(o => o.Order == 0).Id);
@@ -132,7 +133,7 @@ public sealed class CustomFieldDefinitionTests
 
         var action = () => CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
-            options, DateTimeOffset.UtcNow);
+            options, [], DateTimeOffset.UtcNow);
 
         var ex = Assert.Throws<DomainException>(action);
         Assert.Contains("cannot have more than 100 choice options", ex.Message);
@@ -144,7 +145,7 @@ public sealed class CustomFieldDefinitionTests
         var action = () => CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
             [new CustomFieldChoiceOptionInput(null, "High"), new CustomFieldChoiceOptionInput(null, "high")],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
         var ex = Assert.Throws<DomainException>(action);
         Assert.Contains("Duplicate choice option", ex.Message);
@@ -156,7 +157,7 @@ public sealed class CustomFieldDefinitionTests
         var action = () => CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.SingleChoice, false, 0,
             [new CustomFieldChoiceOptionInput(null, "   ")],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
         var ex = Assert.Throws<DomainException>(action);
         Assert.Contains("Choice option label must contain", ex.Message);
@@ -168,7 +169,7 @@ public sealed class CustomFieldDefinitionTests
         var definition = CustomFieldDefinition.Create(
             Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.MultiChoice, false, 0,
             [new CustomFieldChoiceOptionInput(null, "Low")],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
         var lowId = definition.ChoiceOptions.Single().Id;
 
         definition.Update(
@@ -177,9 +178,55 @@ public sealed class CustomFieldDefinitionTests
             0,
             true,
             [new CustomFieldChoiceOptionInput(lowId, "Low"), new CustomFieldChoiceOptionInput(lowId, "Medium")],
-            DateTimeOffset.UtcNow);
+            [], DateTimeOffset.UtcNow);
 
         Assert.Equal(2, definition.ChoiceOptions.Count);
         Assert.NotEqual(definition.ChoiceOptions[0].Id, definition.ChoiceOptions[1].Id);
+    }
+
+    [Fact]
+    public void AppliesTo_ReturnsTrueForAnyType_WhenApplicableTypesEmpty()
+    {
+        var definition = CustomFieldDefinition.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "severity", "Severity", CustomFieldType.Text, false, 0, [], [],
+            DateTimeOffset.UtcNow);
+
+        Assert.True(definition.AppliesTo(WorkItemType.Bug));
+        Assert.True(definition.AppliesTo(WorkItemType.Epic));
+    }
+
+    [Fact]
+    public void AppliesTo_ReturnsTrueOnlyForListedTypes_WhenApplicableTypesSet()
+    {
+        var definition = CustomFieldDefinition.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "repro-steps", "Repro steps", CustomFieldType.Text, false, 0, [],
+            [WorkItemType.Bug], DateTimeOffset.UtcNow);
+
+        Assert.True(definition.AppliesTo(WorkItemType.Bug));
+        Assert.False(definition.AppliesTo(WorkItemType.Story));
+    }
+
+    [Fact]
+    public void Create_DeduplicatesApplicableTypes()
+    {
+        var definition = CustomFieldDefinition.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "repro-steps", "Repro steps", CustomFieldType.Text, false, 0, [],
+            [WorkItemType.Bug, WorkItemType.Bug, WorkItemType.Story], DateTimeOffset.UtcNow);
+
+        Assert.Equal(2, definition.ApplicableTypes.Count);
+    }
+
+    [Fact]
+    public void Update_ReplacesApplicableTypes()
+    {
+        var definition = CustomFieldDefinition.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "repro-steps", "Repro steps", CustomFieldType.Text, false, 0, [],
+            [WorkItemType.Bug], DateTimeOffset.UtcNow);
+
+        definition.Update("Repro steps", false, 0, true, [], [WorkItemType.Story, WorkItemType.Task], DateTimeOffset.UtcNow);
+
+        Assert.False(definition.AppliesTo(WorkItemType.Bug));
+        Assert.True(definition.AppliesTo(WorkItemType.Story));
+        Assert.True(definition.AppliesTo(WorkItemType.Task));
     }
 }

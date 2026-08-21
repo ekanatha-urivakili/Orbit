@@ -13,7 +13,7 @@ public sealed class WorkItemLinkHandlerTests
     private static WorkItem NewItem(Guid tenantId, Guid projectId, long sequenceNumber = 1) =>
         WorkItem.Create(
             tenantId, projectId, sequenceNumber, "ORB", $"Card {sequenceNumber}", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
     [Fact]
     public async Task Add_CreatesOutgoingLink_WhenNotInverse()

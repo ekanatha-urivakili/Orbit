@@ -1,5 +1,6 @@
 using MediatR;
 using Orbit.Application.Configuration;
+using Orbit.Domain.Choices;
 using Orbit.Domain.Configuration;
 
 namespace Orbit.Api.Endpoints;
@@ -30,7 +31,8 @@ public static class CustomFieldEndpoints
                     request.FieldType,
                     request.Required,
                     request.Order,
-                    request.ChoiceOptions ?? []),
+                    request.ChoiceOptions ?? [],
+                    request.ApplicableTypes ?? []),
                 cancellationToken);
             return Results.Created(
                 $"/api/v1/projects/{projectId}/custom-fields/{definition.Id}", definition);
@@ -61,6 +63,7 @@ public static class CustomFieldEndpoints
                     request.Order,
                     request.Enabled,
                     request.ChoiceOptions ?? [],
+                    request.ApplicableTypes ?? [],
                     version),
                 cancellationToken);
             response.Headers.ETag = $"\"{definition.Version}\"";
@@ -78,12 +81,14 @@ public static class CustomFieldEndpoints
         CustomFieldType FieldType,
         bool Required,
         int Order,
-        IReadOnlyList<CustomFieldChoiceOptionInput>? ChoiceOptions);
+        IReadOnlyList<CustomFieldChoiceOptionInput>? ChoiceOptions,
+        IReadOnlyList<WorkItemType>? ApplicableTypes);
 
     public sealed record UpdateCustomFieldRequest(
         string Label,
         bool Required,
         int Order,
         bool Enabled,
-        IReadOnlyList<CustomFieldChoiceOptionInput>? ChoiceOptions);
+        IReadOnlyList<CustomFieldChoiceOptionInput>? ChoiceOptions,
+        IReadOnlyList<WorkItemType>? ApplicableTypes);
 }

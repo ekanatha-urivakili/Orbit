@@ -9,28 +9,25 @@ using Orbit.Domain.Choices;
 
 namespace Orbit.Application.Boards;
 
-public sealed record BoardColumnDto(WorkItemStatus Status, int Order, int? WipLimit, WipLimitMode WipLimitMode)
+public sealed record BoardColumnDto(Guid StatusId, int Order, int? WipLimit, WipLimitMode WipLimitMode)
 {
     public static BoardColumnDto From(BoardColumn column) =>
-        new(column.Status, column.Order, column.WipLimit, column.WipLimitMode);
+        new(column.StatusId, column.Order, column.WipLimit, column.WipLimitMode);
 }
 
 public sealed record BoardDto(Guid ProjectId, string Name, BoardType Type, long Version, IReadOnlyList<BoardColumnDto> Columns)
 {
-    public static BoardDto From(Board board) =>
-        new(
-            board.ProjectId,
-            board.Name,
-            board.Type,
-            board.Version,
-            board.Columns.Count > 0 ? [.. board.Columns.Select(BoardColumnDto.From)] : DefaultColumns);
+    public static BoardDto From(Board board) => new(board.ProjectId, board.Name, board.Type, board.Version, [.. board.Columns.Select(BoardColumnDto.From)]);
 
-    public static IReadOnlyList<BoardColumnDto> DefaultColumns { get; } =
-    [
-        .. SystemChoiceCatalog.WorkItemStatuses
-            .OrderBy(status => status.Order)
-            .Select((status, index) => new BoardColumnDto(status.Value, index, null, WipLimitMode.Warn)),
-    ];
+    public static BoardDto CreateDefault(Guid projectId, IReadOnlyList<Orbit.Domain.Configuration.WorkItemStatusDefinition> statuses) =>
+        new(
+            projectId,
+            string.Empty,
+            BoardType.Kanban,
+            0,
+            [.. statuses
+                .OrderBy(status => status.Order)
+                .Select((status, index) => new BoardColumnDto(status.Id, index, null, WipLimitMode.Warn))]);
 }
 
 public sealed record GetBoardQuery(Guid ProjectId) : IQuery<BoardDto>;
@@ -38,20 +35,25 @@ public sealed record GetBoardQuery(Guid ProjectId) : IQuery<BoardDto>;
 public sealed class GetBoardHandler(
     ITenantContext tenant,
     IProjectRepository projects,
-    IBoardRepository boards) : IRequestHandler<GetBoardQuery, BoardDto>
+    IBoardRepository boards,
+    IWorkItemStatusRepository workItemStatuses) : IRequestHandler<GetBoardQuery, BoardDto>
 {
     public async Task<BoardDto> Handle(GetBoardQuery request, CancellationToken cancellationToken)
     {
         _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.View, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
         var board = await boards.GetAsync(tenant.TenantId, request.ProjectId, cancellationToken);
-        return board is null
-            ? new BoardDto(request.ProjectId, string.Empty, BoardType.Kanban, 0, BoardDto.DefaultColumns)
-            : BoardDto.From(board);
+        if (board is not null)
+        {
+            return BoardDto.From(board);
+        }
+
+        var statuses = await workItemStatuses.ListByProjectAsync(tenant.TenantId, request.ProjectId, cancellationToken);
+        return BoardDto.CreateDefault(request.ProjectId, statuses);
     }
 }
 
-public sealed record UpdateBoardColumnInput(WorkItemStatus Status, int? WipLimit, WipLimitMode WipLimitMode);
+public sealed record UpdateBoardColumnInput(Guid StatusId, int? WipLimit, WipLimitMode WipLimitMode);
 
 public sealed record UpdateBoardCommand(
     Guid ProjectId,
@@ -69,7 +71,7 @@ public sealed class UpdateBoardValidator : AbstractValidator<UpdateBoardCommand>
         RuleFor(command => command.ExpectedVersion).GreaterThanOrEqualTo(0);
         RuleForEach(command => command.Columns).ChildRules(column =>
         {
-            column.RuleFor(c => c.Status).IsInEnum();
+            column.RuleFor(c => c.StatusId).NotEmpty();
             column.RuleFor(c => c.WipLimitMode).IsInEnum();
             column.RuleFor(c => c.WipLimit).GreaterThanOrEqualTo(1).When(c => c.WipLimit.HasValue);
         });
@@ -80,6 +82,7 @@ public sealed class UpdateBoardHandler(
     ITenantContext tenant,
     IProjectRepository projects,
     IBoardRepository boards,
+    IWorkItemStatusRepository workItemStatuses,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<UpdateBoardCommand, BoardDto>
 {
@@ -94,11 +97,22 @@ public sealed class UpdateBoardHandler(
             request.ExpectedVersion,
             "The board changed after it was loaded.");
 
+        var projectStatuses = await workItemStatuses.ListByProjectAsync(tenant.TenantId, request.ProjectId, cancellationToken);
+        var validStatusIds = projectStatuses.Select(status => status.Id).ToHashSet();
+
         var columns = request.Columns.Count > 0
-            ? request.Columns.Select(c => new BoardColumnInput(c.Status, c.WipLimit, c.WipLimitMode)).ToList()
+            ? request.Columns.Select(c => new BoardColumnInput(c.StatusId, c.WipLimit, c.WipLimitMode)).ToList()
             : board is not null
-                ? board.Columns.Select(c => new BoardColumnInput(c.Status, c.WipLimit, c.WipLimitMode)).ToList()
-                : BoardDto.DefaultColumns.Select(c => new BoardColumnInput(c.Status, c.WipLimit, c.WipLimitMode)).ToList();
+                ? board.Columns.Select(c => new BoardColumnInput(c.StatusId, c.WipLimit, c.WipLimitMode)).ToList()
+                : projectStatuses
+                    .OrderBy(status => status.Order)
+                    .Select(status => new BoardColumnInput(status.Id, null, WipLimitMode.Warn))
+                    .ToList();
+
+        if (columns.Any(column => !validStatusIds.Contains(column.StatusId)))
+        {
+            throw new ValidationException("A board column references a status outside this project's workflow.");
+        }
 
         if (board is null)
         {

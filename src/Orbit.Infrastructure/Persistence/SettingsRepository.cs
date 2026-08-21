@@ -28,6 +28,20 @@ internal sealed class SettingsRepository(OrbitDbContext dbContext) : ISettingsRe
     public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
         dbContext.UserPreferences.SingleOrDefaultAsync(preference => preference.UserId == userId, cancellationToken);
 
+    public async Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await dbContext.UserPreferences
+            .Where(preference => userIds.Contains(preference.UserId))
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<NotificationPreference?> GetNotificationPreferenceAsync(
         Guid userId,
         CancellationToken cancellationToken) =>
@@ -70,6 +84,17 @@ internal sealed class SettingsRepository(OrbitDbContext dbContext) : ISettingsRe
             setting => setting.TenantId == tenantId && setting.ProjectId == projectId,
             cancellationToken);
 
+    public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid projectId,
+        CancellationToken cancellationToken) =>
+        dbContext.BoardViewPreferences.SingleOrDefaultAsync(
+            preference => preference.TenantId == tenantId
+                && preference.UserId == userId
+                && preference.ProjectId == projectId,
+            cancellationToken);
+
     public async Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
         await dbContext.UserPreferences.AddAsync(preference, cancellationToken);
 
@@ -88,4 +113,7 @@ internal sealed class SettingsRepository(OrbitDbContext dbContext) : ISettingsRe
 
     public async Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
         await dbContext.ProjectSettings.AddAsync(setting, cancellationToken);
+
+    public async Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
+        await dbContext.BoardViewPreferences.AddAsync(preference, cancellationToken);
 }

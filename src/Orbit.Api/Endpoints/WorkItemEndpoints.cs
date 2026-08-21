@@ -138,7 +138,7 @@ public static class WorkItemEndpoints
             }
 
             var workItem = await sender.Send(
-                new ChangeWorkItemStatusCommand(workItemId, request.Status, expectedVersion),
+                new ChangeWorkItemStatusCommand(workItemId, request.StatusId, expectedVersion),
                 cancellationToken);
             httpResponse.Headers.ETag = $"\"{workItem.Version}\"";
             return Results.Ok(workItem);
@@ -757,7 +757,7 @@ public static class WorkItemEndpoints
         string[]? Countries,
         string[]? AttachmentNames);
 
-    public sealed record ChangeStatusRequest(WorkItemStatus Status);
+    public sealed record ChangeStatusRequest(Guid StatusId);
 
     public sealed record ChangeWorkItemAssigneeRequest(Guid? AssigneeUserId);
 

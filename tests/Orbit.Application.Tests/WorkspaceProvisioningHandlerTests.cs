@@ -181,6 +181,7 @@ public sealed class WorkspaceProvisioningHandlerTests
             Workspace workspace,
             OrganizationMembership organizationMembership,
             TenantMembership ownerMembership,
+            IReadOnlyList<Role> systemRoles,
             Guid currentTenantId,
             CancellationToken cancellationToken)
         {
@@ -199,6 +200,7 @@ public sealed class WorkspaceProvisioningHandlerTests
         public Task AddWorkspaceToOrganizationAsync(
             Workspace workspace,
             TenantMembership ownerMembership,
+            IReadOnlyList<Role> systemRoles,
             Guid currentTenantId,
             CancellationToken cancellationToken)
         {

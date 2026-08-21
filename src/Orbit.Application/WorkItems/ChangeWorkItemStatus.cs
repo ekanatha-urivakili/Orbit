@@ -5,12 +5,13 @@ using Orbit.Application.Common;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Messaging;
 using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.WorkItems;
 
-public sealed record ChangeWorkItemStatusCommand(Guid WorkItemId, WorkItemStatus Status, long ExpectedVersion)
+public sealed record ChangeWorkItemStatusCommand(Guid WorkItemId, Guid StatusId, long ExpectedVersion)
     : ICommand<WorkItemDto>;
 
 public sealed class ChangeWorkItemStatusValidator : AbstractValidator<ChangeWorkItemStatusCommand>
@@ -18,7 +19,7 @@ public sealed class ChangeWorkItemStatusValidator : AbstractValidator<ChangeWork
     public ChangeWorkItemStatusValidator()
     {
         RuleFor(command => command.WorkItemId).NotEmpty();
-        RuleFor(command => command.Status).IsInEnum();
+        RuleFor(command => command.StatusId).NotEmpty();
         RuleFor(command => command.ExpectedVersion).GreaterThan(0);
     }
 }
@@ -27,6 +28,7 @@ public sealed class ChangeWorkItemStatusHandler(
     ITenantContext tenantContext,
     ICurrentPrincipal principal,
     IWorkItemRepository workItems,
+    IWorkItemStatusRepository workItemStatuses,
     ISprintMembershipRepository sprintMemberships,
     ISprintScopeFactRepository sprintScopeFacts,
     ISettingsRepository settings,
@@ -52,14 +54,20 @@ public sealed class ChangeWorkItemStatusHandler(
             throw new ConcurrencyException("The work item changed after it was loaded.");
         }
 
-        var previousStatus = workItem.Status;
+        var newStatus = await workItemStatuses.GetAsync(
+            tenantContext.TenantId, workItem.ProjectId, request.StatusId, cancellationToken)
+            ?? throw new ValidationException("The selected status does not belong to this project's workflow.");
+        var previousStatus = await workItemStatuses.GetAsync(
+            tenantContext.TenantId, workItem.ProjectId, workItem.StatusId, cancellationToken)
+            ?? throw new NotFoundException("The work item's current status no longer exists.");
+
         var now = timeProvider.GetUtcNow();
-        workItem.ChangeStatus(request.Status, now);
+        workItem.ChangeStatus(newStatus.Id, now);
 
         // A burndown only moves when an item crosses the Done boundary while it's sprint-scoped;
         // other status moves (e.g. Backlog -> InProgress) don't change remaining points.
-        var enteredDone = previousStatus != WorkItemStatus.Done && request.Status == WorkItemStatus.Done;
-        var leftDone = previousStatus == WorkItemStatus.Done && request.Status != WorkItemStatus.Done;
+        var enteredDone = previousStatus.Category != StatusCategory.Done && newStatus.Category == StatusCategory.Done;
+        var leftDone = previousStatus.Category == StatusCategory.Done && newStatus.Category != StatusCategory.Done;
         if (enteredDone || leftDone)
         {
             var membership = await sprintMemberships.GetCurrentByWorkItemAsync(
@@ -75,14 +83,14 @@ public sealed class ChangeWorkItemStatusHandler(
             }
         }
 
-        if (previousStatus != request.Status)
+        if (previousStatus.Id != newStatus.Id)
         {
-            await NotifyOwnersAsync(workItem, previousStatus, request.Status, now, cancellationToken);
+            await NotifyOwnersAsync(workItem, previousStatus, newStatus, now, cancellationToken);
         }
 
         await WorkItemHistoryRecorder.RecordAsync(
             history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
-            ("Status", previousStatus.ToString(), workItem.Status.ToString()));
+            ("Status", previousStatus.Key, newStatus.Key));
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);
@@ -96,8 +104,8 @@ public sealed class ChangeWorkItemStatusHandler(
     /// </summary>
     private async Task NotifyOwnersAsync(
         WorkItem workItem,
-        WorkItemStatus previousStatus,
-        WorkItemStatus newStatus,
+        WorkItemStatusDefinition previousStatus,
+        WorkItemStatusDefinition newStatus,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -126,15 +134,17 @@ public sealed class ChangeWorkItemStatusHandler(
                 continue;
             }
 
+            var userPreference = await settings.GetUserPreferenceAsync(userId, cancellationToken);
             var email = OutboxEmailMessage.Create(
                 account.NormalizedEmail,
-                $"{workItem.Key} moved to {newStatus}",
+                $"{workItem.Key} moved to {newStatus.Name}",
                 $"""
                 <p>Hi {System.Net.WebUtility.HtmlEncode(account.DisplayName)},</p>
                 <p><strong>{System.Net.WebUtility.HtmlEncode(workItem.Key)}: {System.Net.WebUtility.HtmlEncode(workItem.Summary)}</strong>
-                moved from {previousStatus} to {newStatus}.</p>
+                moved from {System.Net.WebUtility.HtmlEncode(previousStatus.Name)} to {System.Net.WebUtility.HtmlEncode(newStatus.Name)}.</p>
                 """,
                 now);
+            email.ScheduleFor(NotificationScheduling.ComputeNotBefore(preference, userPreference?.TimeZone, now));
             await outbox.AddAsync(email, cancellationToken);
         }
     }

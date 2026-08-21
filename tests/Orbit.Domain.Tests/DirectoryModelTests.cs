@@ -82,7 +82,7 @@ public sealed class DirectoryModelTests
     public void ProjectGroupRoleAssignment_Create_RejectsEmptyIdentifiers()
     {
         var action = () => ProjectGroupRoleAssignment.Create(
-            Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), ProjectRole.Member, DateTimeOffset.UtcNow);
+            Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         Assert.Throws<DomainException>(action);
     }
@@ -91,10 +91,11 @@ public sealed class DirectoryModelTests
     public void ProjectGroupRoleAssignment_ChangeRole_UpdatesRole()
     {
         var assignment = ProjectGroupRoleAssignment.Create(
-            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), ProjectRole.Viewer, DateTimeOffset.UtcNow);
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var roleId = Guid.NewGuid();
 
-        assignment.ChangeRole(ProjectRole.Administrator);
+        assignment.ChangeRole(roleId);
 
-        Assert.Equal(ProjectRole.Administrator, assignment.Role);
+        Assert.Equal(roleId, assignment.RoleId);
     }
 }

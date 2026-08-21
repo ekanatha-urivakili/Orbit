@@ -40,7 +40,7 @@ const item: WorkItem = {
   countries: [],
   attachmentNames: [],
   type: 'Task',
-  status: 'Backlog',
+  statusId: 'Backlog',
   priority: 'Medium',
   rank: 1024,
   isFlagged: false,

@@ -3,7 +3,7 @@ using Orbit.Domain.Common;
 
 namespace Orbit.Domain.Boards;
 
-public sealed record BoardColumnInput(WorkItemStatus Status, int? WipLimit, WipLimitMode WipLimitMode);
+public sealed record BoardColumnInput(Guid StatusId, int? WipLimit, WipLimitMode WipLimitMode);
 
 public sealed class BoardColumn
 {
@@ -11,15 +11,15 @@ public sealed class BoardColumn
     {
     }
 
-    internal BoardColumn(WorkItemStatus status, int order, int? wipLimit, WipLimitMode wipLimitMode)
+    internal BoardColumn(Guid statusId, int order, int? wipLimit, WipLimitMode wipLimitMode)
     {
-        Status = status;
+        StatusId = statusId;
         Order = order;
         WipLimit = wipLimit;
         WipLimitMode = wipLimitMode;
     }
 
-    public WorkItemStatus Status { get; private set; }
+    public Guid StatusId { get; private set; }
     public int Order { get; private set; }
     public int? WipLimit { get; private set; }
     public WipLimitMode WipLimitMode { get; private set; }
@@ -87,7 +87,7 @@ public sealed class Board
             throw new DomainException("A board needs at least one column.");
         }
 
-        if (columns.Select(column => column.Status).Distinct().Count() != columns.Count)
+        if (columns.Select(column => column.StatusId).Distinct().Count() != columns.Count)
         {
             throw new DomainException("Board columns must reference distinct statuses.");
         }
@@ -101,7 +101,7 @@ public sealed class Board
         for (var index = 0; index < columns.Count; index++)
         {
             var column = columns[index];
-            _columns.Add(new BoardColumn(column.Status, index, column.WipLimit, column.WipLimitMode));
+            _columns.Add(new BoardColumn(column.StatusId, index, column.WipLimit, column.WipLimitMode));
         }
     }
 

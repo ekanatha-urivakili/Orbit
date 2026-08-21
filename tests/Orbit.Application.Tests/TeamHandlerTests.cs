@@ -113,6 +113,7 @@ public sealed class TeamHandlerTests
         public bool CanCreateProject() => allowed;
         public bool CanCreateMembership(TenantRole role) => allowed;
         public bool CanManageTeams() => allowed;
+        public bool CanManageRoles() => allowed;
     }
 
     private sealed class TeamRepositoryStub : ITeamRepository

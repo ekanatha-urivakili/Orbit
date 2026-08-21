@@ -7,6 +7,7 @@ using Orbit.Application.Common;
 using Orbit.Application.WorkItems;
 using Orbit.Domain.Access;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.Tests;
@@ -22,8 +23,9 @@ public sealed class ExportWorkItemHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Export this card", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
-        var handler = new ExportWorkItemHandler(new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem));
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var handler = new ExportWorkItemHandler(
+            new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem), new WorkItemStatusRepositoryStub());
 
         var result = await handler.Handle(new ExportWorkItemQuery(workItem.Id, format), CancellationToken.None);
 
@@ -38,8 +40,9 @@ public sealed class ExportWorkItemHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Export this card", "Card description", WorkItemType.Task,
-            Priority.Medium, DateTimeOffset.UtcNow);
-        var handler = new ExportWorkItemHandler(new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem));
+            Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var handler = new ExportWorkItemHandler(
+            new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem), new WorkItemStatusRepositoryStub());
 
         var result = await handler.Handle(
             new ExportWorkItemQuery(workItem.Id, WorkItemExportFormat.Xlsx), CancellationToken.None);
@@ -66,8 +69,9 @@ public sealed class ExportWorkItemHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Export this card", "Card description", WorkItemType.Task,
-            Priority.Medium, DateTimeOffset.UtcNow);
-        var handler = new ExportWorkItemHandler(new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem));
+            Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var handler = new ExportWorkItemHandler(
+            new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem), new WorkItemStatusRepositoryStub());
 
         var result = await handler.Handle(
             new ExportWorkItemQuery(workItem.Id, WorkItemExportFormat.Docx), CancellationToken.None);
@@ -104,5 +108,29 @@ public sealed class ExportWorkItemHandlerTests
         public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
             Task.FromResult(false);
         public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class WorkItemStatusRepositoryStub : IWorkItemStatusRepository
+    {
+        public Task AddAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task AddRangeAsync(IReadOnlyCollection<WorkItemStatusDefinition> definitions, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<WorkItemStatusDefinition?> GetAsync(
+            Guid tenantId, Guid projectId, Guid statusId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkItemStatusDefinition?>(null);
+
+        public Task<IReadOnlyList<WorkItemStatusDefinition>> ListByProjectAsync(
+            Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemStatusDefinition>>([]);
+
+        public Task<WorkItemStatusDefinition?> GetDefaultAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkItemStatusDefinition?>(null);
+
+        public Task<bool> IsInUseAsync(Guid tenantId, Guid projectId, Guid statusId, string statusKey, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public Task RemoveAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

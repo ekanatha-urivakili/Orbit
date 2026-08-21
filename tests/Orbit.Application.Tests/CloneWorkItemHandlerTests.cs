@@ -3,6 +3,7 @@ using Orbit.Application.Common;
 using Orbit.Application.WorkItems;
 using Orbit.Domain.Access;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Projects;
 using Orbit.Domain.WorkItems;
 
@@ -17,15 +18,15 @@ public sealed class CloneWorkItemHandlerTests
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var source = WorkItem.Create(
             tenantId, project.Id, 1, "ORB", "Investigate latency", "Some detail", WorkItemType.Bug, Priority.High,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         source.SetDetails(
             null, null, "AC", null, Guid.NewGuid(), null, null, null, null, null, null, null, 5, ["backend"], [], []);
         var workItems = new WorkItemRepositoryStub(source);
         var history = new WorkItemHistoryRepositoryStub();
         var handler = new CloneWorkItemHandler(
             new TenantContextStub(tenantId), new CurrentPrincipalStub(),
-            new ProjectRepositoryStub(project), workItems, history, new UnitOfWorkStub(),
-            TimeProvider.System);
+            new ProjectRepositoryStub(project), workItems, new WorkItemStatusRepositoryStub(tenantId, project.Id),
+            history, new UnitOfWorkStub(), TimeProvider.System);
 
         var clone = await handler.Handle(new CloneWorkItemCommand(source.Id), CancellationToken.None);
 
@@ -106,5 +107,33 @@ public sealed class CloneWorkItemHandlerTests
     private sealed class UnitOfWorkStub : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken) => Task.FromResult(1);
+    }
+
+    private sealed class WorkItemStatusRepositoryStub(Guid tenantId, Guid projectId) : IWorkItemStatusRepository
+    {
+        private readonly IReadOnlyList<WorkItemStatusDefinition> statuses =
+            WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, projectId, DateTimeOffset.UtcNow);
+
+        public Task AddAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task AddRangeAsync(IReadOnlyCollection<WorkItemStatusDefinition> definitions, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<WorkItemStatusDefinition?> GetAsync(
+            Guid requestedTenantId, Guid requestedProjectId, Guid statusId, CancellationToken cancellationToken) =>
+            Task.FromResult(statuses.SingleOrDefault(status => status.Id == statusId));
+
+        public Task<IReadOnlyList<WorkItemStatusDefinition>> ListByProjectAsync(
+            Guid requestedTenantId, Guid requestedProjectId, CancellationToken cancellationToken) =>
+            Task.FromResult(statuses);
+
+        public Task<WorkItemStatusDefinition?> GetDefaultAsync(
+            Guid requestedTenantId, Guid requestedProjectId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkItemStatusDefinition?>(statuses.OrderBy(status => status.Order).First());
+
+        public Task<bool> IsInUseAsync(Guid requestedTenantId, Guid requestedProjectId, Guid statusId, string statusKey, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public Task RemoveAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

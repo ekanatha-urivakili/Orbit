@@ -1,6 +1,6 @@
 # Orbit Work Management
 
-Orbit is an open-source, headless sprint and Kanban work-management platform. The current implementation includes self-service organization signup, one-time local installation bootstrap, site-admin workspace creation, local email/password login with rotating sessions and a remember-me session lifetime, backend-brokered Google sign-in, global accounts and secure workspace switching, workspace teams and admin lifecycle (promote/demote/remove members), a guest membership tier scoped to explicitly assigned projects, projects, tenant-isolated work items, many-to-many work item dependency linking, workspace-level typography and logo branding settings, TipTap-based rich text editing with font size and attachment resolution, presigned MinIO/S3 attachment uploads, a tenant-configurable stable software item-type registry, optimistic status transitions, OIDC-backed tenant memberships, project roles, query-level permission enforcement, and a responsive installable PWA.
+Orbit is an open-source, headless sprint and Kanban work-management platform. The current implementation includes self-service organization signup, one-time local installation bootstrap, site-admin workspace creation, local email/password login with rotating sessions and a remember-me session lifetime, backend-brokered Google sign-in, global accounts and secure workspace switching, workspace teams and admin lifecycle (promote/demote/remove members), a guest membership tier scoped to explicitly assigned projects, projects, tenant-isolated work items, many-to-many work item dependency linking, workspace-level typography and logo branding settings, TipTap-based rich text editing with font size and attachment resolution, presigned MinIO/S3 attachment uploads, a tenant-configurable stable software item-type registry, a project-owned, editable workflow status catalog (add/rename/recolor/reorder/delete statuses, replacing a fixed enum) with optimistic status transitions, a live sprint-insights panel and per-user board view settings (hide-done-after, column size, card-field visibility), OIDC-backed tenant memberships, custom project roles with admin-editable permission sets, query-level permission enforcement, and a responsive installable PWA.
 
 The target architecture and phased backlog are in [ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md](ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md).
 
@@ -151,15 +151,11 @@ curl -X POST http://localhost:5014/api/v1/auth/login \
   --data '{"email":"admin@example.com","password":"ReplaceWithStrongPassword123","rememberMe":false}'
 ```
 
-Omitting `rememberMe` (or passing `false`) issues a session lasting about one day; passing `true` extends it to about thirty days. The application header also offers "Sign in with Google," a backend-brokered OAuth flow (`GET /auth/google/start`, `/auth/google/callback`, `POST /auth/google/exchange`) that never exposes a Google client secret or raw Google ID token to the browser — the callback redirect carries only a single-use, hashed handoff code that the frontend immediately exchanges for a session.
+Omitting `rememberMe` (or passing `false`) issues a session lasting about one day; passing `true` extends it to about thirty days. The login screen also offers "Sign in with Google," a backend-brokered OAuth flow (`GET /auth/google/start`, `/auth/google/callback`, `POST /auth/google/exchange`) that never exposes a Google client secret or raw Google ID token to the browser — the callback redirect carries only a single-use, hashed handoff code that the frontend immediately exchanges for a session.
 
-Accounts belonging to multiple workspaces can select the active workspace from the application
-header. The switch is authorized server-side and rotates the refresh session into the selected
-workspace; changing `X-Tenant-Id` or browser storage alone never grants access.
+Accounts belonging to multiple workspaces can select the active workspace from the workspace selector on the Home page (Quickstart / Home). The switch is authorized server-side and rotates the refresh session into the selected workspace; changing `X-Tenant-Id` or browser storage alone never grants access.
 
-The bootstrap-created site super administrator can create additional workspaces from the plus button
-beside the workspace selector. Orbit creates the workspace and owner membership in one transaction,
-then rotates the current session into the new workspace.
+The bootstrap-created site super administrator can create additional workspaces from the plus button beside the workspace selector on the Home page. Orbit creates the workspace and owner membership in one transaction, then rotates the current session into the new workspace.
 
 ### Seeding Large Agile Dataset for Local QA/PM Testing
 

@@ -44,10 +44,12 @@ public sealed class OutboxEmailProcessor(
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
+        var now = timeProvider.GetUtcNow();
         var pendingMessageIds = await dbContext.Database
             .SqlQuery<Guid>($"""
                 SELECT id FROM outbox_email_messages
                 WHERE published_at IS NULL AND attempts < {MaxAttempts}
+                    AND (not_before IS NULL OR not_before <= {now})
                 ORDER BY created_at
                 LIMIT {BatchSize}
                 FOR UPDATE SKIP LOCKED

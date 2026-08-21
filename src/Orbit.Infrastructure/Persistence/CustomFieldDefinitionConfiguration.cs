@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Orbit.Domain.Choices;
 using Orbit.Domain.Configuration;
 using Orbit.Domain.Projects;
 
@@ -24,6 +27,18 @@ internal sealed class CustomFieldDefinitionConfiguration : IEntityTypeConfigurat
         builder.Property(definition => definition.Required).HasColumnName("required");
         builder.Property(definition => definition.Order).HasColumnName("order");
         builder.Property(definition => definition.Enabled).HasColumnName("enabled");
+
+        var applicableTypesConverter = new ValueConverter<IReadOnlyList<WorkItemType>, string[]>(
+            types => types.Select(type => type.ToString()).ToArray(),
+            values => values.Select(Enum.Parse<WorkItemType>).ToArray());
+        var applicableTypesComparer = new ValueComparer<IReadOnlyList<WorkItemType>>(
+            (left, right) => left!.SequenceEqual(right!),
+            types => types.Aggregate(0, (hash, type) => HashCode.Combine(hash, type)),
+            types => types.ToArray());
+        builder.Property(definition => definition.ApplicableTypes)
+            .HasColumnName("applicable_types")
+            .HasColumnType("text[]")
+            .HasConversion(applicableTypesConverter, applicableTypesComparer);
         builder.Property(definition => definition.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(definition => definition.CreatedAt).HasColumnName("created_at");
         builder.Property(definition => definition.UpdatedAt).HasColumnName("updated_at");

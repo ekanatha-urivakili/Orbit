@@ -56,9 +56,11 @@ public sealed class SetWorkItemCustomFieldValuesValidator : AbstractValidator<Se
 
 public sealed class SetWorkItemCustomFieldValuesHandler(
     ITenantContext tenantContext,
+    ICurrentPrincipal principal,
     IWorkItemRepository workItems,
     ICustomFieldRepository definitions,
     IWorkItemCustomFieldValueRepository values,
+    IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : IRequestHandler<SetWorkItemCustomFieldValuesCommand, IReadOnlyList<WorkItemCustomFieldValueDto>>
@@ -82,19 +84,34 @@ public sealed class SetWorkItemCustomFieldValuesHandler(
                 throw new ValidationException("One or more custom fields were not found on this project.");
             }
 
+            if (!definition.AppliesTo(workItem.Type))
+            {
+                if (input.Values.Length > 0)
+                {
+                    throw new ValidationException($"'{definition.Label}' does not apply to this work item's type.");
+                }
+
+                continue;
+            }
+
+            if (definition.Required && input.Values.Length == 0)
+            {
+                throw new ValidationException($"'{definition.Label}' is required.");
+            }
+
             var existing = await values.GetAsync(
                 tenantContext.TenantId, workItem.Id, definition.Id, cancellationToken);
+            var oldValueLabel = existing is { Values.Length: > 0 } ? string.Join(", ", existing.Values) : null;
+            var newValueLabel = input.Values.Length > 0 ? string.Join(", ", input.Values) : null;
+
             if (input.Values.Length == 0)
             {
                 if (existing is not null)
                 {
                     await values.RemoveAsync(existing, cancellationToken);
                 }
-
-                continue;
             }
-
-            if (existing is null)
+            else if (existing is null)
             {
                 await values.AddAsync(
                     WorkItemCustomFieldValue.Create(
@@ -105,6 +122,10 @@ public sealed class SetWorkItemCustomFieldValuesHandler(
             {
                 existing.SetValues(definition, input.Values, now);
             }
+
+            await WorkItemHistoryRecorder.RecordAsync(
+                history, tenantContext.TenantId, workItem.Id, principal.MembershipId, now, cancellationToken,
+                (definition.Label, oldValueLabel, newValueLabel));
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

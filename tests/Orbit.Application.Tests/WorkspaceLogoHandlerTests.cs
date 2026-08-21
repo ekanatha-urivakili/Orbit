@@ -145,6 +145,10 @@ public sealed class WorkspaceLogoHandlerTests
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
 
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
+
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
 
@@ -166,6 +170,10 @@ public sealed class WorkspaceLogoHandlerTests
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
 
+        public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BoardViewPreference?>(null);
+
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -183,6 +191,9 @@ public sealed class WorkspaceLogoHandlerTests
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 }

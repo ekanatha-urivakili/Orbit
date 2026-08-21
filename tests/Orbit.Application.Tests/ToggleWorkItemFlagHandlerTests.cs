@@ -15,7 +15,7 @@ public sealed class ToggleWorkItemFlagHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Flag this card", null, WorkItemType.Task,
-            Priority.Medium, DateTimeOffset.UtcNow);
+            Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var history = new WorkItemHistoryRepositoryStub();
         var handler = new ToggleWorkItemFlagHandler(
             new TenantContextStub(tenantId),

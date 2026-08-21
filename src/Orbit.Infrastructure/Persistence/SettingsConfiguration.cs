@@ -117,3 +117,28 @@ internal sealed class ProjectSettingConfiguration : IEntityTypeConfiguration<Pro
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
+
+internal sealed class BoardViewPreferenceConfiguration : IEntityTypeConfiguration<BoardViewPreference>
+{
+    public void Configure(EntityTypeBuilder<BoardViewPreference> builder)
+    {
+        builder.ToTable("board_view_preferences");
+        builder.HasKey(preference => new { preference.TenantId, preference.UserId, preference.ProjectId });
+        builder.Property(preference => preference.TenantId).HasColumnName("tenant_id");
+        builder.Property(preference => preference.UserId).HasColumnName("user_id");
+        builder.Property(preference => preference.ProjectId).HasColumnName("project_id");
+        builder.Property(preference => preference.HideDoneItemsAfter)
+            .HasColumnName("hide_done_items_after").HasConversion<string>().HasMaxLength(16);
+        builder.Property(preference => preference.ColumnSizeMode)
+            .HasColumnName("column_size_mode").HasConversion<string>().HasMaxLength(16);
+        builder.Property(preference => preference.HiddenFields).HasColumnName("hidden_fields").HasColumnType("text[]");
+        builder.Property(preference => preference.Version).HasColumnName("version").IsConcurrencyToken();
+        builder.Property(preference => preference.UpdatedAt).HasColumnName("updated_at");
+        builder.HasOne<UserAccount>().WithMany().HasForeignKey(preference => preference.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Project>().WithMany()
+            .HasForeignKey(preference => new { preference.TenantId, preference.ProjectId })
+            .HasPrincipalKey(project => new { project.TenantId, project.Id })
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

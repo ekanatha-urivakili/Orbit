@@ -5,7 +5,6 @@ import { WorkItemTypeIcon } from '../workitems/typeIcons'
 import type { Sprint, WorkItem } from '../../api/types'
 
 const ROW_HEIGHT = 44
-const LEFT_COLUMN_WIDTH = 280
 
 export function TimelineView({
   workItems,
@@ -24,7 +23,7 @@ export function TimelineView({
 
   if (!layout) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         <div className="flex flex-col items-center justify-center py-20 border border-dashed border-gray-200 rounded-lg text-center">
           <p className="text-gray-700 font-medium mb-1">Nothing to show on the timeline yet</p>
           <p className="text-sm text-gray-500 max-w-sm">
@@ -44,10 +43,10 @@ export function TimelineView({
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
         <div className="flex overflow-x-auto" data-testid="timeline-grid">
-          <div className="shrink-0" style={{ width: LEFT_COLUMN_WIDTH }}>
+          <div className="shrink-0 w-[160px] sm:w-[220px] lg:w-[280px]">
             <div className="h-11 border-b border-r border-gray-200 flex items-center px-4 text-xs font-semibold text-gray-500 uppercase">
               Work
             </div>
@@ -99,7 +98,7 @@ export function TimelineView({
             </div>
           </div>
 
-          <div className="flex-1 min-w-[600px] relative">
+          <div className="flex-1 min-w-[420px] sm:min-w-[600px] relative">
             <div className="h-11 border-b border-gray-200 flex">
               {layout.months.map((month) => (
                 <div

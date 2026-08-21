@@ -21,16 +21,6 @@ public enum WorkItemLinkKind
     Duplicates
 }
 
-public enum WorkItemStatus
-{
-    Backlog,
-    Selected,
-    InProgress,
-    InReview,
-    Done,
-    Blocked
-}
-
 public enum Priority
 {
     Lowest,
@@ -127,16 +117,6 @@ public static class SystemChoiceCatalog
         new("feature", WorkItemType.Feature, "Feature", "A cohesive product capability.", 80, "cyan"),
         new("request", WorkItemType.Request, "Request", "A request from a customer or stakeholder.", 90, "orange"),
         new("subtask", WorkItemType.Subtask, "Subtask", "A child work item nested under a task, story, or bug.", 100, "slate")
-    ];
-
-    public static IReadOnlyList<ChoiceOption<WorkItemStatus>> WorkItemStatuses { get; } =
-    [
-        new("backlog", WorkItemStatus.Backlog, "Backlog", "Not yet selected for delivery.", 10, "slate"),
-        new("selected", WorkItemStatus.Selected, "Selected", "Ready for the team to start.", 20, "cyan"),
-        new("in-progress", WorkItemStatus.InProgress, "In progress", "Actively being worked on.", 30, "blue"),
-        new("in-review", WorkItemStatus.InReview, "In review", "Awaiting review or validation.", 40, "amber"),
-        new("done", WorkItemStatus.Done, "Done", "Meets the definition of done.", 50, "green"),
-        new("blocked", WorkItemStatus.Blocked, "Blocked", "Cannot progress without intervention.", 60, "red")
     ];
 
     public static IReadOnlyList<ChoiceOption<Priority>> Priorities { get; } =

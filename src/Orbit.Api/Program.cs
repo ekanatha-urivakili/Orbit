@@ -293,11 +293,13 @@ if (app.Environment.IsProduction() || !app.Configuration.GetValue<bool>("Tenancy
 }
 api.MapChoiceEndpoints();
 api.MapWorkItemTypeEndpoints();
+api.MapWorkItemStatusEndpoints();
 api.MapCustomFieldEndpoints();
 api.MapIdentityEndpoints();
 api.MapWorkspaceEndpoints();
 api.MapSettingsEndpoints();
 api.MapAccessEndpoints();
+api.MapRoleEndpoints();
 api.MapInvitationAdminEndpoints();
 api.MapTeamEndpoints();
 api.MapGroupEndpoints();
@@ -306,6 +308,7 @@ api.MapWorkItemEndpoints();
 api.MapSlackEndpoints();
 api.MapBoardEndpoints();
 api.MapSprintEndpoints();
+api.MapBoardViewPreferenceEndpoints();
 
 app.Run();
 

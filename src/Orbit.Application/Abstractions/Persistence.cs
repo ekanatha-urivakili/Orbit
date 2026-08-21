@@ -77,6 +77,15 @@ public interface ISettingsRepository
         IReadOnlyCollection<Guid> userIds,
         CancellationToken cancellationToken);
     Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Bulk variant of <see cref="GetUserPreferenceAsync"/> so notification-delivery scheduling
+    /// (quiet hours need the recipient's time zone) can resolve a fan-out recipient set without
+    /// one query per recipient.
+    /// </summary>
+    Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken);
     Task<NotificationPreference?> GetNotificationPreferenceAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>
@@ -91,11 +100,14 @@ public interface ISettingsRepository
     Task<WorkspaceSetting?> GetWorkspaceSettingAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<WorkspaceTypographySetting?> GetWorkspaceTypographySettingAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ProjectSetting?> GetProjectSettingAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken);
+    Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+        Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken);
     Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken);
     Task AddNotificationPreferenceAsync(NotificationPreference preference, CancellationToken cancellationToken);
     Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken);
     Task AddWorkspaceTypographySettingAsync(WorkspaceTypographySetting setting, CancellationToken cancellationToken);
     Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken);
+    Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken);
 }
 
 public interface IWorkItemTypeRepository
@@ -127,6 +139,31 @@ public interface IWorkItemCustomFieldValueRepository
         Guid tenantId, Guid workItemId, CancellationToken cancellationToken);
     Task AddAsync(WorkItemCustomFieldValue value, CancellationToken cancellationToken);
     Task RemoveAsync(WorkItemCustomFieldValue value, CancellationToken cancellationToken);
+}
+
+public interface IWorkItemStatusRepository
+{
+    Task AddAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken);
+    Task AddRangeAsync(IReadOnlyCollection<WorkItemStatusDefinition> definitions, CancellationToken cancellationToken);
+    Task<WorkItemStatusDefinition?> GetAsync(
+        Guid tenantId, Guid projectId, Guid statusId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<WorkItemStatusDefinition>> ListByProjectAsync(
+        Guid tenantId, Guid projectId, CancellationToken cancellationToken);
+
+    /// <summary>The status flagged <see cref="WorkItemStatusDefinition.IsDefault"/> for the project; used as the initial status for a newly created work item. Falls back to the lowest-<c>Order</c> status if none is flagged (defensive only — every project is seeded with exactly one default and the handler that changes it preserves that invariant).</summary>
+    Task<WorkItemStatusDefinition?> GetDefaultAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// True when a work item or board column currently references this status, OR any work item's
+    /// immutable "Status" history in this project ever recorded <paramref name="statusKey"/> — the
+    /// latter means the status's meaning (category) must not change and it must not be deleted,
+    /// since historical agile reports (cumulative flow, cycle time) resolve history by key against
+    /// the live catalog and would silently reinterpret or lose that history otherwise.
+    /// </summary>
+    Task<bool> IsInUseAsync(
+        Guid tenantId, Guid projectId, Guid statusId, string statusKey, CancellationToken cancellationToken);
+
+    Task RemoveAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken);
 }
 
 public sealed record PasswordHash(
@@ -360,6 +397,7 @@ public interface IBootstrapRepository
         Workspace workspace,
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken);
 }
 
@@ -380,6 +418,7 @@ public interface ISignUpRepository
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
         RefreshSession refreshSession,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -397,6 +436,7 @@ public interface ISignUpRepository
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
         GoogleSignInHandoff handoff,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken);
 }
 
@@ -409,6 +449,7 @@ public interface IWorkspaceProvisioningRepository
         Workspace workspace,
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         Guid currentTenantId,
         CancellationToken cancellationToken);
 
@@ -423,6 +464,7 @@ public interface IWorkspaceProvisioningRepository
     Task AddWorkspaceToOrganizationAsync(
         Workspace workspace,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         Guid currentTenantId,
         CancellationToken cancellationToken);
 }
@@ -432,6 +474,17 @@ public interface ITenantAuthorization
     bool CanCreateProject();
     bool CanCreateMembership(TenantRole role);
     bool CanManageTeams();
+    bool CanManageRoles();
+}
+
+public interface IRoleRepository
+{
+    Task AddAsync(Role role, CancellationToken cancellationToken);
+    Task<Role?> GetAsync(Guid tenantId, Guid roleId, CancellationToken cancellationToken);
+    Task<Role?> GetByNameAsync(Guid tenantId, string name, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Role>> ListByTenantAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<bool> HasAssignmentsAsync(Guid tenantId, Guid roleId, CancellationToken cancellationToken);
+    Task RemoveAsync(Role role, CancellationToken cancellationToken);
 }
 
 public interface ITeamRepository

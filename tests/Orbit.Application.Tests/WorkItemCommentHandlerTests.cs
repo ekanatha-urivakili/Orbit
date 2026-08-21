@@ -76,6 +76,39 @@ public sealed class WorkItemCommentHandlerTests
     }
 
     [Fact]
+    public async Task Handle_MentionedUserHasDailyDigest_SchedulesEmailInsteadOfImmediateSend()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorUserId = Guid.NewGuid();
+        var mentionedAccount = UserAccount.Create("mentioned@example.com", "Mentioned User", DateTimeOffset.UtcNow);
+        var preference = NotificationPreference.Create(mentionedAccount.Id, DateTimeOffset.UtcNow);
+        preference.Update(true, true, DigestCadence.Daily, null, null, false, DateTimeOffset.UtcNow);
+        var workItem = CreateWorkItem(tenantId);
+        var settings = new SettingsRepositoryStub([mentionedAccount], [preference]);
+        var outbox = new OutboxRepositoryStub();
+        var now = TimeProvider.System.GetUtcNow();
+        var handler = new AddWorkItemCommentHandler(
+            new TenantContextStub(tenantId),
+            new CurrentPrincipalStub(authorUserId),
+            new WorkItemRepositoryStub(workItem),
+            new WorkItemCommentRepositoryStub(),
+            new WorkItemWatcherRepositoryStub(),
+            new TenantMembershipRepositoryStub(),
+            settings,
+            outbox,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new AddWorkItemCommentCommand(workItem.Id, $"Hey @{{{mentionedAccount.Id}}}, take a look"),
+            CancellationToken.None);
+
+        var email = Assert.Single(outbox.Messages);
+        Assert.NotNull(email.NotBefore);
+        Assert.True(email.NotBefore > now);
+    }
+
+    [Fact]
     public async Task Handle_SelfMentionWithoutSelfNotify_DoesNotEnqueueOutboxEmail()
     {
         var tenantId = Guid.NewGuid();
@@ -222,7 +255,7 @@ public sealed class WorkItemCommentHandlerTests
     private static WorkItem CreateWorkItem(Guid tenantId) =>
         WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Build the board", null, WorkItemType.Story, Priority.High,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
 
@@ -341,6 +374,10 @@ public sealed class WorkItemCommentHandlerTests
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
 
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
+
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult(preferences.SingleOrDefault(p => p.UserId == userId));
@@ -364,6 +401,10 @@ public sealed class WorkItemCommentHandlerTests
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
 
+        public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BoardViewPreference?>(null);
+
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -379,6 +420,9 @@ public sealed class WorkItemCommentHandlerTests
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

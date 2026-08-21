@@ -102,6 +102,7 @@ public sealed class BootstrapHandler(
             workspace,
             organizationMembership,
             ownerMembership,
+            Role.SeedSystemRoles(workspace.Id, now),
             cancellationToken);
         if (!initialized)
         {

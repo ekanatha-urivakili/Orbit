@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { WorkItemDetailView } from './WorkItemDetailView'
-import type { Priority, Profile, Project, Sprint, TenantMembership, WorkItem, WorkItemStatus } from '../../api/types'
+import type { Priority, Profile, Project, Sprint, TenantMembership, WorkItem } from '../../api/types'
 
 export function WorkItemDetailOverlay({
   variant,
@@ -26,7 +26,7 @@ export function WorkItemDetailOverlay({
   priorities: Priority[]
   sprints?: Sprint[]
   onClose: () => void
-  onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
+  onStatusChange: (workItem: WorkItem, statusId: string) => void
   onOpenWorkItem: (workItem: WorkItem) => void
   onManageWorkTypes?: () => void
 }) {

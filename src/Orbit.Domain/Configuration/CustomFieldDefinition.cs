@@ -1,3 +1,4 @@
+using Orbit.Domain.Choices;
 using Orbit.Domain.Common;
 
 namespace Orbit.Domain.Configuration;
@@ -85,6 +86,15 @@ public sealed class CustomFieldDefinition
     public DateTimeOffset UpdatedAt { get; private set; }
     public IReadOnlyList<CustomFieldChoiceOption> ChoiceOptions => _choiceOptions;
 
+    /// <summary>
+    /// The screen registry (ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md §13.5 step 6): which work item
+    /// types this field shows on. Empty means "every type" - the default before this existed, so
+    /// existing fields keep applying everywhere rather than silently disappearing.
+    /// </summary>
+    public IReadOnlyList<WorkItemType> ApplicableTypes { get; private set; } = [];
+
+    public bool AppliesTo(WorkItemType type) => ApplicableTypes.Count == 0 || ApplicableTypes.Contains(type);
+
     public static string NormalizeKey(string key) => key.Trim().ToLowerInvariant();
 
     public static CustomFieldDefinition Create(
@@ -96,6 +106,7 @@ public sealed class CustomFieldDefinition
         bool required,
         int order,
         IReadOnlyList<CustomFieldChoiceOptionInput> choiceOptions,
+        IReadOnlyList<WorkItemType> applicableTypes,
         DateTimeOffset now)
     {
         if (tenantId == Guid.Empty || projectId == Guid.Empty)
@@ -109,7 +120,10 @@ public sealed class CustomFieldDefinition
         ValidateOrder(order);
 
         var definition = new CustomFieldDefinition(
-            Guid.CreateVersion7(), tenantId, projectId, normalizedKey, label.Trim(), fieldType, required, order, now);
+            Guid.CreateVersion7(), tenantId, projectId, normalizedKey, label.Trim(), fieldType, required, order, now)
+        {
+            ApplicableTypes = NormalizeApplicableTypes(applicableTypes)
+        };
         definition.ReplaceChoiceOptions(choiceOptions);
         return definition;
     }
@@ -120,6 +134,7 @@ public sealed class CustomFieldDefinition
         int order,
         bool enabled,
         IReadOnlyList<CustomFieldChoiceOptionInput> choiceOptions,
+        IReadOnlyList<WorkItemType> applicableTypes,
         DateTimeOffset now)
     {
         ValidateLabel(label);
@@ -129,9 +144,21 @@ public sealed class CustomFieldDefinition
         Required = required;
         Order = order;
         Enabled = enabled;
+        ApplicableTypes = NormalizeApplicableTypes(applicableTypes);
         ReplaceChoiceOptions(choiceOptions);
         Version++;
         UpdatedAt = now;
+    }
+
+    private static IReadOnlyList<WorkItemType> NormalizeApplicableTypes(IReadOnlyList<WorkItemType> types)
+    {
+        var distinct = types.Distinct().ToArray();
+        if (distinct.Any(type => !Enum.IsDefined(type)))
+        {
+            throw new DomainException("Applicable types contain an unknown work item type.");
+        }
+
+        return distinct;
     }
 
     private void ReplaceChoiceOptions(IReadOnlyList<CustomFieldChoiceOptionInput> options)

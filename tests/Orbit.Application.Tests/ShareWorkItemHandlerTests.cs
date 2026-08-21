@@ -24,7 +24,7 @@ public sealed class ShareWorkItemHandlerTests
             tenantId, recipientAccount.Id, TenantRole.Member, DateTimeOffset.UtcNow);
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Share this card", null, WorkItemType.Story, Priority.High,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var outbox = new OutboxRepositoryStub();
         var handler = new ShareWorkItemHandler(
             new TenantContextStub(tenantId),
@@ -57,7 +57,7 @@ public sealed class ShareWorkItemHandlerTests
         var teamMembership = TeamMembership.Create(tenantId, teamId, recipientMembership.Id, DateTimeOffset.UtcNow);
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Share this card", null, WorkItemType.Story, Priority.High,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var outbox = new OutboxRepositoryStub();
         var handler = new ShareWorkItemHandler(
             new TenantContextStub(tenantId),
@@ -166,6 +166,10 @@ public sealed class ShareWorkItemHandlerTests
             Task.FromResult<IReadOnlyList<UserAccount>>(accounts.Where(a => userIds.Contains(a.Id)).ToArray());
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
+
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
@@ -182,6 +186,10 @@ public sealed class ShareWorkItemHandlerTests
         public Task<ProjectSetting?> GetProjectSettingAsync(
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
+
+        public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BoardViewPreference?>(null);
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
         public Task AddNotificationPreferenceAsync(
@@ -193,6 +201,9 @@ public sealed class ShareWorkItemHandlerTests
             WorkspaceTypographySetting setting, CancellationToken cancellationToken) =>
             Task.CompletedTask;
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

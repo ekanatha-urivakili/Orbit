@@ -1,21 +1,30 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, LineChart, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { orbitApi } from '../../api/client'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
-import { groupWorkItemsByStatus } from '../../board'
 import { getInitials } from '../../lib/initials'
 import { SprintReportDialog } from './SprintReportDialog'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemTypeIcon } from '../workitems/typeIcons'
 import { FilterBar } from '../../components/filters/FilterBar'
+import { AssigneeAvatarFilter } from '../../components/filters/AssigneeAvatarFilter'
 import { useWorkItemFilters } from '../../hooks/useWorkItemFilters'
-import { statusMeta } from '../board/constants'
-import type { Sprint, TenantMembership, WorkItem } from '../../api/types'
+import type { Sprint, StatusCategory, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 
-const trackedStatuses: WorkItem['status'][] = ['Backlog', 'InProgress', 'Done']
-const statusLabels = Object.fromEntries(
-  Object.entries(statusMeta).map(([status, meta]) => [status, meta.label]),
-) as Record<WorkItem['status'], string>
+function countByCategory(
+  items: readonly WorkItem[],
+  statuses: readonly WorkItemStatusDefinition[],
+): Record<StatusCategory, number> {
+  const categoryByStatusId = new Map(statuses.map((status) => [status.id, status.category]))
+  const counts: Record<StatusCategory, number> = { ToDo: 0, InProgress: 0, Done: 0 }
+  for (const item of items) {
+    const category = categoryByStatusId.get(item.statusId)
+    if (category) counts[category]++
+  }
+  return counts
+}
 
 interface BacklogViewProps {
   workItems: WorkItem[]
@@ -32,7 +41,6 @@ interface BacklogViewProps {
   onOpenWorkItem: (workItem: WorkItem) => void
   onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
   assigneeChangePending?: boolean
-  error: string | null
 }
 
 export function BacklogView({
@@ -50,7 +58,6 @@ export function BacklogView({
   onOpenWorkItem,
   onAssigneeChange,
   assigneeChangePending = false,
-  error,
 }: BacklogViewProps) {
   const activeSprint = sprints.find((sprint) => sprint.state === 'Active')
   const futureSprints = sprints.filter((sprint) => sprint.state === 'Future')
@@ -89,6 +96,16 @@ export function BacklogView({
   const [reportSprint, setReportSprint] = useState<Sprint | null>(null)
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
+  const statusesQuery = useQuery({
+    queryKey: ['work-item-statuses', projectId],
+    queryFn: () => orbitApi.listWorkItemStatuses(projectId),
+  })
+  const statuses = statusesQuery.data ?? []
+  const statusesById = useMemo(() => new Map(statuses.map((status) => [status.id, status])), [statuses])
+  const statusLabels = useMemo(
+    () => Object.fromEntries(statuses.map((status) => [status.id, status.name])),
+    [statuses],
+  )
   const { searchTerm, setSearchTerm, fields, activeCount, clearAll, matches } = useWorkItemFilters(
     workItems,
     members,
@@ -147,7 +164,7 @@ export function BacklogView({
   const matchesFilters = matches
 
   const backlogItems = workItems.filter((item) => !assignedItemIds.has(item.id) && matchesFilters(item))
-  const backlogStatusCounts = groupWorkItemsByStatus(trackedStatuses, backlogItems)
+  const backlogStatusCounts = countByCategory(backlogItems, statuses)
 
   const mutation = useCreateWorkItem(projectId)
 
@@ -204,7 +221,7 @@ export function BacklogView({
   const renderLabels = (item: WorkItem) => {
     if (item.labels.length === 0) return null
     return (
-      <div className="flex items-center gap-1 flex-wrap max-w-[200px]">
+      <div className="hidden sm:flex items-center gap-1 flex-wrap max-w-[200px]">
         {item.labels.map((label) => (
           <span key={label} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-medium rounded whitespace-nowrap dark:bg-gray-800 dark:text-gray-300">
             {label}
@@ -223,8 +240,7 @@ export function BacklogView({
   })
 
   return (
-    <div className="p-6 md:p-8 w-full">
-      {error && <div className="error-banner mb-4">{error}</div>}
+    <div className="p-6 md:p-8 pt-8 md:pt-10 w-full">
       <div className="mb-6">
         <FilterBar
           searchTerm={searchTerm}
@@ -233,6 +249,9 @@ export function BacklogView({
           fields={fields}
           activeCount={activeCount}
           onClearAll={clearAll}
+          betweenSearchAndFilter={
+            <AssigneeAvatarFilter field={fields.find((field) => field.key === 'assignee')!} />
+          }
         />
       </div>
 
@@ -241,7 +260,7 @@ export function BacklogView({
           .map((id) => workItemsById.get(id))
           .filter((item): item is WorkItem => Boolean(item))
           .filter(matchesFilters)
-        const sprintStatusCounts = groupWorkItemsByStatus(trackedStatuses, sprintItems)
+        const sprintStatusCounts = countByCategory(sprintItems, statuses)
         const isCollapsed = Boolean(collapsedSprints[sprint.id])
 
         const isDropTarget = dragOverTarget === sprint.id
@@ -254,7 +273,7 @@ export function BacklogView({
             onDrop={(e) => handleSprintDrop(e, sprint)}
             className={`bg-gray-50 rounded-lg border mb-8 overflow-hidden transition-colors ${isDropTarget ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
               <div className="flex items-center gap-2">
                 <button onClick={() => toggleSprintCollapse(sprint.id)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle sprint section">
                   <ChevronDown size={18} className={`text-gray-600 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
@@ -262,11 +281,11 @@ export function BacklogView({
                 <h2 className="font-bold text-gray-900 text-sm">{sprint.name}</h2>
                 <span className="text-sm text-gray-500 ml-2">({sprintItems.length} work items)</span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center text-xs font-semibold gap-1">
-                  <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sprintStatusCounts.get('Backlog')?.length ?? 0}</span>
-                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.get('InProgress')?.length ?? 0}</span>
-                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.get('Done')?.length ?? 0}</span>
+                  <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sprintStatusCounts.ToDo}</span>
+                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.InProgress}</span>
+                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.Done}</span>
                 </div>
                 {sprint.state === 'Future' && (
                   <button
@@ -277,8 +296,8 @@ export function BacklogView({
                   </button>
                 )}
                 {(sprint.state === 'Active' || sprint.state === 'Reopened') && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-64">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="w-48 sm:w-64">
                       <SearchableSelect
                         size="sm"
                         value={rolloverTargets[sprint.id] ?? ''}
@@ -343,7 +362,7 @@ export function BacklogView({
 
                     {renderLabels(item)}
 
-                    <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="hidden sm:flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => onRemoveFromSprint(item.id)}
                         className="p-1 hover:bg-gray-200 rounded text-gray-600"
@@ -354,9 +373,9 @@ export function BacklogView({
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-3 ml-4">
-                      <div className="px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase flex items-center gap-1">
-                        {item.status === 'Backlog' ? 'To Do' : item.status}
+                    <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
+                      <div className="hidden sm:flex px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase items-center gap-1">
+                        {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
                       </div>
                       {renderAssigneeAvatar(item)}
                     </div>
@@ -415,7 +434,7 @@ export function BacklogView({
         onDrop={handleBacklogDrop}
         className={`bg-gray-50 rounded-lg border overflow-hidden transition-colors ${dragOverTarget === 'backlog' ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
           <div className="flex items-center gap-2">
             <button onClick={() => setBacklogCollapsed(!backlogCollapsed)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle backlog section">
               <ChevronDown size={18} className={`text-gray-600 transition-transform ${backlogCollapsed ? '-rotate-90' : ''}`} />
@@ -423,11 +442,11 @@ export function BacklogView({
             <h2 className="font-bold text-gray-900 text-sm">Backlog</h2>
             <span className="text-sm text-gray-500 ml-2">({backlogItems.length} work items)</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
              <div className="flex items-center text-xs font-semibold gap-1">
-              <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{backlogStatusCounts.get('Backlog')?.length ?? 0}</span>
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.get('InProgress')?.length ?? 0}</span>
-              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.get('Done')?.length ?? 0}</span>
+              <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{backlogStatusCounts.ToDo}</span>
+              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.InProgress}</span>
+              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.Done}</span>
             </div>
             <button
               onClick={() => onCreateSprint(`Sprint ${sprints.length + 1}`)}
@@ -458,7 +477,7 @@ export function BacklogView({
                 {renderLabels(item)}
 
                 {assignableSprints.length > 0 && (
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity w-36">
+                  <div className="hidden sm:block opacity-0 group-hover:opacity-100 transition-opacity w-36">
                     <SearchableSelect
                       size="sm"
                       value=""
@@ -476,9 +495,9 @@ export function BacklogView({
                   </div>
                 )}
 
-                <div className="flex items-center gap-3 ml-4">
-                  <div className="px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase flex items-center gap-1">
-                    {item.status === 'Backlog' ? 'To Do' : item.status}
+                <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
+                  <div className="hidden sm:flex px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase items-center gap-1">
+                    {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
                   </div>
                   {renderAssigneeAvatar(item)}
                 </div>

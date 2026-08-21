@@ -8,9 +8,10 @@ import { AcceptInvitationView } from './features/auth/AcceptInvitationView'
 import { LoginView } from './features/auth/LoginView'
 import { RegisterView } from './features/auth/RegisterView'
 
-import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus } from './api/types'
+import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem } from './api/types'
 import { getStoredLogoUrl, setStoredLogoUrl } from './lib/branding'
 import { applyTheme } from './lib/theme'
+import { useServiceWorkerUpdate } from './lib/pwa'
 
 import './App.css'
 
@@ -23,6 +24,10 @@ import { CommandPalette } from './components/CommandPalette'
 
 // Feature Components
 import { BoardView } from './features/board/BoardView'
+import { SprintInsightsPanel } from './features/board/SprintInsightsPanel'
+import { BoardViewSettingsPanel } from './features/board/BoardViewSettingsPanel'
+import { WorkflowEditorDialog } from './features/board/WorkflowEditorDialog'
+import { SprintEditDialog } from './features/board/SprintEditDialog'
 import { BacklogView } from './features/backlog/BacklogView'
 import { TimelineView } from './features/timeline/TimelineView'
 import { DevelopmentView } from './features/development/DevelopmentView'
@@ -56,6 +61,7 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('project')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [oidcError, setOidcError] = useState<string | null>(null)
+  const { available: updateAvailable, applyUpdate } = useServiceWorkerUpdate()
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = localStorage.getItem('orbit_sidebar_width')
     return saved ? Math.max(180, Math.min(480, Number(saved))) : 240
@@ -222,15 +228,24 @@ function App() {
   useEffect(() => {
     const url = new URL(window.location.href)
     const handoffCode = url.searchParams.get('googleAuth')
+    const googleLinked = url.searchParams.get('googleLinked')
     const googleError = url.searchParams.get('googleAuthError')
-    if (!handoffCode && !googleError) return
+    if (!handoffCode && !googleLinked && !googleError) return
 
     url.searchParams.delete('googleAuth')
+    url.searchParams.delete('googleLinked')
     url.searchParams.delete('googleAuthError')
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
 
     if (googleError) {
       setOidcError(googleError)
+      return
+    }
+
+    if (googleLinked) {
+      // "Link Google account" (Settings > Account security) returns here with no new session to
+      // exchange - the browser's existing session carried through the OAuth redirect unchanged.
+      queryClient.invalidateQueries({ queryKey: ['linked-identities'] })
       return
     }
 
@@ -444,6 +459,24 @@ function App() {
     enabled: Boolean(selectedProjectId),
   })
   const sprints = sprintsQuery.data ?? []
+  const statusesQuery = useQuery({
+    queryKey: ['work-item-statuses', selectedProjectId],
+    queryFn: () => orbitApi.listWorkItemStatuses(selectedProjectId ?? ''),
+    enabled: Boolean(selectedProjectId),
+  })
+  const statuses = statusesQuery.data ?? []
+  const boardViewPreferenceQuery = useQuery({
+    queryKey: ['board-view-preference', selectedProjectId],
+    queryFn: () => orbitApi.getBoardViewPreference(selectedProjectId ?? ''),
+    enabled: Boolean(selectedProjectId),
+  })
+  const [sprintInsightsOpen, setSprintInsightsOpen] = useState(false)
+  const [boardViewSettingsOpen, setBoardViewSettingsOpen] = useState(false)
+  const [workflowEditorOpen, setWorkflowEditorOpen] = useState(false)
+  const [sprintEditTarget, setSprintEditTarget] = useState<Sprint | null>(null)
+  // Reopened is treated as active for closure purposes on the backend (Sprint.StartClosing accepts
+  // Active or Reopened), so the Board actions that operate on "the current sprint" must match.
+  const activeSprint = sprints.find((sprint) => sprint.state === 'Active' || sprint.state === 'Reopened')
 
   const assigneeMutation = useChangeWorkItemAssignee(selectedProjectId ?? '')
   const handleAssigneeChange = (workItem: WorkItem, assigneeUserId: string | null) => {
@@ -453,8 +486,8 @@ function App() {
   }
 
   const statusMutation = useMutation({
-    mutationFn: ({ workItem, status }: { workItem: WorkItem; status: WorkItemStatus }) =>
-      orbitApi.changeStatus(workItem, status),
+    mutationFn: ({ workItem, statusId }: { workItem: WorkItem; statusId: string }) =>
+      orbitApi.changeStatus(workItem, statusId),
     onSuccess: (updated) => {
       queryClient.setQueryData<PagedResult<WorkItem>>(['work-items', updated.projectId], (current) =>
         current && { ...current, items: current.items.map((item) => (item.id === updated.id ? updated : item)) },
@@ -576,6 +609,21 @@ function App() {
   if (projectsQuery.isPending) return <LoadingScreen />
   if (projectsQuery.isError) return <ErrorScreen message={projectsQuery.error.message} />
 
+  const backlogError =
+    createSprintMutation.error?.message ??
+    startSprintMutation.error?.message ??
+    completeSprintMutation.error?.message ??
+    reopenSprintMutation.error?.message ??
+    assignToSprintMutation.error?.message ??
+    removeFromSprintMutation.error?.message ??
+    assigneeMutation.error?.message ??
+    null
+  const boardTabError =
+    statusMutation.error?.message ??
+    reorderMutation.error?.message ??
+    assigneeMutation.error?.message ??
+    null
+
   return (
     <div className="min-h-screen bg-white">
       <CommandPalette
@@ -595,6 +643,7 @@ function App() {
         onHomeClick={handleNavigateHome}
         onOpenSettings={(section) => { setSettingsSection(section); setActiveView('settings') }}
         onThemeChange={(theme) => themeMutation.mutate(theme)}
+        onOpenMobileMenu={() => setMobileMenuOpen(true)}
       />
       {workspaceSwitchMutation.isError && (
         <div className="error-banner m-4">{workspaceSwitchMutation.error.message}</div>
@@ -604,6 +653,18 @@ function App() {
           <span>{oidcError}</span>
           <button onClick={() => setOidcError(null)} className="ml-4 text-sm font-medium underline">Dismiss</button>
         </div>
+      )}
+      {updateAvailable && (
+        <div className="update-banner m-4 flex items-center justify-between">
+          <span>A new version of Orbit is available.</span>
+          <button onClick={applyUpdate} className="ml-4 text-sm font-medium underline">Reload</button>
+        </div>
+      )}
+      {activeView === 'project' && activeTab === 'Backlog' && backlogError && (
+        <div className="error-banner m-4">{backlogError}</div>
+      )}
+      {activeView === 'project' && activeTab === 'Board' && boardTabError && (
+        <div className="error-banner m-4">{boardTabError}</div>
       )}
       {createWorkspaceOpen && (
         <CreateWorkspaceDialog
@@ -625,12 +686,18 @@ function App() {
             setActiveView('project')
           }}
           activeView={activeView}
+          activeTab={activeTab}
           onHomeClick={handleNavigateHome}
           onOpenSettings={(section) => {
             setSettingsSection(section)
             setActiveView('settings')
           }}
           workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name}
+          boardName={activeView === 'project' ? boardQuery.data?.name : undefined}
+          onSelectBoard={() => {
+            setActiveView('project')
+            setActiveTab('Board')
+          }}
           width={sidebarWidth}
           collapsed={sidebarCollapsed}
           onToggleCollapse={toggleSidebarCollapse}
@@ -640,18 +707,20 @@ function App() {
         
         <main
           style={{
-            marginLeft: sidebarCollapsed ? '0px' : `${sidebarWidth}px`,
+            ['--sidebar-offset' as string]: sidebarCollapsed ? '0px' : `${sidebarWidth}px`,
           }}
-          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden transition-[margin-left] duration-150 ease-out ${
+          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-clip ml-0 lg:ml-[var(--sidebar-offset)] transition-[margin-left] duration-150 ease-out ${
             isResizingSidebar ? '!transition-none' : ''
           }`}
         >
+          <div className="3xl:max-w-[1800px] 3xl:mx-auto">
           {projects.length === 0 ? <ProjectOnboarding /> : <>
           {activeView === 'home' && (
             <HomeView
               profile={profileQuery.data}
               projects={projects}
               workItems={workItems}
+              statuses={statuses}
               workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name ?? 'Orbit Workspace'}
               workspaces={accountWorkspacesQuery.data}
               currentWorkspaceId={authSession?.workspaceId}
@@ -676,7 +745,7 @@ function App() {
                 priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
                 onBack={handleBackFromWorkItem}
                 onNavigateHome={handleNavigateHome}
-                onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
+                onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
                 onOpenWorkItem={handleOpenWorkItem}
                 onManageWorkTypes={() => { setSettingsSection('item-types'); setActiveView('settings') }}
                 sprints={sprints}
@@ -698,6 +767,7 @@ function App() {
             {activeTab === 'Summary' && (
               <SummaryView
                 workItems={workItems}
+                statuses={statuses}
                 profile={profileQuery.data}
                 members={members}
                 onOpenWorkItem={handleOpenWorkItem}
@@ -721,40 +791,75 @@ function App() {
                 onOpenWorkItem={(workItem) => handleOpenWorkItemOverlay(workItem, 'drawer')}
                 onAssigneeChange={handleAssigneeChange}
                 assigneeChangePending={assigneeMutation.isPending}
-                error={
-                  createSprintMutation.error?.message ??
-                  startSprintMutation.error?.message ??
-                  completeSprintMutation.error?.message ??
-                  reopenSprintMutation.error?.message ??
-                  assignToSprintMutation.error?.message ??
-                  removeFromSprintMutation.error?.message ??
-                  assigneeMutation.error?.message ??
-                  null
-                }
               />
             )}
 
             {activeTab === 'Board' && (
-              <div className="p-8">
-                {statusMutation.isError && <div className="error-banner">{statusMutation.error.message}</div>}
-                {reorderMutation.isError && <div className="error-banner">{reorderMutation.error.message}</div>}
-                {assigneeMutation.isError && <div className="error-banner">{assigneeMutation.error.message}</div>}
-                <BoardView
-                  projectName={selectedProject?.name ?? ''}
-                  board={boardQuery.data}
-                  loading={boardQuery.isPending}
-                  mutation={boardMutation}
-                  onSave={(input) => boardMutation.mutate(input)}
-                  workItems={workItems}
-                  workItemsLoading={workItemsQuery.isPending}
-                  members={members}
-                  onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
-                  onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
-                  onOpen={(workItem) => handleOpenWorkItemOverlay(workItem, 'modal')}
-                  onAssigneeChange={handleAssigneeChange}
-                  assigneeChangePending={assigneeMutation.isPending}
-                />
+              <div className="flex h-full min-h-[calc(100vh-140px)]">
+                <div className="flex-1 min-w-0 p-6 md:p-8 pt-8 md:pt-10 overflow-y-auto">
+                  <BoardView
+                    projectName={selectedProject?.name ?? ''}
+                    board={boardQuery.data}
+                    statuses={statuses}
+                    loading={boardQuery.isPending}
+                    mutation={boardMutation}
+                    onSave={(input) => boardMutation.mutate(input)}
+                    workItems={workItems}
+                    workItemsLoading={workItemsQuery.isPending}
+                    members={members}
+                    onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
+                    onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
+                    onOpen={(workItem) => handleOpenWorkItemOverlay(workItem, 'modal')}
+                    onAssigneeChange={handleAssigneeChange}
+                    assigneeChangePending={assigneeMutation.isPending}
+                    hiddenFields={boardViewPreferenceQuery.data?.hiddenFields ?? []}
+                    columnSizeMode={boardViewPreferenceQuery.data?.columnSizeMode ?? 'Flexible'}
+                    hideDoneItemsAfter={boardViewPreferenceQuery.data?.hideDoneItemsAfter ?? 'Never'}
+                    activeSprint={activeSprint}
+                    futureSprints={sprints.filter((s) => s.state === 'Future')}
+                    onCompleteSprint={(sprint, rolloverTargetSprintId) =>
+                      completeSprintMutation.mutate({ sprint, rolloverTargetSprintId })
+                    }
+                    completeSprintPending={completeSprintMutation.isPending}
+                    onToggleInsights={() => setSprintInsightsOpen((curr) => !curr)}
+                    isInsightsOpen={sprintInsightsOpen}
+                    onToggleSettings={() => setBoardViewSettingsOpen((curr) => !curr)}
+                    isSettingsOpen={boardViewSettingsOpen}
+                    onRefresh={() => {
+                      queryClient.invalidateQueries({ queryKey: ['work-items'] })
+                      queryClient.invalidateQueries({ queryKey: ['sprints'] })
+                      queryClient.invalidateQueries({ queryKey: ['boards'] })
+                      queryClient.invalidateQueries({ queryKey: ['sprint-insights'] })
+                    }}
+                    onConfigureColumns={() => setWorkflowEditorOpen(true)}
+                    onEditSprint={(sprint) => setSprintEditTarget(sprint)}
+                    onManageWorkflows={() => setWorkflowEditorOpen(true)}
+                    onCreateWorkItem={() => setCreateOpen(true)}
+                    headerMenuExtras={[
+                      ...(activeSprint ? [{ label: 'Sprint insights', onClick: () => setSprintInsightsOpen(true) }] : []),
+                      { label: 'View settings', onClick: () => setBoardViewSettingsOpen(true) },
+                      { label: 'Edit workflow', onClick: () => setWorkflowEditorOpen(true) },
+                      ...(activeSprint ? [{ label: 'Edit sprint', onClick: () => setSprintEditTarget(activeSprint) }] : []),
+                    ]}
+                  />
+                </div>
+                {sprintInsightsOpen && activeSprint && (
+                  <SprintInsightsPanel sprintId={activeSprint.id} onClose={() => setSprintInsightsOpen(false)} />
+                )}
+                {boardViewSettingsOpen && selectedProjectId && (
+                  <BoardViewSettingsPanel projectId={selectedProjectId} onClose={() => setBoardViewSettingsOpen(false)} />
+                )}
               </div>
+            )}
+            {workflowEditorOpen && selectedProjectId && (
+              <WorkflowEditorDialog
+                projectId={selectedProjectId}
+                boardName={boardQuery.data?.name || selectedProject?.name || ''}
+                onClose={() => setWorkflowEditorOpen(false)}
+              />
+            )}
+            {sprintEditTarget && (
+              <SprintEditDialog sprint={sprintEditTarget} onClose={() => setSprintEditTarget(null)} />
             )}
 
             {activeTab === 'Timeline' && (
@@ -777,6 +882,7 @@ function App() {
             </div>
           </>}
           </>}
+          </div>
         </main>
       </div>
 
@@ -793,7 +899,7 @@ function App() {
             priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
             sprints={sprints}
             onClose={closeWorkItemOverlay}
-            onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
+            onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
             onOpenWorkItem={(workItem) => setOverlayWorkItemId(workItem.id)}
             onManageWorkTypes={() => {
               setSettingsSection('item-types')

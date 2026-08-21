@@ -57,6 +57,7 @@ public sealed class CreateWorkItemHandler(
     ICurrentPrincipal principal,
     IProjectRepository projects,
     IWorkItemTypeRepository workItemTypes,
+    IWorkItemStatusRepository workItemStatuses,
     IWorkItemRepository workItems,
     ITenantMembershipRepository tenantMemberships,
     ITeamRepository teams,
@@ -95,6 +96,9 @@ public sealed class CreateWorkItemHandler(
             throw new ValidationException("The selected team was not found.");
         }
 
+        var defaultStatus = await workItemStatuses.GetDefaultAsync(tenantContext.TenantId, project.Id, cancellationToken)
+            ?? throw new ValidationException("This project has no workflow statuses configured.");
+
         var sequence = project.AllocateItemSequence(now);
         var workItem = WorkItem.Create(
             tenantContext.TenantId,
@@ -105,6 +109,7 @@ public sealed class CreateWorkItemHandler(
             request.Description,
             request.Type,
             request.Priority,
+            defaultStatus.Id,
             now);
         workItem.SetDetails(
             request.ParentId,

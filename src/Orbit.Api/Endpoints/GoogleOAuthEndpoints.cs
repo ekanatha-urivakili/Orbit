@@ -57,7 +57,12 @@ public static class GoogleOAuthEndpoints
                     targetFrontendUrl = result.ReturnUrl;
                 }
 
-                return Results.Redirect($"{targetFrontendUrl}/?googleAuth={Uri.EscapeDataString(result.HandoffCode)}");
+                if (result.Linked)
+                {
+                    return Results.Redirect($"{targetFrontendUrl}/?googleLinked=true");
+                }
+
+                return Results.Redirect($"{targetFrontendUrl}/?googleAuth={Uri.EscapeDataString(result.HandoffCode!)}");
             }
             catch (Exception exception) when (exception is AuthenticationException
                 or AccessDeniedException
@@ -88,7 +93,7 @@ public static class GoogleOAuthEndpoints
         return group;
     }
 
-    private static string? ResolveSafeReturnUrl(string? returnUrl, HttpContext httpContext, IConfiguration configuration)
+    internal static string? ResolveSafeReturnUrl(string? returnUrl, HttpContext httpContext, IConfiguration configuration)
     {
         if (!string.IsNullOrWhiteSpace(returnUrl) && IsAllowedOrigin(returnUrl, configuration))
         {
@@ -110,7 +115,7 @@ public static class GoogleOAuthEndpoints
         return null;
     }
 
-    private static bool IsAllowedOrigin(string url, IConfiguration configuration)
+    internal static bool IsAllowedOrigin(string url, IConfiguration configuration)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
@@ -145,7 +150,7 @@ public static class GoogleOAuthEndpoints
         return false;
     }
 
-    private static string NormalizeOrigin(string url)
+    internal static string NormalizeOrigin(string url)
     {
         var uri = new Uri(url, UriKind.Absolute);
         return $"{uri.Scheme}://{uri.Authority}".TrimEnd('/');

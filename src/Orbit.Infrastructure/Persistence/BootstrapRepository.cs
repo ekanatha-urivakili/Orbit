@@ -28,6 +28,7 @@ internal sealed class BootstrapRepository(OrbitDbContext dbContext) : IBootstrap
         Workspace workspace,
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -60,6 +61,7 @@ internal sealed class BootstrapRepository(OrbitDbContext dbContext) : IBootstrap
         await dbContext.WorkItemTypeDefinitions.AddRangeAsync(
             WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
             cancellationToken);
+        await dbContext.Roles.AddRangeAsync(systemRoles, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;

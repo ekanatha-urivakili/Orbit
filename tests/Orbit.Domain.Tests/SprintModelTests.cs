@@ -86,6 +86,51 @@ public sealed class SprintModelTests
     }
 
     [Fact]
+    public void Sprint_Edit_RenamesAndAdjustsDatesWithoutChangingState()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var sprint = Sprint.Create(Guid.NewGuid(), Guid.NewGuid(), "Sprint 1", now);
+        sprint.Start(null, null, null, now);
+        var startDate = DateOnly.FromDateTime(now.UtcDateTime);
+        var endDate = startDate.AddDays(10);
+
+        sprint.Edit("Sprint 1 (renamed)", "New goal", startDate, endDate, now.AddMinutes(5));
+
+        Assert.Equal("Sprint 1 (renamed)", sprint.Name);
+        Assert.Equal("New goal", sprint.Goal);
+        Assert.Equal(startDate, sprint.StartDate);
+        Assert.Equal(endDate, sprint.EndDate);
+        Assert.Equal(SprintState.Active, sprint.State);
+        Assert.Equal(3, sprint.Version);
+    }
+
+    [Fact]
+    public void Sprint_Edit_RejectsEndDateBeforeStartDate()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var sprint = Sprint.Create(Guid.NewGuid(), Guid.NewGuid(), "Sprint 1", now);
+        var startDate = DateOnly.FromDateTime(now.UtcDateTime);
+
+        var action = () => sprint.Edit("Sprint 1", null, startDate, startDate.AddDays(-1), now);
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Fact]
+    public void Sprint_Edit_RejectsClosedSprint()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var sprint = Sprint.Create(Guid.NewGuid(), Guid.NewGuid(), "Sprint 1", now);
+        sprint.Start(null, null, null, now);
+        sprint.StartClosing(now);
+        sprint.FinishClosing(now);
+
+        var action = () => sprint.Edit("Sprint 1", null, null, null, now);
+
+        Assert.Throws<DomainException>(action);
+    }
+
+    [Fact]
     public void Sprint_StartClosing_TransitionsToClosingAndBumpsVersion()
     {
         var now = DateTimeOffset.UtcNow;

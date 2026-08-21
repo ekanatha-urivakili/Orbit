@@ -68,7 +68,7 @@ public static class AccessEndpoints
             CancellationToken cancellationToken) =>
         {
             var assignment = await sender.Send(
-                new AssignProjectRoleCommand(projectId, membershipId, request.Role),
+                new AssignProjectRoleCommand(projectId, membershipId, request.RoleId),
                 cancellationToken);
             return Results.Ok(assignment);
         })
@@ -83,7 +83,7 @@ public static class AccessEndpoints
             CancellationToken cancellationToken) =>
         {
             var assignment = await sender.Send(
-                new AssignGroupProjectRoleCommand(projectId, groupId, request.Role),
+                new AssignGroupProjectRoleCommand(projectId, groupId, request.RoleId),
                 cancellationToken);
             return Results.Ok(assignment);
         })
@@ -121,9 +121,9 @@ public static class AccessEndpoints
         PrincipalType PrincipalType,
         TenantRole Role);
 
-    public sealed record AssignProjectRoleRequest(ProjectRole Role);
+    public sealed record AssignProjectRoleRequest(Guid RoleId);
 
-    public sealed record AssignGroupProjectRoleRequest(ProjectRole Role);
+    public sealed record AssignGroupProjectRoleRequest(Guid RoleId);
 
     public sealed record ChangeTenantMembershipRoleRequest(TenantRole Role);
 

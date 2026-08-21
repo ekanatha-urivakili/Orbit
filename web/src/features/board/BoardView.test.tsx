@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { BoardView } from './BoardView'
-import type { Board, TenantMembership, WorkItem } from '../../api/types'
+import type { Board, Sprint, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 
 function selectGroupBy(label: string) {
   fireEvent.click(screen.getByLabelText('Group board by'))
@@ -32,7 +32,7 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
     countries: [],
     attachmentNames: [],
     type: 'Story',
-    status: 'Backlog',
+    statusId: 'Backlog',
     priority: 'High',
     rank: 1024,
     isFlagged: false,
@@ -69,10 +69,31 @@ const board: Board = {
   type: 'Kanban',
   version: 1,
   columns: [
-    { status: 'Backlog', order: 0, wipLimit: null, wipLimitMode: 'Warn' },
-    { status: 'InProgress', order: 1, wipLimit: null, wipLimitMode: 'Warn' },
-    { status: 'Done', order: 2, wipLimit: null, wipLimitMode: 'Warn' },
+    { statusId: 'Backlog', order: 0, wipLimit: null, wipLimitMode: 'Warn' },
+    { statusId: 'InProgress', order: 1, wipLimit: null, wipLimitMode: 'Warn' },
+    { statusId: 'Done', order: 2, wipLimit: null, wipLimitMode: 'Warn' },
   ],
+}
+
+const statuses: WorkItemStatusDefinition[] = [
+  { id: 'Backlog', key: 'backlog', name: 'Backlog', category: 'ToDo', order: 0, colorToken: 'slate', isSystem: true, isDefault: false, version: 1 },
+  { id: 'InProgress', key: 'in-progress', name: 'In progress', category: 'InProgress', order: 1, colorToken: 'blue', isSystem: true, isDefault: false, version: 1 },
+  { id: 'Done', key: 'done', name: 'Done', category: 'Done', order: 2, colorToken: 'green', isSystem: true, isDefault: false, version: 1 },
+]
+
+const activeSprint: Sprint = {
+  id: 'sprint-1',
+  projectId: 'project-1',
+  name: 'SCRUM Sprint 1',
+  state: 'Active',
+  goal: 'Ship MVP',
+  startDate: '2026-08-19T00:00:00Z',
+  endDate: '2026-09-02T00:00:00Z',
+  startedAt: '2026-08-19T00:00:00Z',
+  closedAt: null,
+  reopenedAt: null,
+  version: 1,
+  workItemIds: ['item-1'],
 }
 
 describe('BoardView swimlanes', () => {
@@ -81,6 +102,7 @@ describe('BoardView swimlanes', () => {
       <BoardView
         projectName="Orbit"
         board={board}
+        statuses={statuses}
         loading={false}
         mutation={{ isPending: false, isError: false, error: null }}
         onSave={vi.fn()}
@@ -101,6 +123,7 @@ describe('BoardView swimlanes', () => {
       <BoardView
         projectName="Orbit"
         board={board}
+        statuses={statuses}
         loading={false}
         mutation={{ isPending: false, isError: false, error: null }}
         onSave={vi.fn()}
@@ -134,6 +157,7 @@ describe('BoardView swimlanes', () => {
       <BoardView
         projectName="Orbit"
         board={board}
+        statuses={statuses}
         loading={false}
         mutation={{ isPending: false, isError: false, error: null }}
         onSave={vi.fn()}
@@ -150,5 +174,60 @@ describe('BoardView swimlanes', () => {
 
     fireEvent.click(screen.getByText('Ada Lovelace'))
     expect(screen.queryByText('Assigned item')).not.toBeInTheDocument()
+  })
+})
+
+describe('BoardView Sprint controls', () => {
+  it('renders Complete sprint button and triggers CompleteSprintDialog when clicked', () => {
+    const onCompleteSprint = vi.fn()
+    render(
+      <BoardView
+        projectName="Orbit"
+        board={board}
+        statuses={statuses}
+        loading={false}
+        mutation={{ isPending: false, isError: false, error: null }}
+        onSave={vi.fn()}
+        workItems={[makeItem({ id: 'item-1', summary: 'Sprint Item' })]}
+        workItemsLoading={false}
+        activeSprint={activeSprint}
+        onCompleteSprint={onCompleteSprint}
+        onStatusChange={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    const completeBtn = screen.getByRole('button', { name: 'Complete sprint' })
+    expect(completeBtn).toBeInTheDocument()
+
+    fireEvent.click(completeBtn)
+    expect(screen.getByText('Complete SCRUM Sprint 1')).toBeInTheDocument()
+    expect(screen.getByText(/1 open work item/)).toBeInTheDocument()
+  })
+
+  it('renders sprint timer and opens countdown popover on click', () => {
+    render(
+      <BoardView
+        projectName="Orbit"
+        board={board}
+        statuses={statuses}
+        loading={false}
+        mutation={{ isPending: false, isError: false, error: null }}
+        onSave={vi.fn()}
+        workItems={[makeItem({ id: 'item-1', summary: 'Sprint Item' })]}
+        workItemsLoading={false}
+        activeSprint={activeSprint}
+        onCompleteSprint={vi.fn()}
+        onStatusChange={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    const timerBtn = screen.getByLabelText('Sprint countdown')
+    expect(timerBtn).toBeInTheDocument()
+
+    fireEvent.click(timerBtn)
+    expect(screen.getByText('Start date')).toBeInTheDocument()
+    expect(screen.getByText('End date')).toBeInTheDocument()
   })
 })

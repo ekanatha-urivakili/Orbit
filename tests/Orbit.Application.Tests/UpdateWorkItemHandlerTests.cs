@@ -5,6 +5,7 @@ using Orbit.Application.WorkItems;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Directory;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Messaging;
@@ -20,7 +21,7 @@ public sealed class UpdateWorkItemHandlerTests
         Guid tenantId, Guid projectId, WorkItemType type = WorkItemType.Task, long sequenceNumber = 1) =>
         WorkItem.Create(
             tenantId, projectId, sequenceNumber, "ORB", $"Card {sequenceNumber}", null,
-            type, Priority.Medium, DateTimeOffset.UtcNow);
+            type, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
     private static UpdateWorkItemCommand CommandFor(WorkItem item, string summary = "Updated summary") =>
         new(
@@ -41,6 +42,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(null),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(),
@@ -100,6 +102,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(null),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(tenantId, assigneeAccount.Id),
@@ -132,6 +135,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(null),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(),
@@ -164,6 +168,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(null),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(),
@@ -187,6 +192,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(null),
             new WorkItemRepositoryStub(),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(),
@@ -220,6 +226,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(Guid.NewGuid()),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(),
@@ -248,6 +255,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(Guid.NewGuid()),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(tenantId, newAssigneeUserId),
@@ -283,6 +291,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(Guid.NewGuid()),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(tenantId, assigneeUserId),
@@ -309,6 +318,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(null),
             new WorkItemRepositoryStub(item, invalidParent),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new TenantMembershipRepositoryStub(),
@@ -337,6 +347,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(null),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(membership),
             facts,
             new TenantMembershipRepositoryStub(),
@@ -365,6 +376,7 @@ public sealed class UpdateWorkItemHandlerTests
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(null),
             new WorkItemRepositoryStub(item),
+            new WorkItemStatusRepositoryStub(),
             new SprintMembershipRepositoryStub(),
             facts,
             new TenantMembershipRepositoryStub(),
@@ -462,6 +474,30 @@ public sealed class UpdateWorkItemHandlerTests
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken) => Task.FromResult(1);
     }
 
+    private sealed class WorkItemStatusRepositoryStub : IWorkItemStatusRepository
+    {
+        public Task AddAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task AddRangeAsync(IReadOnlyCollection<WorkItemStatusDefinition> definitions, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<WorkItemStatusDefinition?> GetAsync(
+            Guid tenantId, Guid projectId, Guid statusId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkItemStatusDefinition?>(null);
+
+        public Task<IReadOnlyList<WorkItemStatusDefinition>> ListByProjectAsync(
+            Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemStatusDefinition>>([]);
+
+        public Task<WorkItemStatusDefinition?> GetDefaultAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkItemStatusDefinition?>(null);
+
+        public Task<bool> IsInUseAsync(Guid tenantId, Guid projectId, Guid statusId, string statusKey, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public Task RemoveAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     private sealed class TenantMembershipRepositoryStub(Guid tenantId = default, params Guid[] activeUserIds)
         : ITenantMembershipRepository
     {
@@ -522,6 +558,10 @@ public sealed class UpdateWorkItemHandlerTests
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
 
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
+
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
@@ -544,6 +584,10 @@ public sealed class UpdateWorkItemHandlerTests
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
 
+        public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BoardViewPreference?>(null);
+
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -559,6 +603,9 @@ public sealed class UpdateWorkItemHandlerTests
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

@@ -22,7 +22,7 @@ import type {
   Priority,
   Profile,
   Project,
-  ProjectRole,
+  ProjectPermission,
   ProjectSetting,
   Team,
   TenantMembership,
@@ -37,6 +37,8 @@ import type {
 import { applyTypographySetting } from '../../typography'
 
 export type SettingsSection = 'profile' | 'notifications' | 'workspace' | 'project' | 'item-types' | 'custom-fields' | 'members' | 'teams' | 'security' | 'appearance'
+
+const ALL_PROJECT_PERMISSIONS: ProjectPermission[] = ['View', 'CreateWorkItem', 'TransitionWorkItem', 'Administer']
 
 const sections: Array<{ id: SettingsSection; label: string; icon: typeof UserRound }> = [
   { id: 'profile', label: 'Profile and preferences', icon: UserRound },
@@ -491,7 +493,44 @@ function ItemTypeRow({ definition }: { definition: WorkItemTypeDefinition }) {
 
 const customFieldTypes: CustomFieldType[] = ['Text', 'Number', 'Date', 'SingleChoice', 'MultiChoice', 'Checkbox']
 const choiceFieldTypes: CustomFieldType[] = ['SingleChoice', 'MultiChoice']
-const blankCustomField = { key: '', label: '', fieldType: 'Text' as CustomFieldType, required: false, order: 0, choiceOptionsText: '' }
+const workItemTypesForScreens: WorkItemType[] =
+  ['Initiative', 'Epic', 'Task', 'Story', 'Spike', 'Test', 'Feature', 'Request', 'Bug', 'Subtask']
+const blankCustomField = {
+  key: '',
+  label: '',
+  fieldType: 'Text' as CustomFieldType,
+  required: false,
+  order: 0,
+  choiceOptionsText: '',
+  applicableTypes: [] as WorkItemType[],
+}
+
+function ApplicableTypesPicker({
+  value,
+  onChange,
+}: {
+  value: WorkItemType[]
+  onChange: (types: WorkItemType[]) => void
+}) {
+  return (
+    <Field variant="panel" label="Applies to (all types if none selected)">
+      <div className="flex flex-wrap gap-3">
+        {workItemTypesForScreens.map((type) => (
+          <label key={type} className="inline-flex items-center gap-1.5 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={value.includes(type)}
+              onChange={() =>
+                onChange(value.includes(type) ? value.filter((t) => t !== type) : [...value, type])
+              }
+            />
+            {type}
+          </label>
+        ))}
+      </div>
+    </Field>
+  )
+}
 
 function parseChoiceOptionsText(
   text: string,
@@ -525,6 +564,7 @@ function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: C
         required: draft.required,
         order: draft.order,
         choiceOptions: isChoiceType ? parseChoiceOptionsText(draft.choiceOptionsText, []) : [],
+        applicableTypes: draft.applicableTypes,
       }),
     onSuccess: (created) => {
       setDraft(blankCustomField)
@@ -534,7 +574,7 @@ function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: C
 
   return (
     <div className="space-y-5">
-      <Panel title="Add a custom field" description="Definitions only for now - not yet available on work items.">
+      <Panel title="Add a custom field" description="Shows on the work item detail view for whichever types it applies to.">
         <form onSubmit={(event) => { event.preventDefault(); createMutation.mutate() }} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field variant="panel" label="Key">
@@ -577,6 +617,10 @@ function CustomFieldsPanel({ projectId, fields }: { projectId: string; fields: C
               </Field>
             )}
           </div>
+          <ApplicableTypesPicker
+            value={draft.applicableTypes}
+            onChange={(applicableTypes) => setDraft((current) => ({ ...current, applicableTypes }))}
+          />
           <SubmitRow mutation={createMutation} />
         </form>
       </Panel>
@@ -631,6 +675,12 @@ function CustomFieldRow({ projectId, field }: { projectId: string; field: Custom
           </Field>
         </div>
       )}
+      <div className="mt-3">
+        <ApplicableTypesPicker
+          value={draft.applicableTypes}
+          onChange={(applicableTypes) => setDraft((current) => ({ ...current, applicableTypes }))}
+        />
+      </div>
       <SubmitRow mutation={mutation} />
     </form>
   )
@@ -655,6 +705,7 @@ function MembersPanel({ project }: { project: Project }) {
     queryKey: ['project-roles', project.id],
     queryFn: () => orbitApi.listProjectRoles(project.id),
   })
+  const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: orbitApi.listRoles })
   const [draft, setDraft] = useState(blankMembership)
   const [invitationEmail, setInvitationEmail] = useState('')
   const [invitationRole, setInvitationRole] = useState<TenantRole>('Member')
@@ -686,8 +737,8 @@ function MembersPanel({ project }: { project: Project }) {
     },
   })
   const assignMutation = useMutation({
-    mutationFn: ({ membershipId, role }: { membershipId: string; role: ProjectRole }) =>
-      orbitApi.assignProjectRole(project.id, membershipId, role),
+    mutationFn: ({ membershipId, roleId }: { membershipId: string; roleId: string }) =>
+      orbitApi.assignProjectRole(project.id, membershipId, roleId),
     onSuccess: () => client.invalidateQueries({ queryKey: ['project-roles', project.id] }),
   })
   const roleMutation = useMutation({
@@ -699,9 +750,26 @@ function MembersPanel({ project }: { project: Project }) {
     mutationFn: (membershipId: string) => orbitApi.deactivateMembership(membershipId),
     onSuccess: () => client.invalidateQueries({ queryKey: ['memberships'] }),
   })
+  const [newRoleName, setNewRoleName] = useState('')
+  const createRoleMutation = useMutation({
+    mutationFn: () => orbitApi.createRole(newRoleName, []),
+    onSuccess: () => {
+      setNewRoleName('')
+      client.invalidateQueries({ queryKey: ['roles'] })
+    },
+  })
+  const updateRolePermissionsMutation = useMutation({
+    mutationFn: ({ roleId, permissions }: { roleId: string; permissions: ProjectPermission[] }) =>
+      orbitApi.updateRolePermissions(roleId, permissions),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['roles'] }),
+  })
+  const deleteRoleMutation = useMutation({
+    mutationFn: (roleId: string) => orbitApi.deleteRole(roleId),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['roles'] }),
+  })
 
   const projectRoleByMembership = new Map(
-    (projectRolesQuery.data ?? []).map((assignment) => [assignment.membershipId, assignment.role]),
+    (projectRolesQuery.data ?? []).map((assignment) => [assignment.membershipId, assignment.roleId]),
   )
 
   return (
@@ -837,13 +905,11 @@ function MembersPanel({ project }: { project: Project }) {
                           disabled={assignMutation.isPending}
                           onChange={(val) =>
                             val &&
-                            assignMutation.mutate({ membershipId: membership.id, role: val as ProjectRole })
+                            assignMutation.mutate({ membershipId: membership.id, roleId: val })
                           }
                           options={[
                             { value: '', label: 'No role' },
-                            { value: 'Viewer', label: 'Viewer' },
-                            { value: 'Member', label: 'Member' },
-                            { value: 'Administrator', label: 'Administrator' },
+                            ...(rolesQuery.data ?? []).map((role) => ({ value: role.id, label: role.name })),
                           ]}
                           searchable={false}
                         />
@@ -872,6 +938,75 @@ function MembersPanel({ project }: { project: Project }) {
             Per-project roles are only visible to project administrators: {projectRolesQuery.error.message}
           </p>
         )}
+      </Panel>
+
+      <Panel title="Project roles" description="Define which permissions each role grants when assigned to a member on a project.">
+        {rolesQuery.data && (
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-xs font-semibold uppercase text-gray-500">
+                <tr>
+                  <th className="px-4 py-2">Role</th>
+                  {ALL_PROJECT_PERMISSIONS.map((permission) => (
+                    <th key={permission} className="px-4 py-2">{permission}</th>
+                  ))}
+                  <th className="px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rolesQuery.data.map((role) => (
+                  <tr key={role.id}>
+                    <td className="px-4 py-2 text-gray-900">
+                      {role.name}
+                      {role.isSystem && <span className="ml-2 text-xs text-gray-400">(system)</span>}
+                    </td>
+                    {ALL_PROJECT_PERMISSIONS.map((permission) => (
+                      <td key={permission} className="px-4 py-2">
+                        <input
+                          type="checkbox"
+                          checked={role.permissions.includes(permission)}
+                          disabled={updateRolePermissionsMutation.isPending}
+                          onChange={(event) => {
+                            const permissions = event.target.checked
+                              ? [...role.permissions, permission]
+                              : role.permissions.filter((p) => p !== permission)
+                            updateRolePermissionsMutation.mutate({ roleId: role.id, permissions })
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
+                    ))}
+                    <td className="px-4 py-2 text-right">
+                      {!role.isSystem && (
+                        <button
+                          onClick={() => deleteRoleMutation.mutate(role.id)}
+                          disabled={deleteRoleMutation.isPending}
+                          className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <form
+          onSubmit={(event) => { event.preventDefault(); createRoleMutation.mutate() }}
+          className="mt-4 flex items-end gap-3"
+        >
+          <Field variant="panel" label="New role name">
+            <input
+              required
+              value={newRoleName}
+              onChange={(event) => setNewRoleName(event.target.value)}
+              placeholder="e.g. Reviewer"
+            />
+          </Field>
+          <SubmitRow mutation={createRoleMutation} />
+        </form>
       </Panel>
 
       <Panel title="Add a member" description="Grant workspace access to a federated identity or service account.">
@@ -1067,6 +1202,10 @@ function SecurityPanel() {
     mutationFn: (identityId: string) => orbitApi.unlinkExternalIdentity(identityId),
     onSuccess: () => client.invalidateQueries({ queryKey: ['linked-identities'] }),
   })
+  const linkGoogleMutation = useMutation({
+    mutationFn: () => orbitApi.startGoogleAccountLink(window.location.origin),
+    onSuccess: ({ authorizeUrl }) => { window.location.href = authorizeUrl },
+  })
   const oidcConfigured = getOidcConfig() !== null
 
   if (!authenticated) {
@@ -1147,13 +1286,25 @@ function SecurityPanel() {
             ))}
           </ul>
         )}
-        {oidcConfigured && (
+        <div className="mt-4 flex gap-2">
           <button
-            onClick={() => startOidcLogin('link')}
-            className="mt-4 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => linkGoogleMutation.mutate()}
+            disabled={linkGoogleMutation.isPending}
+            className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
-            Link SSO identity
+            Link Google account
           </button>
+          {oidcConfigured && (
+            <button
+              onClick={() => startOidcLogin('link')}
+              className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Link SSO identity
+            </button>
+          )}
+        </div>
+        {linkGoogleMutation.isError && (
+          <p className="mt-2 text-xs text-red-600">{linkGoogleMutation.error.message}</p>
         )}
       </Panel>
       <div className="divide-y divide-gray-200 rounded-lg border border-gray-200">

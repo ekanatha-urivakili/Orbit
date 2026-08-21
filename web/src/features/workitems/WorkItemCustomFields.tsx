@@ -2,12 +2,20 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ListChecks } from 'lucide-react'
 import { orbitApi } from '../../api/client'
-import type { WorkItemCustomFieldValue } from '../../api/types'
+import type { WorkItemCustomFieldValue, WorkItemType } from '../../api/types'
 
 const inputClassName =
   'w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
 
-export function WorkItemCustomFields({ workItemId, projectId }: { workItemId: string; projectId: string }) {
+export function WorkItemCustomFields({
+  workItemId,
+  projectId,
+  workItemType,
+}: {
+  workItemId: string
+  projectId: string
+  workItemType: WorkItemType
+}) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState<Record<string, string[]>>({})
   const [error, setError] = useState<string | null>(null)
@@ -23,6 +31,7 @@ export function WorkItemCustomFields({ workItemId, projectId }: { workItemId: st
 
   const definitions = [...(definitionsQuery.data ?? [])]
     .filter((definition) => definition.enabled)
+    .filter((definition) => definition.applicableTypes.length === 0 || definition.applicableTypes.includes(workItemType))
     .sort((a, b) => a.order - b.order)
   const savedValuesByDefinitionId = new Map(
     (valuesQuery.data ?? []).map((value) => [value.customFieldDefinitionId, value.values]),
@@ -46,6 +55,14 @@ export function WorkItemCustomFields({ workItemId, projectId }: { workItemId: st
   if (definitions.length === 0) return null
 
   const handleSave = () => {
+    const missingRequired = definitions.find(
+      (definition) => definition.required && getValue(definition.id).length === 0,
+    )
+    if (missingRequired) {
+      setError(`'${missingRequired.label}' is required.`)
+      return
+    }
+
     setError(null)
     mutation.mutate(
       definitions.map((definition) => ({ customFieldDefinitionId: definition.id, values: getValue(definition.id) })),

@@ -9,9 +9,10 @@ interface FilterBarProps {
   fields: WorkItemFilterFieldState[]
   activeCount: number
   onClearAll: () => void
+  betweenSearchAndFilter?: React.ReactNode
 }
 
-export function FilterBar({ searchTerm, onSearchChange, searchPlaceholder, fields, activeCount, onClearAll }: FilterBarProps) {
+export function FilterBar({ searchTerm, onSearchChange, searchPlaceholder, fields, activeCount, onClearAll, betweenSearchAndFilter }: FilterBarProps) {
   const [open, setOpen] = useState(false)
   const [activeFieldKey, setActiveFieldKey] = useState<WorkItemFilterFieldState['key']>(fields[0]?.key ?? 'status')
   const [fieldSearch, setFieldSearch] = useState('')
@@ -34,17 +35,19 @@ export function FilterBar({ searchTerm, onSearchChange, searchPlaceholder, field
     : []
 
   return (
-    <div className="flex items-center gap-4" data-testid="filter-bar">
-      <div className="relative">
+    <div className="flex items-center gap-4 flex-wrap" data-testid="filter-bar">
+      <div className="relative w-full sm:w-auto">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
         <input
           type="text"
           value={searchTerm}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={searchPlaceholder}
-          className="pl-9 pr-4 py-1.5 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:border-blue-500 text-sm w-64 bg-white dark:bg-[#22272b] dark:border-gray-600 dark:text-white"
+          className="pl-9 pr-4 py-1.5 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:border-blue-500 text-sm w-full sm:w-64 bg-white dark:bg-[#22272b] dark:border-gray-600 dark:text-white"
         />
       </div>
+
+      {betweenSearchAndFilter}
 
       <div className="relative" ref={containerRef}>
         <button
@@ -62,8 +65,8 @@ export function FilterBar({ searchTerm, onSearchChange, searchPlaceholder, field
         </button>
 
         {open && (
-          <div className="absolute left-0 top-full mt-1 flex w-[420px] bg-white border border-gray-200 shadow-xl rounded-lg z-50 overflow-hidden">
-            <div className="w-40 border-r border-gray-100 py-2">
+          <div className="absolute left-0 top-full mt-1 flex w-[420px] max-w-[calc(100vw-2rem)] bg-white border border-gray-200 shadow-xl rounded-lg z-50 overflow-hidden">
+            <div className="w-32 sm:w-40 shrink-0 border-r border-gray-100 py-2">
               {fields.map((field) => (
                 <button
                   key={field.key}

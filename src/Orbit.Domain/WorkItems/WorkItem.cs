@@ -19,6 +19,7 @@ public sealed class WorkItem
         string? description,
         WorkItemType type,
         Priority priority,
+        Guid statusId,
         DateTimeOffset createdAt)
     {
         Id = id;
@@ -30,7 +31,7 @@ public sealed class WorkItem
         Description = description;
         Type = type;
         Priority = priority;
-        Status = WorkItemStatus.Backlog;
+        StatusId = statusId;
         Rank = sequenceNumber * 1024m;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
@@ -60,7 +61,7 @@ public sealed class WorkItem
     public string[] Countries { get; private set; } = [];
     public string[] AttachmentNames { get; private set; } = [];
     public WorkItemType Type { get; private set; }
-    public WorkItemStatus Status { get; private set; }
+    public Guid StatusId { get; private set; }
     public Priority Priority { get; private set; }
     public decimal Rank { get; private set; }
     public bool IsFlagged { get; private set; }
@@ -80,6 +81,7 @@ public sealed class WorkItem
         string? description,
         WorkItemType type,
         Priority priority,
+        Guid statusId,
         DateTimeOffset now)
     {
         var normalizedSummary = summary.Trim();
@@ -94,6 +96,11 @@ public sealed class WorkItem
             throw new DomainException("Description cannot exceed 32,000 characters.");
         }
 
+        if (statusId == Guid.Empty)
+        {
+            throw new DomainException("A work item status is required.");
+        }
+
         return new WorkItem(
             Guid.CreateVersion7(),
             tenantId,
@@ -104,6 +111,7 @@ public sealed class WorkItem
             normalizedDescription,
             type,
             priority,
+            statusId,
             now);
     }
 
@@ -252,14 +260,19 @@ public sealed class WorkItem
         UpdatedAt = now;
     }
 
-    public void ChangeStatus(WorkItemStatus status, DateTimeOffset now)
+    public void ChangeStatus(Guid statusId, DateTimeOffset now)
     {
-        if (Status == status)
+        if (statusId == Guid.Empty)
+        {
+            throw new DomainException("A work item status is required.");
+        }
+
+        if (StatusId == statusId)
         {
             return;
         }
 
-        Status = status;
+        StatusId = statusId;
         Version++;
         UpdatedAt = now;
     }

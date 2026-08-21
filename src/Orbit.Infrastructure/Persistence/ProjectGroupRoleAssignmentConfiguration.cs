@@ -10,19 +10,13 @@ internal sealed class ProjectGroupRoleAssignmentConfiguration : IEntityTypeConfi
 {
     public void Configure(EntityTypeBuilder<ProjectGroupRoleAssignment> builder)
     {
-        builder.ToTable("project_group_role_assignments", table =>
-            table.HasCheckConstraint(
-                "ck_project_group_role_assignments_role",
-                "project_role IN ('Administrator', 'Member', 'Viewer')"));
+        builder.ToTable("project_group_role_assignments");
         builder.HasKey(assignment => assignment.Id);
         builder.Property(assignment => assignment.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(assignment => assignment.TenantId).HasColumnName("tenant_id");
         builder.Property(assignment => assignment.ProjectId).HasColumnName("project_id");
         builder.Property(assignment => assignment.GroupId).HasColumnName("group_id");
-        builder.Property(assignment => assignment.Role)
-            .HasColumnName("project_role")
-            .HasConversion<string>()
-            .HasMaxLength(32);
+        builder.Property(assignment => assignment.RoleId).HasColumnName("role_id");
         builder.Property(assignment => assignment.CreatedAt).HasColumnName("created_at");
         builder.HasIndex(assignment => new
         {
@@ -40,5 +34,9 @@ internal sealed class ProjectGroupRoleAssignmentConfiguration : IEntityTypeConfi
             .HasForeignKey(assignment => new { assignment.TenantId, assignment.GroupId })
             .HasPrincipalKey(group => new { group.TenantId, group.Id })
             .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Role>()
+            .WithMany()
+            .HasForeignKey(assignment => assignment.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

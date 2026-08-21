@@ -19,6 +19,7 @@ public sealed class CloneWorkItemHandler(
     ICurrentPrincipal principal,
     IProjectRepository projects,
     IWorkItemRepository workItems,
+    IWorkItemStatusRepository workItemStatuses,
     IWorkItemHistoryRepository history,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<CloneWorkItemCommand, WorkItemDto>
@@ -34,6 +35,8 @@ public sealed class CloneWorkItemHandler(
             ?? throw new NotFoundException("Project was not found.");
 
         var now = timeProvider.GetUtcNow();
+        var defaultStatus = await workItemStatuses.GetDefaultAsync(tenantContext.TenantId, project.Id, cancellationToken)
+            ?? throw new ValidationException("This project has no workflow statuses configured.");
         var sequence = project.AllocateItemSequence(now);
         var clone = WorkItem.Create(
             tenantContext.TenantId,
@@ -44,6 +47,7 @@ public sealed class CloneWorkItemHandler(
             source.Description,
             source.Type,
             source.Priority,
+            defaultStatus.Id,
             now);
         clone.SetDetails(
             parentId: source.ParentId,

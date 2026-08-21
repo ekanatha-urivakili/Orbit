@@ -113,19 +113,21 @@ public sealed class GroupHandlerTests
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
         var projectGroupRoles = new ProjectGroupRoleRepositoryStub();
+        var role = Role.Create(tenantId, "Member", isSystem: true, [ProjectPermission.View], DateTimeOffset.UtcNow);
         var handler = new AssignGroupProjectRoleHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
             new DirectoryGroupRepositoryStub { Existing = group },
             projectGroupRoles,
+            new RoleRepositoryStub { Existing = role },
             new SettingsRepositoryStub(workspace),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new AssignGroupProjectRoleCommand(project.Id, group.Id, ProjectRole.Member), CancellationToken.None);
+            new AssignGroupProjectRoleCommand(project.Id, group.Id, role.Id), CancellationToken.None);
 
-        Assert.Equal(ProjectRole.Member, result.Role);
+        Assert.Equal(role.Id, result.RoleId);
         Assert.NotNull(projectGroupRoles.Added);
         Assert.Equal(2, workspace.AuthorizationEpoch);
     }
@@ -137,22 +139,24 @@ public sealed class GroupHandlerTests
         var tenantId = workspace.Id;
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var group = DirectoryGroup.Create(tenantId, "Platform Group", Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var role = Role.Create(tenantId, "Administrator", isSystem: true, [ProjectPermission.Administer], DateTimeOffset.UtcNow);
         var existing = ProjectGroupRoleAssignment.Create(
-            tenantId, project.Id, group.Id, ProjectRole.Viewer, DateTimeOffset.UtcNow);
+            tenantId, project.Id, group.Id, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var projectGroupRoles = new ProjectGroupRoleRepositoryStub { Existing = existing };
         var handler = new AssignGroupProjectRoleHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
             new DirectoryGroupRepositoryStub { Existing = group },
             projectGroupRoles,
+            new RoleRepositoryStub { Existing = role },
             new SettingsRepositoryStub(workspace),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new AssignGroupProjectRoleCommand(project.Id, group.Id, ProjectRole.Administrator), CancellationToken.None);
+            new AssignGroupProjectRoleCommand(project.Id, group.Id, role.Id), CancellationToken.None);
 
-        Assert.Equal(ProjectRole.Administrator, result.Role);
+        Assert.Equal(role.Id, result.RoleId);
         Assert.Null(projectGroupRoles.Added);
     }
 
@@ -174,6 +178,7 @@ public sealed class GroupHandlerTests
         public bool CanCreateProject() => allowed;
         public bool CanCreateMembership(TenantRole role) => allowed;
         public bool CanManageTeams() => allowed;
+        public bool CanManageRoles() => allowed;
     }
 
     private sealed class ProjectRepositoryStub(Project project, ProjectPermission[] allowedPermissions) : IProjectRepository
@@ -266,6 +271,27 @@ public sealed class GroupHandlerTests
             Task.FromResult<IReadOnlyList<ProjectGroupRoleAssignment>>(Existing is null ? [] : [Existing]);
     }
 
+    private sealed class RoleRepositoryStub : IRoleRepository
+    {
+        public Role? Existing { get; set; }
+
+        public Task AddAsync(Role role, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<Role?> GetAsync(Guid tenantId, Guid roleId, CancellationToken cancellationToken) =>
+            Task.FromResult(Existing?.Id == roleId ? Existing : null);
+
+        public Task<Role?> GetByNameAsync(Guid tenantId, string name, CancellationToken cancellationToken) =>
+            Task.FromResult(Existing?.Name == name ? Existing : null);
+
+        public Task<IReadOnlyList<Role>> ListByTenantAsync(Guid tenantId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Role>>(Existing is null ? [] : [Existing]);
+
+        public Task<bool> HasAssignmentsAsync(Guid tenantId, Guid roleId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public Task RemoveAsync(Role role, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     private sealed class TenantMembershipLookupStub(Guid membershipId) : ITenantMembershipRepository
     {
         public Task AddAsync(TenantMembership membership, CancellationToken cancellationToken) =>
@@ -313,6 +339,10 @@ public sealed class GroupHandlerTests
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
 
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
+
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
@@ -335,6 +365,10 @@ public sealed class GroupHandlerTests
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
 
+        public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BoardViewPreference?>(null);
+
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -350,6 +384,9 @@ public sealed class GroupHandlerTests
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

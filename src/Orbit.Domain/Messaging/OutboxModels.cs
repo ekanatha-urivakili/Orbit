@@ -47,6 +47,12 @@ public sealed class OutboxEmailMessage
     public string? LastError { get; private set; }
     public string? TraceParent { get; private set; }
 
+    /// <summary>
+    /// Earliest instant the worker may dispatch this message, or null for "as soon as claimed".
+    /// Set from the recipient's notification preference (quiet hours/digest cadence) at enqueue time.
+    /// </summary>
+    public DateTimeOffset? NotBefore { get; private set; }
+
     public static OutboxEmailMessage Create(string toEmail, string subject, string htmlBody, DateTimeOffset now)
     {
         if (string.IsNullOrWhiteSpace(toEmail) || toEmail.Length > 320)
@@ -102,6 +108,11 @@ public sealed class OutboxEmailMessage
     public void SetTraceParent(string? traceParent)
     {
         TraceParent = traceParent;
+    }
+
+    public void ScheduleFor(DateTimeOffset? notBefore)
+    {
+        NotBefore = notBefore;
     }
 
     public void MarkPublished(DateTimeOffset now)

@@ -43,7 +43,7 @@ function buildWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
     countries: [],
     attachmentNames: [],
     type: 'Story',
-    status: 'Backlog',
+    statusId: 'Backlog',
     priority: 'Medium',
     rank: 1024,
     isFlagged: false,
@@ -103,6 +103,7 @@ describe('WorkItemDetailView epic breadcrumb', () => {
     fireEvent.click(screen.getByTitle(`${epic.key}: ${epic.summary}`))
 
     expect(onOpenWorkItem).toHaveBeenCalledWith(epic)
+    await waitFor(() => expect(orbitApi.listWorkItemComments).toHaveBeenCalled())
   })
 })
 
@@ -133,11 +134,13 @@ describe('WorkItemDetailView change work type', () => {
     ]
     vi.mocked(orbitApi.listWorkItemTypes).mockResolvedValue(typeDefinitions)
     const { item } = renderDetailView()
+    vi.mocked(orbitApi.changeWorkItemType).mockResolvedValue({ ...item, type: 'Bug' })
 
     fireEvent.click(screen.getByTitle('Story - Click to change work type'))
     const bugOption = await screen.findByText('Bug')
     fireEvent.click(bugOption)
 
     await waitFor(() => expect(orbitApi.changeWorkItemType).toHaveBeenCalledWith(item, 'Bug'))
+    await screen.findByTitle('Bug - Click to change work type')
   })
 })

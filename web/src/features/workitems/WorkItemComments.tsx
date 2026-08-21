@@ -5,6 +5,7 @@ import { orbitApi } from '../../api/client'
 import { RichTextEditor } from '../../components/form/RichTextEditor'
 import { isRichTextEmpty } from '../../components/form/editorConstants'
 import { RichTextView } from '../../components/form/RichTextView'
+import { useDraft } from '../../hooks/useDraft'
 import type { Profile, TenantMembership, WorkItem } from '../../api/types'
 
 type ActivityTab = 'all' | 'comments' | 'history' | 'log'
@@ -36,6 +37,13 @@ export function WorkItemComments({
 
   const currentMember = members.find((m) => m.userId === profile?.userId)
 
+  const { discard: discardCommentDraft } = useDraft(
+    `comment:${workItemId}`,
+    newCommentBody,
+    setNewCommentBody,
+    isRichTextEmpty,
+  )
+
   const commentsQuery = useQuery({
     queryKey: ['work-item-comments', workItemId],
     queryFn: () => orbitApi.listWorkItemComments(workItemId),
@@ -59,6 +67,7 @@ export function WorkItemComments({
     mutationFn: (body: string) => orbitApi.addWorkItemComment(workItemId, body),
     onSuccess: () => {
       setNewCommentBody('')
+      discardCommentDraft()
       queryClient.invalidateQueries({ queryKey: ['work-item-comments', workItemId] })
     },
   })

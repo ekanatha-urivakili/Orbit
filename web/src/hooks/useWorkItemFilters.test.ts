@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { NO_PARENT, UNASSIGNED, useWorkItemFilters } from './useWorkItemFilters'
-import type { TenantMembership, WorkItem, WorkItemStatus } from '../api/types'
+import type { TenantMembership, WorkItem } from '../api/types'
 
-const statusLabels: Record<WorkItemStatus, string> = {
+const statusLabels: Record<string, string> = {
   Backlog: 'To Do',
   Selected: 'Selected',
   InProgress: 'In progress',
@@ -36,7 +36,7 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
     countries: [],
     attachmentNames: [],
     type: 'Story',
-    status: 'Backlog',
+    statusId: 'Backlog',
     priority: 'High',
     rank: 1024,
     isFlagged: false,
@@ -100,7 +100,7 @@ describe('useWorkItemFilters', () => {
   })
 
   it('filters by status', () => {
-    const items = [makeItem({ id: 'a', status: 'Done' }), makeItem({ id: 'b', status: 'Backlog' })]
+    const items = [makeItem({ id: 'a', statusId: 'Done' }), makeItem({ id: 'b', statusId: 'Backlog' })]
     const { result } = renderHook(() => useWorkItemFilters(items, [], statusLabels, {}))
     const statusField = () => result.current.fields.find((field) => field.key === 'status')!
 
@@ -125,9 +125,9 @@ describe('useWorkItemFilters', () => {
 
   it('combines multiple active filters with AND semantics', () => {
     const items = [
-      makeItem({ id: 'a', status: 'Done', assigneeUserId: 'user-1' }),
-      makeItem({ id: 'b', status: 'Done', assigneeUserId: null }),
-      makeItem({ id: 'c', status: 'Backlog', assigneeUserId: 'user-1' }),
+      makeItem({ id: 'a', statusId: 'Done', assigneeUserId: 'user-1' }),
+      makeItem({ id: 'b', statusId: 'Done', assigneeUserId: null }),
+      makeItem({ id: 'c', statusId: 'Backlog', assigneeUserId: 'user-1' }),
     ]
     const member = makeMember({ userId: 'user-1' })
     const { result } = renderHook(() => useWorkItemFilters(items, [member], statusLabels, {}))
@@ -141,7 +141,7 @@ describe('useWorkItemFilters', () => {
   })
 
   it('clearAll resets search term and every field', () => {
-    const items = [makeItem({ id: 'a', status: 'Done' })]
+    const items = [makeItem({ id: 'a', statusId: 'Done' })]
     const { result } = renderHook(() => useWorkItemFilters(items, [], statusLabels, {}))
     const statusField = () => result.current.fields.find((field) => field.key === 'status')!
 

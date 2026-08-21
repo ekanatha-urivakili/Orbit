@@ -18,7 +18,7 @@ public sealed class AddWorklogHandlerTests
         var membershipId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Log work on this card", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var worklogs = new WorkItemWorklogRepositoryStub();
         var handler = new AddWorklogHandler(
             new TenantContextStub(tenantId), new CurrentPrincipalStub(membershipId),
@@ -40,7 +40,7 @@ public sealed class AddWorklogHandlerTests
         var authorMembershipId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Log work on this card", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var worklog = WorkItemWorklog.Create(
             tenantId, workItem.Id, authorMembershipId, 30, DateOnly.FromDateTime(DateTime.UtcNow), null,
             DateTimeOffset.UtcNow);

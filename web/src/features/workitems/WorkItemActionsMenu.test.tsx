@@ -46,7 +46,7 @@ function buildWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
     countries: [],
     attachmentNames: [],
     type: 'Task',
-    status: 'Backlog',
+    statusId: 'Backlog',
     priority: 'Medium',
     rank: 1024,
     isFlagged: false,

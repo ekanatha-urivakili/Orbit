@@ -13,19 +13,19 @@ export function SubNavigation({
   setActiveTab: (tab: TabType) => void
 }) {
   return (
-    <div className="bg-white border-b border-gray-200 pt-6 px-8 sticky top-14 z-10">
+    <div className="bg-white border-b border-gray-200 pt-6 px-4 sm:px-8 sticky top-12 z-10">
       <div className="text-xs text-gray-500 mb-2">Spaces</div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-500 text-white rounded flex items-center justify-center font-bold">O</div>
-          <h1 className="text-2xl font-semibold text-gray-900">{project?.name || 'My Software Team'}</h1>
-          <button className="text-gray-400 hover:text-gray-600"><Users size={20} /></button>
-          <button className="text-gray-400 hover:text-gray-600"><MoreHorizontal size={20} /></button>
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 bg-blue-500 text-white rounded flex items-center justify-center font-bold shrink-0">O</div>
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 truncate">{project?.name || 'My Software Team'}</h1>
+          <button className="text-gray-400 hover:text-gray-600 hidden sm:inline-flex"><Users size={20} /></button>
+          <button className="text-gray-400 hover:text-gray-600 hidden sm:inline-flex"><MoreHorizontal size={20} /></button>
         </div>
-        <div className="flex items-center gap-2">
-          <button className="p-2 hover:bg-gray-100 rounded text-gray-600"><Share2 size={18} /></button>
-          <button className="p-2 hover:bg-gray-100 rounded text-gray-600"><Zap size={18} /></button>
-          <button className="p-2 hover:bg-gray-100 rounded text-gray-600"><Maximize2 size={18} /></button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button className="p-2 hover:bg-gray-100 rounded text-gray-600 hidden sm:inline-flex"><Share2 size={18} /></button>
+          <button className="p-2 hover:bg-gray-100 rounded text-gray-600 hidden sm:inline-flex"><Zap size={18} /></button>
+          <button className="p-2 hover:bg-gray-100 rounded text-gray-600 hidden sm:inline-flex"><Maximize2 size={18} /></button>
         </div>
       </div>
       

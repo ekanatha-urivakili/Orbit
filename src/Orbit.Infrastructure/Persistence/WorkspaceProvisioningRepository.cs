@@ -51,6 +51,7 @@ internal sealed class WorkspaceProvisioningRepository(OrbitDbContext dbContext)
         Workspace workspace,
         OrganizationMembership organizationMembership,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         Guid currentTenantId,
         CancellationToken cancellationToken)
     {
@@ -68,6 +69,7 @@ internal sealed class WorkspaceProvisioningRepository(OrbitDbContext dbContext)
         await dbContext.WorkItemTypeDefinitions.AddRangeAsync(
             WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
             cancellationToken);
+        await dbContext.Roles.AddRangeAsync(systemRoles, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         if (currentTenantId != Guid.Empty)
@@ -86,6 +88,7 @@ internal sealed class WorkspaceProvisioningRepository(OrbitDbContext dbContext)
     public async Task AddWorkspaceToOrganizationAsync(
         Workspace workspace,
         TenantMembership ownerMembership,
+        IReadOnlyList<Role> systemRoles,
         Guid currentTenantId,
         CancellationToken cancellationToken)
     {
@@ -101,6 +104,7 @@ internal sealed class WorkspaceProvisioningRepository(OrbitDbContext dbContext)
         await dbContext.WorkItemTypeDefinitions.AddRangeAsync(
             WorkItemTypeDefinition.CreateSoftwareDefaults(workspace.Id, workspace.CreatedAt),
             cancellationToken);
+        await dbContext.Roles.AddRangeAsync(systemRoles, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         if (currentTenantId != Guid.Empty)

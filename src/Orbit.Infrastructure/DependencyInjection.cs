@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<IDirectoryGroupRepository, DirectoryGroupRepository>();
         services.AddScoped<IGroupMembershipRepository, GroupMembershipRepository>();
         services.AddScoped<IProjectGroupRoleRepository, ProjectGroupRoleRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IBoardRepository, BoardRepository>();
         services.AddScoped<ISprintRepository, SprintRepository>();
         services.AddScoped<ISprintMembershipRepository, SprintMembershipRepository>();
@@ -63,6 +64,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IWorkspaceInvitationRepository, WorkspaceInvitationRepository>();
         services.AddScoped<IWorkItemTypeRepository, WorkItemTypeRepository>();
+        services.AddScoped<IWorkItemStatusRepository, WorkItemStatusRepository>();
         services.AddScoped<ICustomFieldRepository, CustomFieldRepository>();
         services.AddScoped<IWorkItemCustomFieldValueRepository, WorkItemCustomFieldValueRepository>();
         services.AddScoped<IIdempotencyRecordRepository, IdempotencyRecordRepository>();

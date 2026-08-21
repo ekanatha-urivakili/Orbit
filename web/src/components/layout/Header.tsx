@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Bell, ChevronRight, CircleUserRound, CreditCard, Grip, HelpCircle, LogOut, Search, Settings, Shield, SlidersHorizontal, UsersRound } from 'lucide-react'
+import { Bell, ChevronRight, CircleUserRound, CreditCard, Download, Grip, HelpCircle, LogOut, Menu, Search, Settings, Shield, SlidersHorizontal, UsersRound } from 'lucide-react'
 import type { Profile, ThemePreference } from '../../api/types'
 import type { SettingsSection } from '../../features/settings/SettingsView'
 import { getInitials } from '../../lib/initials'
 import * as auth from '../../api/auth'
+import { useInstallPrompt } from '../../hooks/useInstallPrompt'
 
 interface HeaderProps {
   online: boolean
@@ -13,9 +14,10 @@ interface HeaderProps {
   onHomeClick: () => void
   onOpenSettings: (section: SettingsSection) => void
   onThemeChange: (theme: ThemePreference) => void
+  onOpenMobileMenu?: () => void
 }
 
-export function Header({ online, profile, logoUrl, onCreateClick, onHomeClick, onOpenSettings, onThemeChange }: HeaderProps) {
+export function Header({ online, profile, logoUrl, onCreateClick, onHomeClick, onOpenSettings, onThemeChange, onOpenMobileMenu }: HeaderProps) {
   const [openMenu, setOpenMenu] = useState<'settings' | 'profile' | null>(null)
   const [themeOpen, setThemeOpen] = useState(false)
   const initials = getInitials(profile?.displayName)
@@ -24,7 +26,10 @@ export function Header({ online, profile, logoUrl, onCreateClick, onHomeClick, o
   return (
     <header className="flex items-center justify-between px-3 md:px-4 h-12 bg-[#0052cc] text-white sticky top-0 z-50">
       <div className="flex items-center gap-2.5 shrink-0">
-        <button className="p-1 hover:bg-white/20 rounded" aria-label="App switcher"><Grip size={18} /></button>
+        {onOpenMobileMenu && (
+          <button onClick={onOpenMobileMenu} className="p-1 hover:bg-white/20 rounded lg:hidden" aria-label="Open menu"><Menu size={18} /></button>
+        )}
+        <button className="p-1 hover:bg-white/20 rounded hidden sm:inline-flex" aria-label="App switcher"><Grip size={18} /></button>
         <button onClick={onHomeClick} className="flex items-center gap-1.5 rounded px-1 py-0.5 font-bold text-lg tracking-tight hover:bg-white/10" aria-label="Orbit home">
           {logoUrl
             ? <img src={logoUrl} alt="" className="h-6 w-6 rounded object-contain bg-white" />
@@ -83,6 +88,7 @@ function SettingsMenu({ onSelect }: { onSelect: (section: SettingsSection) => vo
 
 function ProfileMenu({ profile, themeOpen, setThemeOpen, onSelect, onHomeClick, onThemeChange }: { profile?: Profile; themeOpen: boolean; setThemeOpen: (open: boolean) => void; onSelect: (section: SettingsSection) => void; onHomeClick: () => void; onThemeChange: (theme: ThemePreference) => void }) {
   const initials = getInitials(profile?.displayName)
+  const { canInstall, showIosInstructions, promptInstall } = useInstallPrompt()
   return <div className="absolute right-0 top-11 w-[320px] max-w-[90vw] rounded-xl border border-gray-200 bg-white p-3 text-gray-900 shadow-2xl">
     <div className="mb-2 flex items-center gap-3 rounded-lg bg-gray-50 p-3">
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-400 text-lg font-bold overflow-hidden">
@@ -94,6 +100,8 @@ function ProfileMenu({ profile, themeOpen, setThemeOpen, onSelect, onHomeClick, 
     <MenuItem icon={<Shield size={19} />} title="Account settings" onClick={() => onSelect('security')} />
     <div className="relative"><MenuItem icon={<SlidersHorizontal size={19} />} title="Theme" trailing={<ChevronRight size={17} />} onClick={() => setThemeOpen(!themeOpen)} />{themeOpen && <div className="mx-2 mb-2 rounded-lg border border-gray-200 bg-gray-50 p-1">{(['Light', 'Dark', 'System'] as ThemePreference[]).map((theme) => <button key={theme} onClick={() => onThemeChange(theme)} className={`flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-white ${profile?.theme === theme ? 'font-semibold text-blue-700' : ''}`}>{theme === 'System' ? 'Match browser' : theme}</button>)}</div>}</div>
     <MenuItem icon={<HelpCircle size={19} />} title="Open Quickstart / Home" onClick={onHomeClick} />
+    {canInstall && <MenuItem icon={<Download size={19} />} title="Install Orbit" detail="Add Orbit to your device as an app" onClick={promptInstall} />}
+    {showIosInstructions && <MenuItem icon={<Download size={19} />} title="Install Orbit" detail="Tap Share, then “Add to Home Screen”" disabled />}
     <div className="my-2 border-t border-gray-200" />
     <MenuItem icon={<LogOut size={19} />} title="Log out" onClick={() => auth.logout()} />
   </div>

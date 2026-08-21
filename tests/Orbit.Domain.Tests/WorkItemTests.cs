@@ -11,6 +11,7 @@ public sealed class WorkItemTests
     {
         var tenantId = Guid.NewGuid();
         var projectId = Guid.NewGuid();
+        var statusId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
         var item = WorkItem.Create(
@@ -22,10 +23,10 @@ public sealed class WorkItemTests
             null,
             WorkItemType.Story,
             Priority.High,
-            now);
+            statusId, now);
 
         Assert.Equal("ORB-42", item.Key);
-        Assert.Equal(WorkItemStatus.Backlog, item.Status);
+        Assert.Equal(statusId, item.StatusId);
         Assert.Equal(1, item.Version);
     }
 
@@ -41,7 +42,7 @@ public sealed class WorkItemTests
             null,
             WorkItemType.Task,
             Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         Assert.Throws<DomainException>(action);
     }
@@ -58,12 +59,13 @@ public sealed class WorkItemTests
             null,
             WorkItemType.Task,
             Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var inProgressStatusId = Guid.NewGuid();
 
-        item.ChangeStatus(WorkItemStatus.InProgress, DateTimeOffset.UtcNow.AddMinutes(1));
-        item.ChangeStatus(WorkItemStatus.InProgress, DateTimeOffset.UtcNow.AddMinutes(2));
+        item.ChangeStatus(inProgressStatusId, DateTimeOffset.UtcNow.AddMinutes(1));
+        item.ChangeStatus(inProgressStatusId, DateTimeOffset.UtcNow.AddMinutes(2));
 
-        Assert.Equal(WorkItemStatus.InProgress, item.Status);
+        Assert.Equal(inProgressStatusId, item.StatusId);
         Assert.Equal(2, item.Version);
     }
 
@@ -79,7 +81,7 @@ public sealed class WorkItemTests
             null,
             WorkItemType.Task,
             Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         item.Reorder(512m, DateTimeOffset.UtcNow.AddMinutes(1));
 
@@ -99,7 +101,7 @@ public sealed class WorkItemTests
             null,
             WorkItemType.Task,
             Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         item.Reorder(item.Rank, DateTimeOffset.UtcNow.AddMinutes(1));
 
@@ -111,7 +113,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Reclassify this card", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         item.ChangeType(WorkItemType.Bug, DateTimeOffset.UtcNow.AddMinutes(1));
 
@@ -124,7 +126,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Keep this card's type", null,
-            WorkItemType.Story, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Story, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         item.ChangeType(WorkItemType.Story, DateTimeOffset.UtcNow.AddMinutes(1));
 
@@ -139,7 +141,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Structural item", null,
-            sourceType, Priority.Medium, DateTimeOffset.UtcNow);
+            sourceType, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         var action = () => item.ChangeType(WorkItemType.Task, DateTimeOffset.UtcNow.AddMinutes(1));
 
@@ -154,7 +156,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Regular item", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         var action = () => item.ChangeType(targetType, DateTimeOffset.UtcNow.AddMinutes(1));
 
@@ -166,7 +168,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Flag this card", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         item.SetFlagged(true, DateTimeOffset.UtcNow.AddMinutes(1));
         Assert.True(item.IsFlagged);
@@ -185,7 +187,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Cover this card", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var attachmentId = Guid.NewGuid();
 
         item.SetCover(attachmentId, DateTimeOffset.UtcNow.AddMinutes(1));
@@ -199,7 +201,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Archive this card", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         item.Archive(DateTimeOffset.UtcNow.AddMinutes(1));
         Assert.True(item.IsArchived);
@@ -220,7 +222,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Move this card", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var targetProjectId = Guid.NewGuid();
 
         item.MoveToProject(targetProjectId, 7, "TGT", DateTimeOffset.UtcNow.AddMinutes(1));
@@ -235,7 +237,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Plan the release", null,
-            WorkItemType.Epic, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Epic, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         var action = () => item.SetDetails(
             null, null, null, null, null, null, null, null, null, null, null, null,
@@ -249,7 +251,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Investigate latency", null,
-            WorkItemType.Spike, Priority.High, DateTimeOffset.UtcNow);
+            WorkItemType.Spike, Priority.High, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         item.SetDetails(
             null, null, null, null, null, null, null, null, null, null, null, null, 3,
@@ -265,7 +267,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Ship the release", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var startDate = new DateOnly(2026, 8, 20);
         var dueDate = new DateOnly(2026, 8, 27);
 
@@ -282,7 +284,7 @@ public sealed class WorkItemTests
     {
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Ship the release", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
         var action = () => item.SetDetails(
             null, null, null, null, null, null, null, null, null,
@@ -298,7 +300,7 @@ public sealed class WorkItemTests
         var now = DateTimeOffset.UtcNow;
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Original summary", null,
-            WorkItemType.Task, Priority.Medium, now);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), now);
 
         item.Update(
             "Updated summary", "Updated description", Priority.High,
@@ -318,7 +320,7 @@ public sealed class WorkItemTests
         var now = DateTimeOffset.UtcNow;
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Original summary", null,
-            WorkItemType.Task, Priority.Medium, now);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), now);
 
         var action = () => item.Update(
             "x", null, Priority.Medium,
@@ -334,7 +336,7 @@ public sealed class WorkItemTests
         var now = DateTimeOffset.UtcNow;
         var item = WorkItem.Create(
             Guid.NewGuid(), Guid.NewGuid(), 1, "ORB", "Plan the release", null,
-            WorkItemType.Epic, Priority.Medium, now);
+            WorkItemType.Epic, Priority.Medium, Guid.NewGuid(), now);
 
         var action = () => item.Update(
             "Plan the release", null, Priority.Medium,

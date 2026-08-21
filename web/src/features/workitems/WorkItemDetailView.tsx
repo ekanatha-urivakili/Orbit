@@ -28,14 +28,13 @@ import { WorkItemShareMenu } from './WorkItemShareMenu'
 import { WorkItemActionsMenu } from './WorkItemActionsMenu'
 import { WorkItemTypeIcon } from './typeIcons'
 import { RichTextEditor } from '../../components/form/RichTextEditor'
-import { allStatuses, statusMeta } from '../board/constants'
+import { statusMeta } from '../board/constants'
 import type {
   Priority,
   Profile,
   Project,
   TenantMembership,
   WorkItem,
-  WorkItemStatus,
   WorkItemType,
   Sprint,
 } from '../../api/types'
@@ -78,7 +77,7 @@ export function WorkItemDetailView({
   members: TenantMembership[]
   priorities: Priority[]
   onBack: () => void
-  onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
+  onStatusChange: (workItem: WorkItem, statusId: string) => void
   onOpenWorkItem: (workItem: WorkItem) => void
   onNavigateHome?: () => void
   onManageWorkTypes?: () => void
@@ -86,9 +85,11 @@ export function WorkItemDetailView({
 }) {
   const queryClient = useQueryClient()
   const [currentType, setCurrentType] = useState<WorkItemType>(item.type)
-  useEffect(() => {
+  const [currentTypeItemId, setCurrentTypeItemId] = useState(item.id)
+  if (item.id !== currentTypeItemId) {
+    setCurrentTypeItemId(item.id)
     setCurrentType(item.type)
-  }, [item.type])
+  }
   const [typeMenuOpen, setTypeMenuOpen] = useState(false)
   const [epicPopupOpen, setEpicPopupOpen] = useState(false)
   const [epicMenuOpen, setEpicMenuOpen] = useState(false)
@@ -253,6 +254,13 @@ export function WorkItemDetailView({
     queryKey: ['work-item-types'],
     queryFn: () => orbitApi.listWorkItemTypes(),
   })
+
+  const statusesQuery = useQuery({
+    queryKey: ['work-item-statuses', item.projectId],
+    queryFn: () => orbitApi.listWorkItemStatuses(item.projectId),
+  })
+  const statuses = statusesQuery.data ?? []
+  const currentStatus = statuses.find((status) => status.id === item.statusId)
 
   const teamsQuery = useQuery({
     queryKey: ['teams'],
@@ -717,7 +725,7 @@ export function WorkItemDetailView({
           </div>
 
           <WorkItemAttachments workItemId={item.id} members={members} />
-          <WorkItemCustomFields workItemId={item.id} projectId={item.projectId} />
+          <WorkItemCustomFields workItemId={item.id} projectId={item.projectId} workItemType={currentType} />
           {project && (
             <WorkItemSubtasks
               parent={item}
@@ -770,17 +778,17 @@ export function WorkItemDetailView({
         >
           {/* Top Status & Actions row (matching Jira Screenshot 1) */}
           <div className="flex items-center justify-between gap-2 mb-4">
-            <label className={`work-item-detail-status work-item-detail-status--${statusMeta[item.status].tone} !mb-0 flex-1`}>
+            <label className={`work-item-detail-status work-item-detail-status--${currentStatus ? statusMeta(currentStatus).tone : 'slate'} !mb-0 flex-1`}>
               <span className="sr-only">Status</span>
               <select
-                value={item.status}
+                value={item.statusId}
                 onChange={(event) =>
-                  onStatusChange(item, event.target.value as WorkItemStatus)
+                  onStatusChange(item, event.target.value)
                 }
               >
-                {allStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {statusMeta[status].label}
+                {statuses.map((status) => (
+                  <option key={status.id} value={status.id}>
+                    {statusMeta(status).label}
                   </option>
                 ))}
               </select>

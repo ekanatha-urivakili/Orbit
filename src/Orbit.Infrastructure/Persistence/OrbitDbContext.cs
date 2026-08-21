@@ -26,6 +26,8 @@ public sealed class OrbitDbContext(
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<ProjectRoleAssignment> ProjectRoleAssignments => Set<ProjectRoleAssignment>();
     public DbSet<ProjectGroupRoleAssignment> ProjectGroupRoleAssignments => Set<ProjectGroupRoleAssignment>();
+    public DbSet<Role> Roles => Set<Role>();
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<ExternalIdentity> ExternalIdentities => Set<ExternalIdentity>();
     public DbSet<LocalCredential> LocalCredentials => Set<LocalCredential>();
@@ -55,6 +57,8 @@ public sealed class OrbitDbContext(
     public DbSet<AttachmentScanRequest> AttachmentScanRequests => Set<AttachmentScanRequest>();
     public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
     public DbSet<WorkItemTypeDefinition> WorkItemTypeDefinitions => Set<WorkItemTypeDefinition>();
+    public DbSet<WorkItemStatusDefinition> WorkItemStatusDefinitions => Set<WorkItemStatusDefinition>();
+    public DbSet<BoardViewPreference> BoardViewPreferences => Set<BoardViewPreference>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
     public DbSet<WorkItemCustomFieldValue> WorkItemCustomFieldValues => Set<WorkItemCustomFieldValue>();
     public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();
@@ -79,6 +83,7 @@ public sealed class OrbitDbContext(
             .HasQueryFilter(assignment => assignment.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<ProjectGroupRoleAssignment>()
             .HasQueryFilter(assignment => assignment.TenantId == tenantContext.TenantId);
+        modelBuilder.Entity<Role>().HasQueryFilter(role => role.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkspaceSetting>()
             .HasQueryFilter(setting => setting.TenantId == tenantContext.TenantId);
         modelBuilder.Entity<WorkspaceTypographySetting>()

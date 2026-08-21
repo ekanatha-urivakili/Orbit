@@ -115,6 +115,7 @@ public sealed class SignUpHandlerTests
             OrganizationMembership organizationMembership,
             TenantMembership ownerMembership,
             RefreshSession refreshSession,
+            IReadOnlyList<Role> systemRoles,
             CancellationToken cancellationToken)
         {
             Account = account;
@@ -135,6 +136,7 @@ public sealed class SignUpHandlerTests
             OrganizationMembership organizationMembership,
             TenantMembership ownerMembership,
             GoogleSignInHandoff handoff,
+            IReadOnlyList<Role> systemRoles,
             CancellationToken cancellationToken)
         {
             Account = account;

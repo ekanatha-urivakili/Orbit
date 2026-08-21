@@ -11,10 +11,10 @@ import {
   Maximize2,
 } from 'lucide-react'
 import { groupWorkItemsByStatus } from '../../board'
-import { allStatuses, statusMeta } from '../board/constants'
+import { statusMeta } from '../board/constants'
 import { getInitials } from '../../lib/initials'
 import { WorkItemTypeIcon } from '../workitems/typeIcons'
-import type { Profile, TenantMembership, WorkItem, Priority } from '../../api/types'
+import type { Profile, TenantMembership, WorkItem, Priority, WorkItemStatusDefinition } from '../../api/types'
 
 const toneColors: Record<string, string> = {
   slate: '#6b778c',
@@ -61,17 +61,21 @@ function formatDateGroup(iso: string): string {
 
 export function SummaryView({
   workItems,
+  statuses,
   profile,
   members = [],
   onOpenWorkItem,
   onSwitchTab,
 }: {
   workItems: WorkItem[]
+  statuses: WorkItemStatusDefinition[]
   profile?: Profile
   members?: TenantMembership[]
   onOpenWorkItem?: (item: WorkItem) => void
   onSwitchTab?: (tab: 'Board' | 'Backlog') => void
 }) {
+  const statusesById = new Map(statuses.map((status) => [status.id, status]))
+  const doneStatusIds = new Set(statuses.filter((status) => status.category === 'Done').map((status) => status.id))
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null)
   const [filterMenuOpen, setFilterMenuOpen] = useState(false)
@@ -81,36 +85,37 @@ export function SummaryView({
     return item.assigneeUserId === assigneeFilter
   })
 
-  const sevenDaysAgo = Date.now() - sevenDaysMs
-  const nextSevenDays = Date.now() + sevenDaysMs
+  const [now] = useState(() => Date.now())
+  const sevenDaysAgo = now - sevenDaysMs
+  const nextSevenDays = now + sevenDaysMs
 
   const createdRecently = filteredItems.filter((item) => new Date(item.createdAt).getTime() >= sevenDaysAgo).length
   const updatedRecently = filteredItems.filter((item) => new Date(item.updatedAt).getTime() >= sevenDaysAgo).length
   const completedRecently = filteredItems.filter(
-    (item) => item.status === 'Done' && new Date(item.updatedAt).getTime() >= sevenDaysAgo,
+    (item) => doneStatusIds.has(item.statusId) && new Date(item.updatedAt).getTime() >= sevenDaysAgo,
   ).length
   const dueSoonRecently = filteredItems.filter((item) => {
-    if (item.status === 'Done') return false
-    if (!item.identifiedOn && !item.description) return false
-    const match = item.description?.match(/Due date:\s*(\d{4}-\d{2}-\d{2})/)
-    if (!match) return false
-    const dueTime = new Date(match[1]).getTime()
-    return dueTime >= Date.now() && dueTime <= nextSevenDays
+    if (doneStatusIds.has(item.statusId)) return false
+    const dueDateSource = item.dueDate ?? item.description?.match(/Due date:\s*(\d{4}-\d{2}-\d{2})/)?.[1]
+    if (!dueDateSource) return false
+    const dueTime = new Date(dueDateSource).getTime()
+    return dueTime >= now && dueTime <= nextSevenDays
   }).length
 
-  const statusCounts = groupWorkItemsByStatus(allStatuses, filteredItems)
-  const nonEmptyStatuses = allStatuses
-    .map((status) => ({ status, ...statusMeta[status] }))
-    .filter((column) => (statusCounts.get(column.status)?.length ?? 0) > 0)
+  const statusCounts = groupWorkItemsByStatus(statuses.map((status) => status.id), filteredItems)
+  const nonEmptyStatuses = statuses
+    .map((status) => ({ status, ...statusMeta(status) }))
+    .filter((column) => (statusCounts.get(column.status.id)?.length ?? 0) > 0)
 
-  let offset = 0
-  const segments = nonEmptyStatuses.map((column) => {
-    const count = statusCounts.get(column.status)?.length ?? 0
-    const length = filteredItems.length === 0 ? 0 : (count / filteredItems.length) * circumference
-    const segment = { column, dasharray: `${length} ${circumference}`, dashoffset: -offset }
-    offset += length
-    return segment
+  const segmentLengths = nonEmptyStatuses.map((column) => {
+    const count = statusCounts.get(column.status.id)?.length ?? 0
+    return filteredItems.length === 0 ? 0 : (count / filteredItems.length) * circumference
   })
+  const segments = nonEmptyStatuses.map((column, index) => ({
+    column,
+    dasharray: `${segmentLengths[index]} ${circumference}`,
+    dashoffset: -segmentLengths.slice(0, index).reduce((sum, length) => sum + length, 0),
+  }))
 
   const sortedActivity = [...filteredItems]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -318,7 +323,7 @@ export function SummaryView({
                 <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
                   {segments.map(({ column, dasharray, dashoffset }) => (
                     <circle
-                      key={column.status}
+                      key={column.status.id}
                       cx="50"
                       cy="50"
                       r="40"
@@ -344,16 +349,16 @@ export function SummaryView({
               {/* Legend List */}
               <div className="space-y-3.5 w-full sm:w-48">
                 {nonEmptyStatuses.map((column) => (
-                  <div key={column.status} className="flex items-center justify-between text-sm">
+                  <div key={column.status.id} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2.5 text-[#172b4d] font-medium">
                       <div
                         className="w-3.5 h-3.5 rounded-sm shrink-0 shadow-xs"
                         style={{ backgroundColor: toneColors[column.tone] ?? '#6b778c' }}
                       />
-                      <span>{column.label === 'Backlog' ? 'To Do' : column.label}</span>
+                      <span>{column.status.category === 'ToDo' ? 'To Do' : column.label}</span>
                     </div>
                     <span className="font-bold text-[#091e42]">
-                      : {statusCounts.get(column.status)?.length ?? 0}
+                      : {statusCounts.get(column.status.id)?.length ?? 0}
                     </span>
                   </div>
                 ))}
@@ -421,14 +426,16 @@ export function SummaryView({
                                 </button>{' '}
                                 <span
                                   className={`inline-block px-1.5 py-0.5 text-[11px] font-bold rounded ${
-                                    item.status === 'Done'
+                                    statusesById.get(item.statusId)?.category === 'Done'
                                       ? 'bg-[#e3fcef] text-[#006644]'
-                                      : item.status === 'InProgress'
+                                      : statusesById.get(item.statusId)?.category === 'InProgress'
                                       ? 'bg-[#deebff] text-[#0052cc]'
                                       : 'bg-[#ebecf0] text-[#42526e]'
                                   }`}
                                 >
-                                  {item.status === 'Backlog' ? 'To Do' : item.status === 'InProgress' ? 'In Progress' : item.status}
+                                  {statusesById.get(item.statusId)?.category === 'ToDo'
+                                    ? 'To Do'
+                                    : statusesById.get(item.statusId)?.name ?? 'Unknown'}
                                 </span>
                               </div>
                               <div className="text-xs text-[#6b778c] mt-1">

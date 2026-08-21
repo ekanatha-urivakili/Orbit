@@ -16,7 +16,7 @@ public sealed class DeleteWorkItemHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Delete this card", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var repository = new WorkItemRepositoryStub(workItem, hasChildren: false);
         var handler = new DeleteWorkItemHandler(new TenantContextStub(tenantId), repository, new UnitOfWorkStub());
 
@@ -31,7 +31,7 @@ public sealed class DeleteWorkItemHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Parent card", null, WorkItemType.Story, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var repository = new WorkItemRepositoryStub(workItem, hasChildren: true);
         var handler = new DeleteWorkItemHandler(new TenantContextStub(tenantId), repository, new UnitOfWorkStub());
 

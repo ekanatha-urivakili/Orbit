@@ -14,7 +14,6 @@ public sealed record ChoiceDto(
 
 public sealed record SystemChoicesDto(
     IReadOnlyList<ChoiceDto> WorkItemTypes,
-    IReadOnlyList<ChoiceDto> WorkItemStatuses,
     IReadOnlyList<ChoiceDto> Priorities);
 
 public sealed record GetSystemChoicesQuery : IQuery<SystemChoicesDto>;
@@ -24,7 +23,6 @@ public sealed class GetSystemChoicesHandler : MediatR.IRequestHandler<GetSystemC
     public Task<SystemChoicesDto> Handle(GetSystemChoicesQuery request, CancellationToken cancellationToken) =>
         Task.FromResult(new SystemChoicesDto(
             Map(SystemChoiceCatalog.WorkItemTypes),
-            Map(SystemChoiceCatalog.WorkItemStatuses),
             Map(SystemChoiceCatalog.Priorities)));
 
     private static IReadOnlyList<ChoiceDto> Map<T>(IReadOnlyList<ChoiceOption<T>> choices)

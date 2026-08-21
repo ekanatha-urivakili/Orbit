@@ -162,6 +162,7 @@ public sealed class TenantMembershipLifecycleHandlerTests
         public bool CanCreateProject() => allowed;
         public bool CanCreateMembership(TenantRole role) => allowed;
         public bool CanManageTeams() => allowed;
+        public bool CanManageRoles() => allowed;
     }
 
     private sealed class MembershipRepositoryStub(List<TenantMembership> memberships) : ITenantMembershipRepository
@@ -212,6 +213,10 @@ public sealed class TenantMembershipLifecycleHandlerTests
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
 
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
+
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<NotificationPreference?>(null);
@@ -234,6 +239,10 @@ public sealed class TenantMembershipLifecycleHandlerTests
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
 
+        public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BoardViewPreference?>(null);
+
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -249,6 +258,9 @@ public sealed class TenantMembershipLifecycleHandlerTests
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

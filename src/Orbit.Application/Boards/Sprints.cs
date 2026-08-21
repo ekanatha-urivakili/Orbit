@@ -56,6 +56,56 @@ public sealed class CreateSprintHandler(
     }
 }
 
+public sealed record UpdateSprintCommand(
+    Guid SprintId,
+    string Name,
+    string? Goal,
+    DateOnly? StartDate,
+    DateOnly? EndDate,
+    long ExpectedVersion) : ICommand<SprintDto>;
+
+public sealed class UpdateSprintValidator : AbstractValidator<UpdateSprintCommand>
+{
+    public UpdateSprintValidator()
+    {
+        RuleFor(command => command.SprintId).NotEmpty();
+        RuleFor(command => command.Name).NotEmpty().Length(2, 120);
+        RuleFor(command => command.ExpectedVersion).GreaterThan(0);
+        RuleFor(command => command)
+            .Must(command => command.StartDate is null || command.EndDate is null || command.EndDate >= command.StartDate)
+            .WithMessage("A sprint's end date cannot be before its start date.");
+    }
+}
+
+/// <summary>The "Edit sprint" dialog (§13.5 next-increment): renames a sprint or adjusts its dates without changing its state.</summary>
+public sealed class UpdateSprintHandler(
+    ITenantContext tenant,
+    IProjectRepository projects,
+    ISprintRepository sprints,
+    ISprintMembershipRepository memberships,
+    IUnitOfWork unitOfWork,
+    TimeProvider timeProvider) : IRequestHandler<UpdateSprintCommand, SprintDto>
+{
+    public async Task<SprintDto> Handle(UpdateSprintCommand request, CancellationToken cancellationToken)
+    {
+        var sprint = await sprints.GetAsync(tenant.TenantId, request.SprintId, cancellationToken)
+            ?? throw new NotFoundException("Sprint was not found.");
+        _ = await projects.GetAsync(tenant.TenantId, sprint.ProjectId, ProjectPermission.TransitionWorkItem, cancellationToken)
+            ?? throw new NotFoundException("Sprint was not found.");
+
+        if (sprint.Version != request.ExpectedVersion)
+        {
+            throw new ConcurrencyException("The sprint changed after it was loaded.");
+        }
+
+        sprint.Edit(request.Name, request.Goal, request.StartDate, request.EndDate, timeProvider.GetUtcNow());
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var members = await memberships.ListCurrentBySprintAsync(tenant.TenantId, sprint.Id, cancellationToken);
+        return SprintDto.From(sprint, [.. members.Select(member => member.WorkItemId)]);
+    }
+}
+
 public sealed record ListSprintsQuery(Guid ProjectId) : IQuery<IReadOnlyList<SprintDto>>;
 
 public sealed class ListSprintsValidator : AbstractValidator<ListSprintsQuery>
@@ -184,6 +234,7 @@ public sealed class CompleteSprintHandler(
     ISprintCompletionOperationRepository completionOperations,
     ISprintScopeFactRepository facts,
     IWorkItemRepository workItems,
+    IWorkItemStatusRepository workItemStatuses,
     ICurrentPrincipal principal,
     ISettingsRepository settings,
     IOutboxRepository outbox,
@@ -246,10 +297,13 @@ public sealed class CompleteSprintHandler(
                 ProjectPermission.View,
                 cancellationToken))
             .ToDictionary(workItem => workItem.Id);
+        var statusCategoriesById = (await workItemStatuses.ListByProjectAsync(
+                tenant.TenantId, sprint.ProjectId, cancellationToken))
+            .ToDictionary(status => status.Id, status => status.Category);
         foreach (var membership in members)
         {
             if (workItemsById.TryGetValue(membership.WorkItemId, out var workItem)
-                && workItem.Status != WorkItemStatus.Done)
+                && statusCategoriesById.GetValueOrDefault(workItem.StatusId) != StatusCategory.Done)
             {
                 membership.Remove(now);
                 await facts.AddAsync(
@@ -322,6 +376,8 @@ internal static class SprintNotifications
             .ToDictionary(account => account.Id);
         var preferences = (await settings.GetNotificationPreferencesAsync(recipientIds, cancellationToken))
             .ToDictionary(preference => preference.UserId);
+        var userPreferences = (await settings.GetUserPreferencesAsync(recipientIds, cancellationToken))
+            .ToDictionary(preference => preference.UserId);
 
         foreach (var userId in recipientIds)
         {
@@ -338,6 +394,7 @@ internal static class SprintNotifications
                 continue;
             }
 
+            userPreferences.TryGetValue(userId, out var userPreference);
             var email = OutboxEmailMessage.Create(
                 account.NormalizedEmail,
                 $"Sprint '{sprint.Name}' {eventLabel}",
@@ -346,6 +403,7 @@ internal static class SprintNotifications
                 <p>Sprint <strong>{System.Net.WebUtility.HtmlEncode(sprint.Name)}</strong> has {eventLabel}.</p>
                 """,
                 now);
+            email.ScheduleFor(NotificationScheduling.ComputeNotBefore(preference, userPreference?.TimeZone, now));
             await outbox.AddAsync(email, cancellationToken);
         }
     }

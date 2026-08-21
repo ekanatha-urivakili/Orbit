@@ -26,7 +26,7 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
     countries: [],
     attachmentNames: [],
     type: 'Story',
-    status: 'Backlog',
+    statusId: 'Backlog',
     priority: 'High',
     rank: 1024,
     isFlagged: false,

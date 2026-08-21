@@ -6,10 +6,14 @@ namespace Orbit.Domain.Tests;
 
 public sealed class BoardModelTests
 {
+    private static readonly Guid BacklogStatusId = Guid.NewGuid();
+    private static readonly Guid InProgressStatusId = Guid.NewGuid();
+    private static readonly Guid DoneStatusId = Guid.NewGuid();
+
     private static readonly IReadOnlyList<BoardColumnInput> DefaultColumns =
     [
-        new(WorkItemStatus.Backlog, null, WipLimitMode.Warn),
-        new(WorkItemStatus.InProgress, 3, WipLimitMode.Block),
+        new(BacklogStatusId, null, WipLimitMode.Warn),
+        new(InProgressStatusId, 3, WipLimitMode.Block),
     ];
 
     [Fact]
@@ -48,10 +52,10 @@ public sealed class BoardModelTests
             Guid.NewGuid(), Guid.NewGuid(), "Delivery Board", BoardType.Kanban, DefaultColumns, DateTimeOffset.UtcNow);
 
         Assert.Equal(2, board.Columns.Count);
-        Assert.Equal(WorkItemStatus.Backlog, board.Columns[0].Status);
+        Assert.Equal(BacklogStatusId, board.Columns[0].StatusId);
         Assert.Equal(0, board.Columns[0].Order);
         Assert.Null(board.Columns[0].WipLimit);
-        Assert.Equal(WorkItemStatus.InProgress, board.Columns[1].Status);
+        Assert.Equal(InProgressStatusId, board.Columns[1].StatusId);
         Assert.Equal(1, board.Columns[1].Order);
         Assert.Equal(3, board.Columns[1].WipLimit);
         Assert.Equal(WipLimitMode.Block, board.Columns[1].WipLimitMode);
@@ -71,8 +75,8 @@ public sealed class BoardModelTests
     {
         IReadOnlyList<BoardColumnInput> columns =
         [
-            new(WorkItemStatus.Backlog, null, WipLimitMode.Warn),
-            new(WorkItemStatus.Backlog, null, WipLimitMode.Warn),
+            new(BacklogStatusId, null, WipLimitMode.Warn),
+            new(BacklogStatusId, null, WipLimitMode.Warn),
         ];
 
         var action = () => Board.Create(
@@ -84,7 +88,7 @@ public sealed class BoardModelTests
     [Fact]
     public void Board_Create_RejectsNonPositiveWipLimit()
     {
-        IReadOnlyList<BoardColumnInput> columns = [new(WorkItemStatus.Backlog, 0, WipLimitMode.Warn)];
+        IReadOnlyList<BoardColumnInput> columns = [new(BacklogStatusId, 0, WipLimitMode.Warn)];
 
         var action = () => Board.Create(
             Guid.NewGuid(), Guid.NewGuid(), "Delivery Board", BoardType.Kanban, columns, DateTimeOffset.UtcNow);
@@ -99,7 +103,7 @@ public sealed class BoardModelTests
         var board = Board.Create(
             Guid.NewGuid(), Guid.NewGuid(), "Delivery Board", BoardType.Kanban, DefaultColumns, now);
 
-        IReadOnlyList<BoardColumnInput> updatedColumns = [new(WorkItemStatus.Done, 5, WipLimitMode.Warn)];
+        IReadOnlyList<BoardColumnInput> updatedColumns = [new(DoneStatusId, 5, WipLimitMode.Warn)];
         board.Update("Renamed Board", BoardType.Scrum, updatedColumns, now.AddMinutes(5));
 
         Assert.Equal("Renamed Board", board.Name);
@@ -107,6 +111,6 @@ public sealed class BoardModelTests
         Assert.Equal(2, board.Version);
         Assert.Equal(now.AddMinutes(5), board.UpdatedAt);
         Assert.Single(board.Columns);
-        Assert.Equal(WorkItemStatus.Done, board.Columns[0].Status);
+        Assert.Equal(DoneStatusId, board.Columns[0].StatusId);
     }
 }

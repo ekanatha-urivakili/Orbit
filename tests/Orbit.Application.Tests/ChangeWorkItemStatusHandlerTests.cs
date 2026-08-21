@@ -4,6 +4,7 @@ using Orbit.Application.WorkItems;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Identity;
 using Orbit.Domain.Messaging;
 using Orbit.Domain.Settings;
@@ -20,13 +21,14 @@ public sealed class ChangeWorkItemStatusHandlerTests
         var tenantId = Guid.NewGuid();
         var authorUserId = Guid.NewGuid();
         var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
-        var workItem = CreateWorkItem(tenantId, assigneeAccount.Id);
+        var (workItem, statuses, inProgress) = CreateWorkItem(tenantId, assigneeAccount.Id);
         var settings = new SettingsRepositoryStub([assigneeAccount], preferences: []);
         var outbox = new OutboxRepositoryStub();
         var handler = new ChangeWorkItemStatusHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemStatusRepositoryStub(statuses),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -36,7 +38,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             TimeProvider.System);
 
         await handler.Handle(
-            new ChangeWorkItemStatusCommand(workItem.Id, WorkItemStatus.InProgress, workItem.Version),
+            new ChangeWorkItemStatusCommand(workItem.Id, inProgress.Id, workItem.Version),
             CancellationToken.None);
 
         var email = Assert.Single(outbox.Messages);
@@ -52,13 +54,14 @@ public sealed class ChangeWorkItemStatusHandlerTests
         var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
         var preference = NotificationPreference.Create(assigneeAccount.Id, DateTimeOffset.UtcNow);
         preference.Update(true, false, DigestCadence.Daily, null, null, false, DateTimeOffset.UtcNow);
-        var workItem = CreateWorkItem(tenantId, assigneeAccount.Id);
+        var (workItem, statuses, inProgress) = CreateWorkItem(tenantId, assigneeAccount.Id);
         var settings = new SettingsRepositoryStub([assigneeAccount], [preference]);
         var outbox = new OutboxRepositoryStub();
         var handler = new ChangeWorkItemStatusHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemStatusRepositoryStub(statuses),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -68,7 +71,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             TimeProvider.System);
 
         await handler.Handle(
-            new ChangeWorkItemStatusCommand(workItem.Id, WorkItemStatus.InProgress, workItem.Version),
+            new ChangeWorkItemStatusCommand(workItem.Id, inProgress.Id, workItem.Version),
             CancellationToken.None);
 
         Assert.Empty(outbox.Messages);
@@ -79,13 +82,14 @@ public sealed class ChangeWorkItemStatusHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
-        var workItem = CreateWorkItem(tenantId, assigneeAccount.Id);
+        var (workItem, statuses, inProgress) = CreateWorkItem(tenantId, assigneeAccount.Id);
         var settings = new SettingsRepositoryStub([assigneeAccount], preferences: []);
         var outbox = new OutboxRepositoryStub();
         var handler = new ChangeWorkItemStatusHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(assigneeAccount.Id),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemStatusRepositoryStub(statuses),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -95,7 +99,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             TimeProvider.System);
 
         await handler.Handle(
-            new ChangeWorkItemStatusCommand(workItem.Id, WorkItemStatus.InProgress, workItem.Version),
+            new ChangeWorkItemStatusCommand(workItem.Id, inProgress.Id, workItem.Version),
             CancellationToken.None);
 
         Assert.Empty(outbox.Messages);
@@ -107,13 +111,14 @@ public sealed class ChangeWorkItemStatusHandlerTests
         var tenantId = Guid.NewGuid();
         var authorUserId = Guid.NewGuid();
         var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
-        var workItem = CreateWorkItem(tenantId, assigneeAccount.Id);
+        var (workItem, statuses, inProgress) = CreateWorkItem(tenantId, assigneeAccount.Id);
         var settings = new SettingsRepositoryStub([assigneeAccount], preferences: []);
         var history = new WorkItemHistoryRepositoryStub();
         var handler = new ChangeWorkItemStatusHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemStatusRepositoryStub(statuses),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -123,13 +128,13 @@ public sealed class ChangeWorkItemStatusHandlerTests
             TimeProvider.System);
 
         await handler.Handle(
-            new ChangeWorkItemStatusCommand(workItem.Id, WorkItemStatus.InProgress, workItem.Version),
+            new ChangeWorkItemStatusCommand(workItem.Id, inProgress.Id, workItem.Version),
             CancellationToken.None);
 
         var entry = Assert.Single(history.Added);
         Assert.Equal("Status", entry.FieldName);
-        Assert.Equal("Backlog", entry.OldValue);
-        Assert.Equal("InProgress", entry.NewValue);
+        Assert.Equal("backlog", entry.OldValue);
+        Assert.Equal("in-progress", entry.NewValue);
     }
 
     [Fact]
@@ -138,13 +143,14 @@ public sealed class ChangeWorkItemStatusHandlerTests
         var tenantId = Guid.NewGuid();
         var authorUserId = Guid.NewGuid();
         var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
-        var workItem = CreateWorkItem(tenantId, assigneeAccount.Id);
+        var (workItem, statuses, _) = CreateWorkItem(tenantId, assigneeAccount.Id);
         var settings = new SettingsRepositoryStub([assigneeAccount], preferences: []);
         var history = new WorkItemHistoryRepositoryStub();
         var handler = new ChangeWorkItemStatusHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemStatusRepositoryStub(statuses),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -154,7 +160,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             TimeProvider.System);
 
         await handler.Handle(
-            new ChangeWorkItemStatusCommand(workItem.Id, workItem.Status, workItem.Version),
+            new ChangeWorkItemStatusCommand(workItem.Id, workItem.StatusId, workItem.Version),
             CancellationToken.None);
 
         Assert.Empty(history.Added);
@@ -166,13 +172,14 @@ public sealed class ChangeWorkItemStatusHandlerTests
         var tenantId = Guid.NewGuid();
         var authorUserId = Guid.NewGuid();
         var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
-        var workItem = CreateWorkItem(tenantId, assigneeAccount.Id);
+        var (workItem, statuses, _) = CreateWorkItem(tenantId, assigneeAccount.Id);
         var settings = new SettingsRepositoryStub([assigneeAccount], preferences: []);
         var outbox = new OutboxRepositoryStub();
         var handler = new ChangeWorkItemStatusHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemStatusRepositoryStub(statuses),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -182,7 +189,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             TimeProvider.System);
 
         await handler.Handle(
-            new ChangeWorkItemStatusCommand(workItem.Id, workItem.Status, workItem.Version),
+            new ChangeWorkItemStatusCommand(workItem.Id, workItem.StatusId, workItem.Version),
             CancellationToken.None);
 
         Assert.Empty(outbox.Messages);
@@ -193,15 +200,20 @@ public sealed class ChangeWorkItemStatusHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var authorUserId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, projectId, DateTimeOffset.UtcNow);
+        var backlog = statuses.Single(status => status.Key == "backlog");
+        var inProgress = statuses.Single(status => status.Key == "in-progress");
         var workItem = WorkItem.Create(
-            tenantId, Guid.NewGuid(), 1, "ORB", "Build the board", null, WorkItemType.Story, Priority.High,
-            DateTimeOffset.UtcNow);
+            tenantId, projectId, 1, "ORB", "Build the board", null, WorkItemType.Story, Priority.High,
+            backlog.Id, DateTimeOffset.UtcNow);
         var settings = new SettingsRepositoryStub([], preferences: []);
         var outbox = new OutboxRepositoryStub();
         var handler = new ChangeWorkItemStatusHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(authorUserId),
             new WorkItemRepositoryStub(workItem),
+            new WorkItemStatusRepositoryStub(statuses),
             new SprintMembershipRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             settings,
@@ -211,17 +223,22 @@ public sealed class ChangeWorkItemStatusHandlerTests
             TimeProvider.System);
 
         await handler.Handle(
-            new ChangeWorkItemStatusCommand(workItem.Id, WorkItemStatus.InProgress, workItem.Version),
+            new ChangeWorkItemStatusCommand(workItem.Id, inProgress.Id, workItem.Version),
             CancellationToken.None);
 
         Assert.Empty(outbox.Messages);
     }
 
-    private static WorkItem CreateWorkItem(Guid tenantId, Guid assigneeUserId)
+    private static (WorkItem WorkItem, IReadOnlyList<WorkItemStatusDefinition> Statuses, WorkItemStatusDefinition InProgress) CreateWorkItem(
+        Guid tenantId, Guid assigneeUserId)
     {
+        var projectId = Guid.NewGuid();
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, projectId, DateTimeOffset.UtcNow);
+        var backlog = statuses.Single(status => status.Key == "backlog");
+        var inProgress = statuses.Single(status => status.Key == "in-progress");
         var workItem = WorkItem.Create(
-            tenantId, Guid.NewGuid(), 1, "ORB", "Build the board", null, WorkItemType.Story, Priority.High,
-            DateTimeOffset.UtcNow);
+            tenantId, projectId, 1, "ORB", "Build the board", null, WorkItemType.Story, Priority.High,
+            backlog.Id, DateTimeOffset.UtcNow);
         workItem.SetDetails(
             parentId: null,
             epicName: null,
@@ -239,7 +256,7 @@ public sealed class ChangeWorkItemStatusHandlerTests
             labels: null,
             countries: null,
             attachmentNames: null);
-        return workItem;
+        return (workItem, statuses, inProgress);
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
@@ -283,6 +300,35 @@ public sealed class ChangeWorkItemStatusHandlerTests
         public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
+    private sealed class WorkItemStatusRepositoryStub(IReadOnlyList<WorkItemStatusDefinition> statuses) : IWorkItemStatusRepository
+    {
+        public Task AddAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task AddRangeAsync(IReadOnlyCollection<WorkItemStatusDefinition> definitions, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<WorkItemStatusDefinition?> GetAsync(
+            Guid tenantId, Guid projectId, Guid statusId, CancellationToken cancellationToken) =>
+            Task.FromResult(statuses.SingleOrDefault(status =>
+                status.TenantId == tenantId && status.ProjectId == projectId && status.Id == statusId));
+
+        public Task<IReadOnlyList<WorkItemStatusDefinition>> ListByProjectAsync(
+            Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkItemStatusDefinition>>(
+                [.. statuses.Where(status => status.TenantId == tenantId && status.ProjectId == projectId)]);
+
+        public Task<WorkItemStatusDefinition?> GetDefaultAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult(statuses
+                .Where(status => status.TenantId == tenantId && status.ProjectId == projectId)
+                .OrderBy(status => status.Order)
+                .FirstOrDefault());
+
+        public Task<bool> IsInUseAsync(Guid tenantId, Guid projectId, Guid statusId, string statusKey, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public Task RemoveAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     private sealed class SprintMembershipRepositoryStub : ISprintMembershipRepository
     {
         public Task AddAsync(SprintMembership membership, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -320,6 +366,10 @@ public sealed class ChangeWorkItemStatusHandlerTests
         public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserPreference?>(null);
 
+        public Task<IReadOnlyList<UserPreference>> GetUserPreferencesAsync(
+            IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserPreference>>([]);
+
         public Task<NotificationPreference?> GetNotificationPreferenceAsync(
             Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult(preferences.SingleOrDefault(p => p.UserId == userId));
@@ -343,6 +393,10 @@ public sealed class ChangeWorkItemStatusHandlerTests
             Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<ProjectSetting?>(null);
 
+        public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BoardViewPreference?>(null);
+
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -358,6 +412,9 @@ public sealed class ChangeWorkItemStatusHandlerTests
             Task.CompletedTask;
 
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

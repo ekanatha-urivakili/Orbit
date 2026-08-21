@@ -2,15 +2,24 @@ export type WorkItemType = 'Initiative' | 'Epic' | 'Task' | 'Story' | 'Spike' | 
 export type WorkItemLinkKind = 'Blocks' | 'RelatesTo' | 'Duplicates'
 export type WorkItemLinkDirection = 'Outgoing' | 'Incoming'
 
-export type WorkItemStatus =
-  | 'Backlog'
-  | 'Selected'
-  | 'InProgress'
-  | 'InReview'
-  | 'Done'
-  | 'Blocked'
-
 export type Priority = 'Lowest' | 'Low' | 'Medium' | 'High' | 'Highest'
+
+/** A project's workflow status category (§13.5 "Edit workflow"), used to reason about "is this status done/in-progress" generically. */
+export type StatusCategory = 'ToDo' | 'InProgress' | 'Done'
+
+/** A project-owned, administrator-editable workflow status. Replaces the old fixed WorkItemStatus enum. */
+export interface WorkItemStatusDefinition {
+  id: string
+  key: string
+  name: string
+  category: StatusCategory
+  order: number
+  colorToken: string
+  isSystem: boolean
+  /** The status a newly created work item in this project starts in. Independent of display `order`. */
+  isDefault: boolean
+  version: number
+}
 
 export interface PagedResult<T> {
   items: T[]
@@ -48,7 +57,7 @@ export interface WorkItem {
   countries: string[]
   attachmentNames: string[]
   type: WorkItemType
-  status: WorkItemStatus
+  statusId: string
   priority: Priority
   rank: number
   isFlagged: boolean
@@ -85,7 +94,7 @@ export interface WorkItemLink {
   key: string
   summary: string
   type: WorkItemType
-  status: WorkItemStatus
+  statusId: string
 }
 
 export interface WorkItemComment {
@@ -147,7 +156,6 @@ export interface Choice {
 
 export interface SystemChoices {
   workItemTypes: Choice[]
-  workItemStatuses: Choice[]
   priorities: Choice[]
 }
 
@@ -186,6 +194,8 @@ export interface CustomFieldDefinition {
   enabled: boolean
   version: number
   choiceOptions: CustomFieldChoiceOption[]
+  /** The screen registry: which work item types this field shows on. Empty means every type. */
+  applicableTypes: WorkItemType[]
 }
 
 export interface WorkItemCustomFieldValue {
@@ -343,8 +353,16 @@ export interface TypographySetting {
 
 export type PrincipalType = 'User' | 'ServiceAccount'
 export type TenantRole = 'Owner' | 'Administrator' | 'Member'
-export type ProjectRole = 'Administrator' | 'Member' | 'Viewer'
 export type MembershipTier = 'Standard' | 'Guest'
+export type ProjectPermission = 'View' | 'CreateWorkItem' | 'TransitionWorkItem' | 'Administer'
+
+export interface Role {
+  id: string
+  name: string
+  isSystem: boolean
+  permissions: ProjectPermission[]
+  createdAt: string
+}
 
 export interface TenantMembership {
   id: string
@@ -371,7 +389,7 @@ export interface ProjectRoleAssignment {
   id: string
   projectId: string
   membershipId: string
-  role: ProjectRole
+  roleId: string
   createdAt: string
 }
 
@@ -407,7 +425,7 @@ export type BoardType = 'Kanban' | 'Scrum'
 export type WipLimitMode = 'Warn' | 'Block'
 
 export interface BoardColumn {
-  status: WorkItemStatus
+  statusId: string
   order: number
   wipLimit: number | null
   wipLimitMode: WipLimitMode
@@ -433,6 +451,13 @@ export interface Sprint {
   endDate: string | null
   version: number
   workItemIds: string[]
+}
+
+export interface UpdateSprintInput {
+  name: string
+  goal: string | null
+  startDate: string | null
+  endDate: string | null
 }
 
 export interface BurndownPoint {
@@ -462,7 +487,8 @@ export interface SprintReport {
 }
 
 export interface CumulativeFlowStatusCount {
-  status: WorkItemStatus
+  statusId: string
+  statusName: string
   count: number
 }
 
@@ -553,4 +579,54 @@ export interface ExternalIdentitySummary {
 export interface WorkItemWatchers {
   isWatching: boolean
   count: number
+}
+
+export type HideDoneItemsAfter = 'Never' | 'OneDay' | 'OneWeek' | 'TwoWeeks' | 'OneMonth'
+export type BoardColumnSizeMode = 'Fixed' | 'Flexible'
+
+export interface BoardViewPreference {
+  projectId: string
+  hideDoneItemsAfter: HideDoneItemsAfter
+  columnSizeMode: BoardColumnSizeMode
+  hiddenFields: string[]
+  version: number
+}
+
+export interface SprintAttentionItem {
+  workItemId: string
+  key: string
+  summary: string
+  statusId: string
+  statusName: string
+  dueDate: string | null
+  isFlagged: boolean
+  isBlocked: boolean
+  isStuck: boolean
+  isOverdue: boolean
+}
+
+export interface EpicProgress {
+  epicId: string
+  key: string
+  name: string
+  totalCount: number
+  doneCount: number
+  percentDone: number
+}
+
+export interface SprintInsights {
+  sprintId: string
+  sprintName: string
+  state: SprintState
+  totalItems: number
+  doneItems: number
+  inProgressItems: number
+  notStartedItems: number
+  percentDone: number
+  committedPoints: number
+  completedPoints: number
+  addedAfterStartPoints: number
+  removedAfterStartPoints: number
+  itemsForAttention: SprintAttentionItem[]
+  epics: EpicProgress[]
 }
