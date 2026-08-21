@@ -64,6 +64,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IWorkspaceInvitationRepository, WorkspaceInvitationRepository>();
         services.AddScoped<IWorkItemTypeRepository, WorkItemTypeRepository>();
+        services.AddScoped<IWorkItemStatusRepository, WorkItemStatusRepository>();
         services.AddScoped<ICustomFieldRepository, CustomFieldRepository>();
         services.AddScoped<IWorkItemCustomFieldValueRepository, WorkItemCustomFieldValueRepository>();
         services.AddScoped<IIdempotencyRecordRepository, IdempotencyRecordRepository>();

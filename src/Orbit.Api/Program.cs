@@ -293,6 +293,7 @@ if (app.Environment.IsProduction() || !app.Configuration.GetValue<bool>("Tenancy
 }
 api.MapChoiceEndpoints();
 api.MapWorkItemTypeEndpoints();
+api.MapWorkItemStatusEndpoints();
 api.MapCustomFieldEndpoints();
 api.MapIdentityEndpoints();
 api.MapWorkspaceEndpoints();
@@ -307,6 +308,7 @@ api.MapWorkItemEndpoints();
 api.MapSlackEndpoints();
 api.MapBoardEndpoints();
 api.MapSprintEndpoints();
+api.MapBoardViewPreferenceEndpoints();
 
 app.Run();
 

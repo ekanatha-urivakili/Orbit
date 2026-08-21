@@ -18,7 +18,7 @@ public sealed class MoveWorkItemHandlerTests
         var targetProject = Project.Create(tenantId, "TGT", "Target", DateTimeOffset.UtcNow);
         var workItem = WorkItem.Create(
             tenantId, sourceProject.Id, 1, "SRC", "Move this card", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var history = new WorkItemHistoryRepositoryStub();
         var handler = new MoveWorkItemHandler(
             new TenantContextStub(tenantId),
@@ -47,7 +47,7 @@ public sealed class MoveWorkItemHandlerTests
         var project = Project.Create(tenantId, "SRC", "Source", DateTimeOffset.UtcNow);
         var workItem = WorkItem.Create(
             tenantId, project.Id, 1, "SRC", "Stay put", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var history = new WorkItemHistoryRepositoryStub();
         var handler = new MoveWorkItemHandler(
             new TenantContextStub(tenantId), new CurrentPrincipalStub(),

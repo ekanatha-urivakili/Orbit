@@ -16,7 +16,7 @@ public sealed class ChangeWorkItemTypeHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Reclassify this card", null, WorkItemType.Task,
-            Priority.Medium, DateTimeOffset.UtcNow);
+            Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(),
@@ -39,7 +39,7 @@ public sealed class ChangeWorkItemTypeHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Reclassify this card", null, WorkItemType.Task,
-            Priority.Medium, DateTimeOffset.UtcNow);
+            Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var history = new WorkItemHistoryRepositoryStub();
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
@@ -65,7 +65,7 @@ public sealed class ChangeWorkItemTypeHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Reclassify this card", null, WorkItemType.Task,
-            Priority.Medium, DateTimeOffset.UtcNow);
+            Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(),
@@ -87,7 +87,7 @@ public sealed class ChangeWorkItemTypeHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Reclassify this card", null, WorkItemType.Task,
-            Priority.Medium, DateTimeOffset.UtcNow);
+            Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(),
@@ -109,7 +109,7 @@ public sealed class ChangeWorkItemTypeHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Reclassify this card", null, WorkItemType.Task,
-            Priority.Medium, DateTimeOffset.UtcNow);
+            Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
         var handler = new ChangeWorkItemTypeHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(),

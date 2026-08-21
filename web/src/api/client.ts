@@ -42,12 +42,16 @@ import type {
   PresignedAttachmentUpload,
   WorkItemComment,
   WorkItemTypeDefinition,
-  WorkItemStatus,
+  WorkItemStatusDefinition,
+  StatusCategory,
   WorkItemType,
   CustomFieldDefinition,
   CustomFieldChoiceOptionInput,
   CustomFieldType,
   WorkItemCustomFieldValue,
+  UpdateSprintInput,
+  BoardViewPreference,
+  SprintInsights,
 } from './types'
 import { tenantStorageKey, withAuthHeader } from './auth'
 
@@ -171,11 +175,11 @@ export const orbitApi = {
       headers: { 'If-Match': `"${workItem.version}"` },
       body: JSON.stringify({ assigneeUserId }),
     }),
-  changeStatus: (workItem: WorkItem, status: WorkItemStatus) =>
+  changeStatus: (workItem: WorkItem, statusId: string) =>
     request<WorkItem>(`/work-items/${workItem.id}/status`, {
       method: 'PATCH',
       headers: { 'If-Match': `"${workItem.version}"` },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ statusId }),
     }),
   reorderWorkItem: (workItem: WorkItem, neighbors: { beforeId: string | null; afterId: string | null }) =>
     request<WorkItem>(`/work-items/${workItem.id}/rank`, {
@@ -472,10 +476,54 @@ export const orbitApi = {
         name: input.name,
         type: input.type,
         columns: input.columns.map((column) => ({
-          status: column.status,
+          statusId: column.statusId,
           wipLimit: column.wipLimit,
           wipLimitMode: column.wipLimitMode,
         })),
+      }),
+    }),
+  listWorkItemStatuses: (projectId: string) =>
+    request<WorkItemStatusDefinition[]>(`/projects/${encodeURIComponent(projectId)}/statuses`),
+  createWorkItemStatus: (
+    projectId: string,
+    input: { key: string; name: string; category: StatusCategory; order: number; colorToken: string },
+  ) =>
+    request<WorkItemStatusDefinition>(`/projects/${encodeURIComponent(projectId)}/statuses`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateWorkItemStatus: (
+    projectId: string,
+    status: WorkItemStatusDefinition,
+    input: { name: string; category: StatusCategory; order: number; colorToken: string },
+  ) =>
+    request<WorkItemStatusDefinition>(
+      `/projects/${encodeURIComponent(projectId)}/statuses/${encodeURIComponent(status.id)}`,
+      {
+        method: 'PATCH',
+        headers: { 'If-Match': `"${status.version}"` },
+        body: JSON.stringify(input),
+      },
+    ),
+  deleteWorkItemStatus: (projectId: string, statusId: string) =>
+    request<void>(`/projects/${encodeURIComponent(projectId)}/statuses/${encodeURIComponent(statusId)}`, {
+      method: 'DELETE',
+    }),
+  setDefaultWorkItemStatus: (projectId: string, statusId: string) =>
+    request<WorkItemStatusDefinition>(
+      `/projects/${encodeURIComponent(projectId)}/statuses/${encodeURIComponent(statusId)}/default`,
+      { method: 'POST' },
+    ),
+  getBoardViewPreference: (projectId: string) =>
+    request<BoardViewPreference>(`/projects/${encodeURIComponent(projectId)}/board-view-preference`),
+  updateBoardViewPreference: (projectId: string, preference: BoardViewPreference) =>
+    request<BoardViewPreference>(`/projects/${encodeURIComponent(projectId)}/board-view-preference`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${preference.version}"` },
+      body: JSON.stringify({
+        hideDoneItemsAfter: preference.hideDoneItemsAfter,
+        columnSizeMode: preference.columnSizeMode,
+        hiddenFields: preference.hiddenFields,
       }),
     }),
   listSprints: (projectId: string) =>
@@ -484,6 +532,12 @@ export const orbitApi = {
     request<Sprint>(`/projects/${encodeURIComponent(projectId)}/sprints`, {
       method: 'POST',
       body: JSON.stringify({ name }),
+    }),
+  updateSprint: (sprint: Sprint, input: UpdateSprintInput) =>
+    request<Sprint>(`/sprints/${encodeURIComponent(sprint.id)}`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${sprint.version}"` },
+      body: JSON.stringify(input),
     }),
   startSprint: (sprint: Sprint, input: { goal: string | null; startDate: string | null; endDate: string | null }) =>
     request<Sprint>(`/sprints/${encodeURIComponent(sprint.id)}/start`, {
@@ -511,6 +565,8 @@ export const orbitApi = {
     request<Sprint>(`/work-items/${encodeURIComponent(workItemId)}/sprint`, { method: 'DELETE' }),
   getSprintReport: (sprintId: string) =>
     request<SprintReport>(`/sprints/${encodeURIComponent(sprintId)}/report`),
+  getSprintInsights: (sprintId: string) =>
+    request<SprintInsights>(`/sprints/${encodeURIComponent(sprintId)}/insights`),
   getSprintCumulativeFlowDiagram: (sprintId: string) =>
     request<CumulativeFlowDiagram>(`/sprints/${encodeURIComponent(sprintId)}/reports/cumulative-flow`),
   getSprintCycleTimeReport: (sprintId: string) =>

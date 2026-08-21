@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { ChevronDown, Plus, Search } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { WorkItemTypeIcon } from './typeIcons'
-import { allStatuses, statusMeta } from '../board/constants'
+import { statusMeta } from '../board/constants'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { orbitApi } from '../../api/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Project, TenantMembership, WorkItem, WorkItemStatus, WorkItemType } from '../../api/types'
+import type { Project, TenantMembership, WorkItem, WorkItemType } from '../../api/types'
 
 export function WorkItemSubtasks({
   parent,
@@ -19,7 +20,7 @@ export function WorkItemSubtasks({
   workItems: WorkItem[]
   project: Project
   members: TenantMembership[]
-  onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
+  onStatusChange: (workItem: WorkItem, statusId: string) => void
   onOpenWorkItem: (workItem: WorkItem) => void
 }) {
   const queryClient = useQueryClient()
@@ -31,8 +32,15 @@ export function WorkItemSubtasks({
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const [selectedExistingId, setSelectedExistingId] = useState('')
 
+  const statusesQuery = useQuery({
+    queryKey: ['work-item-statuses', project.id],
+    queryFn: () => orbitApi.listWorkItemStatuses(project.id),
+  })
+  const statuses = statusesQuery.data ?? []
+  const doneStatusIds = new Set(statuses.filter((status) => status.category === 'Done').map((status) => status.id))
+
   const subtasks = workItems.filter((candidate) => candidate.parentId === parent.id)
-  const doneCount = subtasks.filter((candidate) => candidate.status === 'Done').length
+  const doneCount = subtasks.filter((candidate) => doneStatusIds.has(candidate.statusId)).length
   const percentDone = subtasks.length ? Math.round((doneCount / subtasks.length) * 100) : 0
   const membersById = new Map(members.map((member) => [member.userId, member]))
 
@@ -161,14 +169,14 @@ export function WorkItemSubtasks({
                     <td>
                       <select
                         className="subtasks-status-select"
-                        value={subtask.status}
+                        value={subtask.statusId}
                         onChange={(event) =>
-                          onStatusChange(subtask, event.target.value as WorkItemStatus)
+                          onStatusChange(subtask, event.target.value)
                         }
                       >
-                        {allStatuses.map((status) => (
-                          <option key={status} value={status}>
-                            {statusMeta[status].label}
+                        {statuses.map((status) => (
+                          <option key={status.id} value={status.id}>
+                            {statusMeta(status).label}
                           </option>
                         ))}
                       </select>

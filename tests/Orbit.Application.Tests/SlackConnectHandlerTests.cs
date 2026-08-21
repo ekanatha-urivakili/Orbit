@@ -88,7 +88,7 @@ public sealed class SlackConnectHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Share this in Slack", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var handler = new PostWorkItemToSlackHandler(
             new TenantContextStub(tenantId), new WorkItemRepositoryStub(workItem),
             new SlackConnectionRepositoryStub(), new SlackClientStub(), new FakeSecretProtector());
@@ -105,7 +105,7 @@ public sealed class SlackConnectHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Share this in Slack", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var connection = SlackConnection.Create(
             tenantId, workItem.ProjectId, "T1", "Team", "C1", "general",
             "protected(https://hooks.slack.example/webhook)", Guid.NewGuid(), DateTimeOffset.UtcNow);

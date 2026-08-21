@@ -7,6 +7,7 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
+  KanbanSquare,
 } from 'lucide-react'
 import type { Project } from '../../api/types'
 import type { SettingsSection } from '../../features/settings/SettingsView'
@@ -18,10 +19,13 @@ export function Sidebar({
   selectedProjectId,
   onSelectProject,
   activeView,
+  activeTab,
   onHomeClick,
   onOpenSettings,
   onCreateProject,
   workspaceName,
+  boardName,
+  onSelectBoard,
   width = 240,
   collapsed = false,
   onToggleCollapse,
@@ -34,10 +38,13 @@ export function Sidebar({
   selectedProjectId?: string
   onSelectProject?: (id: string) => void
   activeView?: string
+  activeTab?: string
   onHomeClick?: () => void
   onOpenSettings?: (section: SettingsSection) => void
   onCreateProject?: () => void
   workspaceName?: string
+  boardName?: string
+  onSelectBoard?: () => void
   width?: number
   collapsed?: boolean
   onToggleCollapse?: () => void
@@ -127,6 +134,31 @@ export function Sidebar({
               )}
             </nav>
           </div>
+
+          {boardName && (
+            <div className="mt-6">
+              <div className="px-4 text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                Boards
+              </div>
+              <nav className="px-3 space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectBoard?.()
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    activeView === 'project' && activeTab === 'Board'
+                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#22272b]'
+                  }`}
+                >
+                  <KanbanSquare size={18} className="text-gray-500 flex-shrink-0" />
+                  <span className="truncate">{boardName}</span>
+                </button>
+              </nav>
+            </div>
+          )}
 
           <div className="mt-6">
             <div className="px-4 text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">

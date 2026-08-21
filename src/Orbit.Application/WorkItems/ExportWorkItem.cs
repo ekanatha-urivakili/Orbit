@@ -37,7 +37,8 @@ public sealed class ExportWorkItemValidator : AbstractValidator<ExportWorkItemQu
 
 public sealed class ExportWorkItemHandler(
     ITenantContext tenantContext,
-    IWorkItemRepository workItems) : IRequestHandler<ExportWorkItemQuery, WorkItemExportResult>
+    IWorkItemRepository workItems,
+    IWorkItemStatusRepository workItemStatuses) : IRequestHandler<ExportWorkItemQuery, WorkItemExportResult>
 {
     public async Task<WorkItemExportResult> Handle(ExportWorkItemQuery request, CancellationToken cancellationToken)
     {
@@ -46,36 +47,39 @@ public sealed class ExportWorkItemHandler(
             ?? throw new NotFoundException("Work item was not found.");
 
         var dto = WorkItemDto.From(workItem);
+        var statusName = (await workItemStatuses.GetAsync(
+                tenantContext.TenantId, workItem.ProjectId, workItem.StatusId, cancellationToken))
+            ?.Name ?? "Unknown";
 
         return request.Format switch
         {
             WorkItemExportFormat.Csv => new WorkItemExportResult(
-                $"{dto.Key}.csv", "text/csv", Encoding.UTF8.GetBytes(BuildCsv(dto))),
+                $"{dto.Key}.csv", "text/csv", Encoding.UTF8.GetBytes(BuildCsv(dto, statusName))),
             WorkItemExportFormat.Xml => new WorkItemExportResult(
-                $"{dto.Key}.xml", "application/xml", Encoding.UTF8.GetBytes(BuildXml(dto).ToString())),
+                $"{dto.Key}.xml", "application/xml", Encoding.UTF8.GetBytes(BuildXml(dto, statusName).ToString())),
             WorkItemExportFormat.Json => new WorkItemExportResult(
                 $"{dto.Key}.json", "application/json",
                 JsonSerializer.SerializeToUtf8Bytes(dto, new JsonSerializerOptions { WriteIndented = true })),
             WorkItemExportFormat.Xlsx => new WorkItemExportResult(
                 $"{dto.Key}.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                BuildXlsx(dto)),
+                BuildXlsx(dto, statusName)),
             WorkItemExportFormat.Docx => new WorkItemExportResult(
                 $"{dto.Key}.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                BuildDocx(dto)),
+                BuildDocx(dto, statusName)),
             _ => throw new ValidationException("Unsupported export format."),
         };
     }
 
-    private static string BuildCsv(WorkItemDto dto)
+    private static string BuildCsv(WorkItemDto dto, string statusName)
     {
         string[] headers = ["Key", "Type", "Status", "Priority", "Summary", "Description", "Labels", "CreatedAt", "UpdatedAt"];
         string[] values =
         [
             dto.Key,
             dto.Type.ToString(),
-            dto.Status.ToString(),
+            statusName,
             dto.Priority.ToString(),
             EscapeCsv(dto.Summary),
             EscapeCsv(dto.Description ?? string.Empty),
@@ -98,13 +102,13 @@ public sealed class ExportWorkItemHandler(
             : value;
     }
 
-    private static XDocument BuildXml(WorkItemDto dto) =>
+    private static XDocument BuildXml(WorkItemDto dto, string statusName) =>
         new(
             new XElement(
                 "WorkItem",
                 new XElement("Key", dto.Key),
                 new XElement("Type", dto.Type.ToString()),
-                new XElement("Status", dto.Status.ToString()),
+                new XElement("Status", statusName),
                 new XElement("Priority", dto.Priority.ToString()),
                 new XElement("Summary", dto.Summary),
                 new XElement("Description", dto.Description ?? string.Empty),
@@ -112,7 +116,7 @@ public sealed class ExportWorkItemHandler(
                 new XElement("CreatedAt", dto.CreatedAt.ToString("O")),
                 new XElement("UpdatedAt", dto.UpdatedAt.ToString("O"))));
 
-    private static byte[] BuildXlsx(WorkItemDto dto)
+    private static byte[] BuildXlsx(WorkItemDto dto, string statusName)
     {
         using var workbook = new XLWorkbook();
         var worksheet = workbook.Worksheets.Add("Work Item");
@@ -127,7 +131,7 @@ public sealed class ExportWorkItemHandler(
 
         worksheet.Cell(2, 1).Value = dto.Key;
         worksheet.Cell(2, 2).Value = dto.Type.ToString();
-        worksheet.Cell(2, 3).Value = dto.Status.ToString();
+        worksheet.Cell(2, 3).Value = statusName;
         worksheet.Cell(2, 4).Value = dto.Priority.ToString();
         worksheet.Cell(2, 5).Value = dto.Summary;
         worksheet.Cell(2, 6).Value = dto.Description ?? string.Empty;
@@ -142,7 +146,7 @@ public sealed class ExportWorkItemHandler(
         return stream.ToArray();
     }
 
-    private static byte[] BuildDocx(WorkItemDto dto)
+    private static byte[] BuildDocx(WorkItemDto dto, string statusName)
     {
         using var stream = new MemoryStream();
         using (var document = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
@@ -163,7 +167,7 @@ public sealed class ExportWorkItemHandler(
             (string Label, string Value)[] fields =
             [
                 ("Type", dto.Type.ToString()),
-                ("Status", dto.Status.ToString()),
+                ("Status", statusName),
                 ("Priority", dto.Priority.ToString()),
                 ("Labels", string.Join(", ", dto.Labels)),
                 ("Created At", dto.CreatedAt.ToString("O")),

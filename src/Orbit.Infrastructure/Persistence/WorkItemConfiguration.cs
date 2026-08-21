@@ -21,9 +21,6 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
                 "ck_work_items_type",
                 "type IN ('Initiative', 'Epic', 'Task', 'Story', 'Spike', 'Test', 'Feature', 'Request', 'Bug', 'Subtask')");
             table.HasCheckConstraint(
-                "ck_work_items_status",
-                "status IN ('Backlog', 'Selected', 'InProgress', 'InReview', 'Done', 'Blocked')");
-            table.HasCheckConstraint(
                 "ck_work_items_priority",
                 "priority IN ('Lowest', 'Low', 'Medium', 'High', 'Highest')");
         });
@@ -52,7 +49,7 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
         builder.Property(workItem => workItem.Countries).HasColumnName("countries").HasColumnType("text[]");
         builder.Property(workItem => workItem.AttachmentNames).HasColumnName("attachment_names").HasColumnType("text[]");
         builder.Property(workItem => workItem.Type).HasColumnName("type").HasConversion<string>().HasMaxLength(32);
-        builder.Property(workItem => workItem.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
+        builder.Property(workItem => workItem.StatusId).HasColumnName("status_id");
         builder.Property(workItem => workItem.Priority).HasColumnName("priority").HasConversion<string>().HasMaxLength(32);
         builder.Property(workItem => workItem.Rank).HasColumnName("rank").HasPrecision(38, 16);
         builder.Property(workItem => workItem.Version).HasColumnName("version").IsConcurrencyToken();
@@ -60,7 +57,7 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
         builder.Property(workItem => workItem.UpdatedAt).HasColumnName("updated_at");
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.Key }).IsUnique();
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.ProjectId, workItem.Rank });
-        builder.HasIndex(workItem => new { workItem.TenantId, workItem.ProjectId, workItem.Status, workItem.Rank });
+        builder.HasIndex(workItem => new { workItem.TenantId, workItem.ProjectId, workItem.StatusId, workItem.Rank });
         builder.HasIndex(workItem => new { workItem.TenantId, workItem.ParentId });
         builder.HasOne<WorkItem>()
             .WithMany()
@@ -76,6 +73,11 @@ internal sealed class WorkItemConfiguration : IEntityTypeConfiguration<WorkItem>
             .WithMany()
             .HasForeignKey(workItem => new { workItem.TenantId, Id = workItem.Type })
             .HasPrincipalKey(definition => new { definition.TenantId, definition.Id })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<WorkItemStatusDefinition>()
+            .WithMany()
+            .HasForeignKey(workItem => new { workItem.TenantId, workItem.ProjectId, workItem.StatusId })
+            .HasPrincipalKey(definition => new { definition.TenantId, definition.ProjectId, definition.Id })
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Team>()
             .WithMany()

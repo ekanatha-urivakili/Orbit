@@ -14,7 +14,7 @@ public sealed class WorkItemAttachmentHandlerTests
     private static WorkItem NewItem(Guid tenantId, Guid projectId) =>
         WorkItem.Create(
             tenantId, projectId, 1, "ORB", "Card 1", null,
-            WorkItemType.Task, Priority.Medium, DateTimeOffset.UtcNow);
+            WorkItemType.Task, Priority.Medium, Guid.NewGuid(), DateTimeOffset.UtcNow);
 
     [Fact]
     public async Task Presign_ReturnsUploadUrlScopedToTenantAndWorkItem()

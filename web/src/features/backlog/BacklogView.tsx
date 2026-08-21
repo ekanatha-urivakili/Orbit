@@ -1,21 +1,30 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, LineChart, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { orbitApi } from '../../api/client'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
-import { groupWorkItemsByStatus } from '../../board'
 import { getInitials } from '../../lib/initials'
 import { SprintReportDialog } from './SprintReportDialog'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemTypeIcon } from '../workitems/typeIcons'
 import { FilterBar } from '../../components/filters/FilterBar'
+import { AssigneeAvatarFilter } from '../../components/filters/AssigneeAvatarFilter'
 import { useWorkItemFilters } from '../../hooks/useWorkItemFilters'
-import { statusMeta } from '../board/constants'
-import type { Sprint, TenantMembership, WorkItem } from '../../api/types'
+import type { Sprint, StatusCategory, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 
-const trackedStatuses: WorkItem['status'][] = ['Backlog', 'InProgress', 'Done']
-const statusLabels = Object.fromEntries(
-  Object.entries(statusMeta).map(([status, meta]) => [status, meta.label]),
-) as Record<WorkItem['status'], string>
+function countByCategory(
+  items: readonly WorkItem[],
+  statuses: readonly WorkItemStatusDefinition[],
+): Record<StatusCategory, number> {
+  const categoryByStatusId = new Map(statuses.map((status) => [status.id, status.category]))
+  const counts: Record<StatusCategory, number> = { ToDo: 0, InProgress: 0, Done: 0 }
+  for (const item of items) {
+    const category = categoryByStatusId.get(item.statusId)
+    if (category) counts[category]++
+  }
+  return counts
+}
 
 interface BacklogViewProps {
   workItems: WorkItem[]
@@ -87,6 +96,16 @@ export function BacklogView({
   const [reportSprint, setReportSprint] = useState<Sprint | null>(null)
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
+  const statusesQuery = useQuery({
+    queryKey: ['work-item-statuses', projectId],
+    queryFn: () => orbitApi.listWorkItemStatuses(projectId),
+  })
+  const statuses = statusesQuery.data ?? []
+  const statusesById = useMemo(() => new Map(statuses.map((status) => [status.id, status])), [statuses])
+  const statusLabels = useMemo(
+    () => Object.fromEntries(statuses.map((status) => [status.id, status.name])),
+    [statuses],
+  )
   const { searchTerm, setSearchTerm, fields, activeCount, clearAll, matches } = useWorkItemFilters(
     workItems,
     members,
@@ -145,7 +164,7 @@ export function BacklogView({
   const matchesFilters = matches
 
   const backlogItems = workItems.filter((item) => !assignedItemIds.has(item.id) && matchesFilters(item))
-  const backlogStatusCounts = groupWorkItemsByStatus(trackedStatuses, backlogItems)
+  const backlogStatusCounts = countByCategory(backlogItems, statuses)
 
   const mutation = useCreateWorkItem(projectId)
 
@@ -230,6 +249,9 @@ export function BacklogView({
           fields={fields}
           activeCount={activeCount}
           onClearAll={clearAll}
+          betweenSearchAndFilter={
+            <AssigneeAvatarFilter field={fields.find((field) => field.key === 'assignee')!} />
+          }
         />
       </div>
 
@@ -238,7 +260,7 @@ export function BacklogView({
           .map((id) => workItemsById.get(id))
           .filter((item): item is WorkItem => Boolean(item))
           .filter(matchesFilters)
-        const sprintStatusCounts = groupWorkItemsByStatus(trackedStatuses, sprintItems)
+        const sprintStatusCounts = countByCategory(sprintItems, statuses)
         const isCollapsed = Boolean(collapsedSprints[sprint.id])
 
         const isDropTarget = dragOverTarget === sprint.id
@@ -261,9 +283,9 @@ export function BacklogView({
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center text-xs font-semibold gap-1">
-                  <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sprintStatusCounts.get('Backlog')?.length ?? 0}</span>
-                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.get('InProgress')?.length ?? 0}</span>
-                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.get('Done')?.length ?? 0}</span>
+                  <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sprintStatusCounts.ToDo}</span>
+                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.InProgress}</span>
+                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.Done}</span>
                 </div>
                 {sprint.state === 'Future' && (
                   <button
@@ -353,7 +375,7 @@ export function BacklogView({
 
                     <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
                       <div className="hidden sm:flex px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase items-center gap-1">
-                        {item.status === 'Backlog' ? 'To Do' : item.status}
+                        {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
                       </div>
                       {renderAssigneeAvatar(item)}
                     </div>
@@ -422,9 +444,9 @@ export function BacklogView({
           </div>
           <div className="flex items-center gap-3 flex-wrap">
              <div className="flex items-center text-xs font-semibold gap-1">
-              <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{backlogStatusCounts.get('Backlog')?.length ?? 0}</span>
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.get('InProgress')?.length ?? 0}</span>
-              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.get('Done')?.length ?? 0}</span>
+              <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{backlogStatusCounts.ToDo}</span>
+              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.InProgress}</span>
+              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.Done}</span>
             </div>
             <button
               onClick={() => onCreateSprint(`Sprint ${sprints.length + 1}`)}
@@ -475,7 +497,7 @@ export function BacklogView({
 
                 <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
                   <div className="hidden sm:flex px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase items-center gap-1">
-                    {item.status === 'Backlog' ? 'To Do' : item.status}
+                    {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
                   </div>
                   {renderAssigneeAvatar(item)}
                 </div>

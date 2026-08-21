@@ -8,7 +8,7 @@ import { AcceptInvitationView } from './features/auth/AcceptInvitationView'
 import { LoginView } from './features/auth/LoginView'
 import { RegisterView } from './features/auth/RegisterView'
 
-import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem, WorkItemStatus } from './api/types'
+import type { Board, BoardColumn, BoardType, PagedResult, Priority, Sprint, ThemePreference, WorkItem } from './api/types'
 import { getStoredLogoUrl, setStoredLogoUrl } from './lib/branding'
 import { applyTheme } from './lib/theme'
 import { useServiceWorkerUpdate } from './lib/pwa'
@@ -24,6 +24,10 @@ import { CommandPalette } from './components/CommandPalette'
 
 // Feature Components
 import { BoardView } from './features/board/BoardView'
+import { SprintInsightsPanel } from './features/board/SprintInsightsPanel'
+import { BoardViewSettingsPanel } from './features/board/BoardViewSettingsPanel'
+import { WorkflowEditorDialog } from './features/board/WorkflowEditorDialog'
+import { SprintEditDialog } from './features/board/SprintEditDialog'
 import { BacklogView } from './features/backlog/BacklogView'
 import { TimelineView } from './features/timeline/TimelineView'
 import { DevelopmentView } from './features/development/DevelopmentView'
@@ -455,6 +459,24 @@ function App() {
     enabled: Boolean(selectedProjectId),
   })
   const sprints = sprintsQuery.data ?? []
+  const statusesQuery = useQuery({
+    queryKey: ['work-item-statuses', selectedProjectId],
+    queryFn: () => orbitApi.listWorkItemStatuses(selectedProjectId ?? ''),
+    enabled: Boolean(selectedProjectId),
+  })
+  const statuses = statusesQuery.data ?? []
+  const boardViewPreferenceQuery = useQuery({
+    queryKey: ['board-view-preference', selectedProjectId],
+    queryFn: () => orbitApi.getBoardViewPreference(selectedProjectId ?? ''),
+    enabled: Boolean(selectedProjectId),
+  })
+  const [sprintInsightsOpen, setSprintInsightsOpen] = useState(false)
+  const [boardViewSettingsOpen, setBoardViewSettingsOpen] = useState(false)
+  const [workflowEditorOpen, setWorkflowEditorOpen] = useState(false)
+  const [sprintEditTarget, setSprintEditTarget] = useState<Sprint | null>(null)
+  // Reopened is treated as active for closure purposes on the backend (Sprint.StartClosing accepts
+  // Active or Reopened), so the Board actions that operate on "the current sprint" must match.
+  const activeSprint = sprints.find((sprint) => sprint.state === 'Active' || sprint.state === 'Reopened')
 
   const assigneeMutation = useChangeWorkItemAssignee(selectedProjectId ?? '')
   const handleAssigneeChange = (workItem: WorkItem, assigneeUserId: string | null) => {
@@ -464,8 +486,8 @@ function App() {
   }
 
   const statusMutation = useMutation({
-    mutationFn: ({ workItem, status }: { workItem: WorkItem; status: WorkItemStatus }) =>
-      orbitApi.changeStatus(workItem, status),
+    mutationFn: ({ workItem, statusId }: { workItem: WorkItem; statusId: string }) =>
+      orbitApi.changeStatus(workItem, statusId),
     onSuccess: (updated) => {
       queryClient.setQueryData<PagedResult<WorkItem>>(['work-items', updated.projectId], (current) =>
         current && { ...current, items: current.items.map((item) => (item.id === updated.id ? updated : item)) },
@@ -664,12 +686,18 @@ function App() {
             setActiveView('project')
           }}
           activeView={activeView}
+          activeTab={activeTab}
           onHomeClick={handleNavigateHome}
           onOpenSettings={(section) => {
             setSettingsSection(section)
             setActiveView('settings')
           }}
           workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name}
+          boardName={activeView === 'project' ? boardQuery.data?.name : undefined}
+          onSelectBoard={() => {
+            setActiveView('project')
+            setActiveTab('Board')
+          }}
           width={sidebarWidth}
           collapsed={sidebarCollapsed}
           onToggleCollapse={toggleSidebarCollapse}
@@ -681,7 +709,7 @@ function App() {
           style={{
             ['--sidebar-offset' as string]: sidebarCollapsed ? '0px' : `${sidebarWidth}px`,
           }}
-          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-hidden ml-0 lg:ml-[var(--sidebar-offset)] transition-[margin-left] duration-150 ease-out ${
+          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-clip ml-0 lg:ml-[var(--sidebar-offset)] transition-[margin-left] duration-150 ease-out ${
             isResizingSidebar ? '!transition-none' : ''
           }`}
         >
@@ -692,6 +720,7 @@ function App() {
               profile={profileQuery.data}
               projects={projects}
               workItems={workItems}
+              statuses={statuses}
               workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name ?? 'Orbit Workspace'}
               workspaces={accountWorkspacesQuery.data}
               currentWorkspaceId={authSession?.workspaceId}
@@ -716,7 +745,7 @@ function App() {
                 priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
                 onBack={handleBackFromWorkItem}
                 onNavigateHome={handleNavigateHome}
-                onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
+                onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
                 onOpenWorkItem={handleOpenWorkItem}
                 onManageWorkTypes={() => { setSettingsSection('item-types'); setActiveView('settings') }}
                 sprints={sprints}
@@ -738,6 +767,7 @@ function App() {
             {activeTab === 'Summary' && (
               <SummaryView
                 workItems={workItems}
+                statuses={statuses}
                 profile={profileQuery.data}
                 members={members}
                 onOpenWorkItem={handleOpenWorkItem}
@@ -765,23 +795,51 @@ function App() {
             )}
 
             {activeTab === 'Board' && (
-              <div className="p-8 pt-10">
-                <BoardView
-                  projectName={selectedProject?.name ?? ''}
-                  board={boardQuery.data}
-                  loading={boardQuery.isPending}
-                  mutation={boardMutation}
-                  onSave={(input) => boardMutation.mutate(input)}
-                  workItems={workItems}
-                  workItemsLoading={workItemsQuery.isPending}
-                  members={members}
-                  onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
-                  onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
-                  onOpen={(workItem) => handleOpenWorkItemOverlay(workItem, 'modal')}
-                  onAssigneeChange={handleAssigneeChange}
-                  assigneeChangePending={assigneeMutation.isPending}
-                />
+              <div className="flex h-full">
+                <div className="flex-1 min-w-0 p-8 pt-10 overflow-y-auto">
+                  <BoardView
+                    projectName={selectedProject?.name ?? ''}
+                    board={boardQuery.data}
+                    statuses={statuses}
+                    loading={boardQuery.isPending}
+                    mutation={boardMutation}
+                    onSave={(input) => boardMutation.mutate(input)}
+                    workItems={workItems}
+                    workItemsLoading={workItemsQuery.isPending}
+                    members={members}
+                    onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
+                    onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
+                    onOpen={(workItem) => handleOpenWorkItemOverlay(workItem, 'modal')}
+                    onAssigneeChange={handleAssigneeChange}
+                    assigneeChangePending={assigneeMutation.isPending}
+                    hiddenFields={boardViewPreferenceQuery.data?.hiddenFields ?? []}
+                    columnSizeMode={boardViewPreferenceQuery.data?.columnSizeMode ?? 'Flexible'}
+                    hideDoneItemsAfter={boardViewPreferenceQuery.data?.hideDoneItemsAfter ?? 'Never'}
+                    headerMenuExtras={[
+                      ...(activeSprint ? [{ label: 'Sprint insights', onClick: () => setSprintInsightsOpen(true) }] : []),
+                      { label: 'View settings', onClick: () => setBoardViewSettingsOpen(true) },
+                      { label: 'Edit workflow', onClick: () => setWorkflowEditorOpen(true) },
+                      ...(activeSprint ? [{ label: 'Edit sprint', onClick: () => setSprintEditTarget(activeSprint) }] : []),
+                    ]}
+                  />
+                </div>
+                {sprintInsightsOpen && activeSprint && (
+                  <SprintInsightsPanel sprintId={activeSprint.id} onClose={() => setSprintInsightsOpen(false)} />
+                )}
+                {boardViewSettingsOpen && selectedProjectId && (
+                  <BoardViewSettingsPanel projectId={selectedProjectId} onClose={() => setBoardViewSettingsOpen(false)} />
+                )}
               </div>
+            )}
+            {workflowEditorOpen && selectedProjectId && (
+              <WorkflowEditorDialog
+                projectId={selectedProjectId}
+                boardName={boardQuery.data?.name || selectedProject?.name || ''}
+                onClose={() => setWorkflowEditorOpen(false)}
+              />
+            )}
+            {sprintEditTarget && (
+              <SprintEditDialog sprint={sprintEditTarget} onClose={() => setSprintEditTarget(null)} />
             )}
 
             {activeTab === 'Timeline' && (
@@ -821,7 +879,7 @@ function App() {
             priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
             sprints={sprints}
             onClose={closeWorkItemOverlay}
-            onStatusChange={(workItem, status) => statusMutation.mutate({ workItem, status })}
+            onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
             onOpenWorkItem={(workItem) => setOverlayWorkItemId(workItem.id)}
             onManageWorkTypes={() => {
               setSettingsSection('item-types')

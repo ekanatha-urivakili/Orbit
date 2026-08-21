@@ -1,10 +1,11 @@
 import { ArrowRight, Building2, CheckCircle2, CircleDot, FolderKanban, Plus } from 'lucide-react'
-import type { AccountWorkspace, Profile, Project, WorkItem } from '../../api/types'
+import type { AccountWorkspace, Profile, Project, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 
 export function HomeView({
   profile,
   projects,
   workItems,
+  statuses,
   workspaceName,
   workspaces,
   currentWorkspaceId,
@@ -16,6 +17,7 @@ export function HomeView({
   profile?: Profile
   projects: Project[]
   workItems: WorkItem[]
+  statuses: WorkItemStatusDefinition[]
   workspaceName?: string
   workspaces?: AccountWorkspace[]
   currentWorkspaceId?: string
@@ -24,8 +26,9 @@ export function HomeView({
   onOpenProject: (projectId: string) => void
   onCreate: () => void
 }) {
-  const completed = workItems.filter((item) => item.status === 'Done').length
-  const active = workItems.filter((item) => item.status === 'InProgress' || item.status === 'InReview').length
+  const categoryByStatusId = new Map(statuses.map((status) => [status.id, status.category]))
+  const completed = workItems.filter((item) => categoryByStatusId.get(item.statusId) === 'Done').length
+  const active = workItems.filter((item) => categoryByStatusId.get(item.statusId) === 'InProgress').length
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-[#f7f8fa] dark:bg-[#101214] p-6 lg:p-10">

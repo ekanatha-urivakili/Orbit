@@ -60,34 +60,8 @@ public sealed class SprintReportHandler(
 
     private static SprintReportDto Fold(Sprint sprint, IReadOnlyList<SprintScopeFact> facts)
     {
-        // Day-granularity threshold: a sprint's StartDate/EndDate are calendar days, so "at start" means
-        // any fact recorded on or before the last instant of that UTC day.
-        DateTimeOffset? startThreshold = sprint.StartDate is { } startDate
-            ? new DateTimeOffset(startDate.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero)
-            : null;
-
-        var committedPoints = startThreshold is null
-            ? 0m
-            : facts
-                .Where(fact => fact.FactType is AgileFactType.SprintAdded or AgileFactType.SprintRemoved
-                    && fact.OccurredAt <= startThreshold)
-                .Sum(fact => fact.EstimateDelta ?? 0);
-
-        var completedPoints = -facts
-            .Where(fact => fact.FactType == AgileFactType.StatusChanged)
-            .Sum(fact => fact.EstimateDelta ?? 0);
-
-        var addedAfterStartPoints = startThreshold is null
-            ? 0m
-            : facts
-                .Where(fact => fact.FactType == AgileFactType.SprintAdded && fact.OccurredAt > startThreshold)
-                .Sum(fact => fact.EstimateDelta ?? 0);
-
-        var removedAfterStartPoints = startThreshold is null
-            ? 0m
-            : -facts
-                .Where(fact => fact.FactType == AgileFactType.SprintRemoved && fact.OccurredAt > startThreshold)
-                .Sum(fact => fact.EstimateDelta ?? 0);
+        var (committedPoints, completedPoints, addedAfterStartPoints, removedAfterStartPoints) =
+            SprintReportPoints.Compute(sprint, facts);
 
         var burndown = BuildBurndown(sprint, facts);
 

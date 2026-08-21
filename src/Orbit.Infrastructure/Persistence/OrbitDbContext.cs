@@ -57,6 +57,8 @@ public sealed class OrbitDbContext(
     public DbSet<AttachmentScanRequest> AttachmentScanRequests => Set<AttachmentScanRequest>();
     public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
     public DbSet<WorkItemTypeDefinition> WorkItemTypeDefinitions => Set<WorkItemTypeDefinition>();
+    public DbSet<WorkItemStatusDefinition> WorkItemStatusDefinitions => Set<WorkItemStatusDefinition>();
+    public DbSet<BoardViewPreference> BoardViewPreferences => Set<BoardViewPreference>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
     public DbSet<WorkItemCustomFieldValue> WorkItemCustomFieldValues => Set<WorkItemCustomFieldValue>();
     public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { BoardView } from './BoardView'
-import type { Board, TenantMembership, WorkItem } from '../../api/types'
+import type { Board, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 
 function selectGroupBy(label: string) {
   fireEvent.click(screen.getByLabelText('Group board by'))
@@ -32,7 +32,7 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
     countries: [],
     attachmentNames: [],
     type: 'Story',
-    status: 'Backlog',
+    statusId: 'Backlog',
     priority: 'High',
     rank: 1024,
     isFlagged: false,
@@ -69,11 +69,17 @@ const board: Board = {
   type: 'Kanban',
   version: 1,
   columns: [
-    { status: 'Backlog', order: 0, wipLimit: null, wipLimitMode: 'Warn' },
-    { status: 'InProgress', order: 1, wipLimit: null, wipLimitMode: 'Warn' },
-    { status: 'Done', order: 2, wipLimit: null, wipLimitMode: 'Warn' },
+    { statusId: 'Backlog', order: 0, wipLimit: null, wipLimitMode: 'Warn' },
+    { statusId: 'InProgress', order: 1, wipLimit: null, wipLimitMode: 'Warn' },
+    { statusId: 'Done', order: 2, wipLimit: null, wipLimitMode: 'Warn' },
   ],
 }
+
+const statuses: WorkItemStatusDefinition[] = [
+  { id: 'Backlog', key: 'backlog', name: 'Backlog', category: 'ToDo', order: 0, colorToken: 'slate', isSystem: true, isDefault: false, version: 1 },
+  { id: 'InProgress', key: 'in-progress', name: 'In progress', category: 'InProgress', order: 1, colorToken: 'blue', isSystem: true, isDefault: false, version: 1 },
+  { id: 'Done', key: 'done', name: 'Done', category: 'Done', order: 2, colorToken: 'green', isSystem: true, isDefault: false, version: 1 },
+]
 
 describe('BoardView swimlanes', () => {
   it('renders a single board with no swimlanes by default', () => {
@@ -81,6 +87,7 @@ describe('BoardView swimlanes', () => {
       <BoardView
         projectName="Orbit"
         board={board}
+        statuses={statuses}
         loading={false}
         mutation={{ isPending: false, isError: false, error: null }}
         onSave={vi.fn()}
@@ -101,6 +108,7 @@ describe('BoardView swimlanes', () => {
       <BoardView
         projectName="Orbit"
         board={board}
+        statuses={statuses}
         loading={false}
         mutation={{ isPending: false, isError: false, error: null }}
         onSave={vi.fn()}
@@ -134,6 +142,7 @@ describe('BoardView swimlanes', () => {
       <BoardView
         projectName="Orbit"
         board={board}
+        statuses={statuses}
         loading={false}
         mutation={{ isPending: false, isError: false, error: null }}
         onSave={vi.fn()}

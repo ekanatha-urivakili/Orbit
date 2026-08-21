@@ -43,6 +43,31 @@ public sealed class Sprint
         return new Sprint(tenantId, projectId, NormalizeName(name), now);
     }
 
+    /// <summary>
+    /// Edits a sprint's name/goal/dates in place (the "Edit sprint" dialog). Unlike <see cref="Start"/>,
+    /// this doesn't change <see cref="State"/> and is allowed for a future or already-active sprint,
+    /// matching Jira's "Edit sprint" affordance which stays available after the sprint has started.
+    /// </summary>
+    public void Edit(string name, string? goal, DateOnly? startDate, DateOnly? endDate, DateTimeOffset now)
+    {
+        if (State is SprintState.Closed or SprintState.Closing)
+        {
+            throw new DomainException("A closed or closing sprint cannot be edited.");
+        }
+
+        if (startDate is not null && endDate is not null && endDate < startDate)
+        {
+            throw new DomainException("A sprint's end date cannot be before its start date.");
+        }
+
+        Name = NormalizeName(name);
+        Goal = NormalizeGoal(goal);
+        StartDate = startDate;
+        EndDate = endDate;
+        Version++;
+        UpdatedAt = now;
+    }
+
     public void Start(string? goal, DateOnly? startDate, DateOnly? endDate, DateTimeOffset now)
     {
         if (State != SprintState.Future)

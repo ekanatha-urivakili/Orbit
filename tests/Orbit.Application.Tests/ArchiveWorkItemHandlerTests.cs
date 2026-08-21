@@ -15,7 +15,7 @@ public sealed class ArchiveWorkItemHandlerTests
         var tenantId = Guid.NewGuid();
         var workItem = WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Archive this card", null, WorkItemType.Task, Priority.Medium,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
         var history = new WorkItemHistoryRepositoryStub();
         var archiveHandler = new ArchiveWorkItemHandler(
             new TenantContextStub(tenantId), new CurrentPrincipalStub(),

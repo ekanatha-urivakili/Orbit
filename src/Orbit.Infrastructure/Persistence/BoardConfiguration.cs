@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Orbit.Domain.Boards;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Projects;
 
 namespace Orbit.Infrastructure.Persistence;
@@ -29,11 +30,16 @@ internal sealed class BoardConfiguration : IEntityTypeConfiguration<Board>
             column.WithOwner().HasForeignKey("tenant_id", "project_id");
             column.Property<Guid>("tenant_id").HasColumnName("tenant_id");
             column.Property<Guid>("project_id").HasColumnName("project_id");
-            column.Property(c => c.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            column.Property(c => c.StatusId).HasColumnName("status_id");
             column.Property(c => c.Order).HasColumnName("order");
             column.Property(c => c.WipLimit).HasColumnName("wip_limit");
             column.Property(c => c.WipLimitMode).HasColumnName("wip_limit_mode").HasConversion<string>().HasMaxLength(16);
-            column.HasKey("tenant_id", "project_id", nameof(BoardColumn.Status));
+            column.HasKey("tenant_id", "project_id", nameof(BoardColumn.StatusId));
+            column.HasOne<WorkItemStatusDefinition>()
+                .WithMany()
+                .HasForeignKey("tenant_id", "project_id", nameof(BoardColumn.StatusId))
+                .HasPrincipalKey(definition => new { definition.TenantId, definition.ProjectId, definition.Id })
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

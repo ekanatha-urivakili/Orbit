@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { TenantMembership, WorkItem, WorkItemStatus, WorkItemType } from '../api/types'
+import type { TenantMembership, WorkItem, WorkItemType } from '../api/types'
 
 export const UNASSIGNED = '__unassigned__'
 export const NO_PARENT = '__no_parent__'
@@ -46,7 +46,7 @@ function useMultiSelect() {
 export function useWorkItemFilters(
   workItems: WorkItem[],
   members: TenantMembership[],
-  statusLabels: Readonly<Record<WorkItemStatus, string>>,
+  statusLabels: Readonly<Record<string, string>>,
   typeLabels: Partial<Record<WorkItemType, string>>,
 ): UseWorkItemFiltersResult {
   const [searchTerm, setSearchTerm] = useState('')
@@ -60,8 +60,8 @@ export function useWorkItemFilters(
 
   const statusOptions = useMemo(
     () =>
-      (Object.keys(statusLabels) as WorkItemStatus[])
-        .filter((value) => workItems.some((item) => item.status === value))
+      Object.keys(statusLabels)
+        .filter((value) => workItems.some((item) => item.statusId === value))
         .map((value) => ({ value, label: statusLabels[value] })),
     [workItems, statusLabels],
   )
@@ -100,7 +100,7 @@ export function useWorkItemFilters(
 
   const matches = (item: WorkItem): boolean => {
     if (!matchesSearch(item, searchTerm)) return false
-    if (status.selected.length > 0 && !status.selected.includes(item.status)) return false
+    if (status.selected.length > 0 && !status.selected.includes(item.statusId)) return false
     if (assignee.selected.length > 0) {
       const key = item.assigneeUserId ?? UNASSIGNED
       if (!assignee.selected.includes(key)) return false

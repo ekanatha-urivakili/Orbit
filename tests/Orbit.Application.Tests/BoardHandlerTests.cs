@@ -4,6 +4,7 @@ using Orbit.Application.Common;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Projects;
 
 namespace Orbit.Application.Tests;
@@ -15,10 +16,12 @@ public sealed class BoardHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
         var handler = new GetBoardHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.View]),
-            new BoardRepositoryStub());
+            new BoardRepositoryStub(),
+            new WorkItemStatusRepositoryStub(statuses));
 
         var result = await handler.Handle(new GetBoardQuery(project.Id), CancellationToken.None);
 
@@ -30,11 +33,13 @@ public sealed class BoardHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
         var boards = new BoardRepositoryStub();
         var handler = new UpdateBoardHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
             boards,
+            new WorkItemStatusRepositoryStub(statuses),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -46,7 +51,7 @@ public sealed class BoardHandlerTests
         Assert.Equal(1, result.Version);
         Assert.NotNull(boards.Added);
         Assert.Equal(tenantId, boards.Added!.TenantId);
-        Assert.Equal(BoardDto.DefaultColumns.Count, result.Columns.Count);
+        Assert.Equal(statuses.Count, result.Columns.Count);
     }
 
     [Fact]
@@ -54,18 +59,22 @@ public sealed class BoardHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
+        var backlog = statuses.Single(status => status.Key == "backlog");
+        var inProgress = statuses.Single(status => status.Key == "in-progress");
         var boards = new BoardRepositoryStub();
         var handler = new UpdateBoardHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
             boards,
+            new WorkItemStatusRepositoryStub(statuses),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
         IReadOnlyList<UpdateBoardColumnInput> requestedColumns =
         [
-            new(WorkItemStatus.Backlog, null, WipLimitMode.Warn),
-            new(WorkItemStatus.InProgress, 3, WipLimitMode.Block),
+            new(backlog.Id, null, WipLimitMode.Warn),
+            new(inProgress.Id, 3, WipLimitMode.Block),
         ];
 
         var result = await handler.Handle(
@@ -73,7 +82,7 @@ public sealed class BoardHandlerTests
             CancellationToken.None);
 
         Assert.Equal(2, result.Columns.Count);
-        Assert.Equal(WorkItemStatus.InProgress, result.Columns[1].Status);
+        Assert.Equal(inProgress.Id, result.Columns[1].StatusId);
         Assert.Equal(3, result.Columns[1].WipLimit);
         Assert.Equal(WipLimitMode.Block, result.Columns[1].WipLimitMode);
     }
@@ -83,12 +92,15 @@ public sealed class BoardHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
-        IReadOnlyList<BoardColumnInput> initialColumns = [new(WorkItemStatus.Done, 2, WipLimitMode.Block)];
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
+        var done = statuses.Single(status => status.Key == "done");
+        IReadOnlyList<BoardColumnInput> initialColumns = [new(done.Id, 2, WipLimitMode.Block)];
         var existing = Board.Create(tenantId, project.Id, "Delivery Board", BoardType.Kanban, initialColumns, DateTimeOffset.UtcNow);
         var handler = new UpdateBoardHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
             new BoardRepositoryStub { Existing = existing },
+            new WorkItemStatusRepositoryStub(statuses),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -97,7 +109,7 @@ public sealed class BoardHandlerTests
             CancellationToken.None);
 
         Assert.Single(result.Columns);
-        Assert.Equal(WorkItemStatus.Done, result.Columns[0].Status);
+        Assert.Equal(done.Id, result.Columns[0].StatusId);
         Assert.Equal(2, result.Columns[0].WipLimit);
     }
 
@@ -106,12 +118,15 @@ public sealed class BoardHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
-        IReadOnlyList<BoardColumnInput> columns = [new(WorkItemStatus.Backlog, null, WipLimitMode.Warn)];
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
+        var backlog = statuses.Single(status => status.Key == "backlog");
+        IReadOnlyList<BoardColumnInput> columns = [new(backlog.Id, null, WipLimitMode.Warn)];
         var existing = Board.Create(tenantId, project.Id, "Delivery Board", BoardType.Kanban, columns, DateTimeOffset.UtcNow);
         var handler = new UpdateBoardHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
             new BoardRepositoryStub { Existing = existing },
+            new WorkItemStatusRepositoryStub(statuses),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -127,10 +142,12 @@ public sealed class BoardHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
         var handler = new UpdateBoardHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.View]),
             new BoardRepositoryStub(),
+            new WorkItemStatusRepositoryStub(statuses),
             new UnitOfWorkStub(),
             TimeProvider.System);
 
@@ -179,6 +196,30 @@ public sealed class BoardHandlerTests
 
         public Task<Board?> GetAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult(Existing?.ProjectId == projectId && Existing.TenantId == tenantId ? Existing : null);
+    }
+
+    private sealed class WorkItemStatusRepositoryStub(IReadOnlyList<WorkItemStatusDefinition> statuses) : IWorkItemStatusRepository
+    {
+        public Task AddAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task AddRangeAsync(IReadOnlyCollection<WorkItemStatusDefinition> definitions, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<WorkItemStatusDefinition?> GetAsync(
+            Guid tenantId, Guid projectId, Guid statusId, CancellationToken cancellationToken) =>
+            Task.FromResult(statuses.SingleOrDefault(status => status.Id == statusId));
+
+        public Task<IReadOnlyList<WorkItemStatusDefinition>> ListByProjectAsync(
+            Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult(statuses);
+
+        public Task<WorkItemStatusDefinition?> GetDefaultAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<WorkItemStatusDefinition?>(statuses.OrderBy(status => status.Order).First());
+
+        public Task<bool> IsInUseAsync(Guid tenantId, Guid projectId, Guid statusId, string statusKey, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public Task RemoveAsync(WorkItemStatusDefinition definition, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

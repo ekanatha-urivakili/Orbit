@@ -29,6 +29,36 @@ public static class SprintEndpoints
         .WithName("ListSprints")
         .WithTags("Sprints");
 
+        group.MapPatch("/sprints/{sprintId:guid}", async (
+            Guid sprintId,
+            UpdateSprintRequest request,
+            HttpRequest httpRequest,
+            HttpResponse httpResponse,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (!SettingsEndpoints.TryParseVersion(httpRequest.Headers.IfMatch, allowZero: false, out var expectedVersion))
+            {
+                return SettingsEndpoints.PreconditionRequired();
+            }
+
+            var sprint = await sender.Send(
+                new UpdateSprintCommand(sprintId, request.Name, request.Goal, request.StartDate, request.EndDate, expectedVersion),
+                cancellationToken);
+            httpResponse.Headers.ETag = $"\"{sprint.Version}\"";
+            return Results.Ok(sprint);
+        })
+        .WithName("UpdateSprint")
+        .WithTags("Sprints");
+
+        group.MapGet("/sprints/{sprintId:guid}/insights", async (
+            Guid sprintId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new SprintInsightsQuery(sprintId), cancellationToken)))
+        .WithName("GetSprintInsights")
+        .WithTags("Sprints");
+
         group.MapPost("/sprints/{sprintId:guid}/start", async (
             Guid sprintId,
             StartSprintRequest request,
@@ -146,6 +176,8 @@ public static class SprintEndpoints
     }
 
     public sealed record CreateSprintRequest(string Name);
+
+    public sealed record UpdateSprintRequest(string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate);
 
     public sealed record StartSprintRequest(string? Goal, DateOnly? StartDate, DateOnly? EndDate);
 

@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.Projects;
 
 namespace Orbit.Application.Projects;
@@ -23,6 +24,7 @@ public sealed class CreateProjectHandler(
     ITenantContext tenantContext,
     ITenantAuthorization authorization,
     IProjectRepository projects,
+    IWorkItemStatusRepository statuses,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : IRequestHandler<CreateProjectCommand, ProjectDto>
@@ -34,8 +36,16 @@ public sealed class CreateProjectHandler(
             throw new AccessDeniedException("The current principal cannot create projects.");
         }
 
-        var project = Project.Create(tenantContext.TenantId, request.Key, request.Name, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var project = Project.Create(tenantContext.TenantId, request.Key, request.Name, now);
         await projects.AddAsync(project, cancellationToken);
+
+        // Every project owns its own workflow (§13.5 "Edit workflow"); seed the six default
+        // statuses so the board and work items have somewhere to point on day one.
+        await statuses.AddRangeAsync(
+            WorkItemStatusDefinition.CreateSoftwareDefaults(tenantContext.TenantId, project.Id, now),
+            cancellationToken);
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return ProjectDto.From(project);
     }

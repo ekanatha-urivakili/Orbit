@@ -5,6 +5,7 @@ using Orbit.Application.Common;
 using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
+using Orbit.Domain.Configuration;
 using Orbit.Domain.WorkItems;
 
 namespace Orbit.Application.Boards;
@@ -15,8 +16,10 @@ namespace Orbit.Application.Boards;
 // intervals) and the "Status" WorkItemHistoryEntry rows ChangeWorkItemStatusHandler already writes
 // unconditionally on every transition - rather than reading current WorkItem state, so a closed
 // sprint's report stays reproducible even if items are later edited (NFR-14, matching burndown).
+// History entries record the status *key* (immutable even if a status is later renamed via the
+// workflow editor), so folding is stable across renames.
 
-public sealed record CumulativeFlowStatusCountDto(WorkItemStatus Status, int Count);
+public sealed record CumulativeFlowStatusCountDto(Guid StatusId, string StatusName, int Count);
 
 public sealed record CumulativeFlowPointDto(DateOnly Date, IReadOnlyList<CumulativeFlowStatusCountDto> StatusCounts);
 
@@ -59,13 +62,17 @@ public sealed class ControlChartValidator : AbstractValidator<ControlChartQuery>
 
 /// <summary>
 /// Shared data access + folding for all three reports: loads the sprint, verifies project View
-/// permission, loads sprint-scope facts and status-history entries for every item ever in the
-/// sprint, and folds them into per-item status timelines. See the file header for why these two
-/// sources (not current <see cref="WorkItem"/> state) are the read model.
+/// permission, loads sprint-scope facts, status-history entries, and the project's status catalog
+/// for every item ever in the sprint, and folds them into per-item status timelines. See the file
+/// header for why history (not current <see cref="WorkItem"/> state) is the read model.
 /// </summary>
 internal static class AgileReportData
 {
-    public static async Task<(Sprint Sprint, IReadOnlyList<SprintScopeFact> Facts, IReadOnlyDictionary<Guid, StatusTimeline> Timelines)>
+    public static async Task<(
+        Sprint Sprint,
+        IReadOnlyList<SprintScopeFact> Facts,
+        IReadOnlyDictionary<Guid, StatusTimeline> Timelines,
+        IReadOnlyList<WorkItemStatusDefinition> Statuses)>
         LoadAsync(
             Guid sprintId,
             ITenantContext tenant,
@@ -73,12 +80,17 @@ internal static class AgileReportData
             ISprintRepository sprints,
             ISprintScopeFactRepository sprintScopeFacts,
             IWorkItemHistoryRepository history,
+            IWorkItemStatusRepository workItemStatuses,
             CancellationToken cancellationToken)
     {
         var sprint = await sprints.GetAsync(tenant.TenantId, sprintId, cancellationToken)
             ?? throw new NotFoundException("Sprint was not found.");
         _ = await projects.GetAsync(tenant.TenantId, sprint.ProjectId, ProjectPermission.View, cancellationToken)
             ?? throw new NotFoundException("Sprint was not found.");
+
+        var statuses = await workItemStatuses.ListByProjectAsync(tenant.TenantId, sprint.ProjectId, cancellationToken);
+        var defaultStatus = statuses.OrderBy(status => status.Order).FirstOrDefault();
+        var statusesByKey = statuses.ToDictionary(status => status.Key);
 
         var facts = await sprintScopeFacts.ListBySprintAsync(tenant.TenantId, sprint.Id, cancellationToken);
         var workItemIds = facts
@@ -92,9 +104,10 @@ internal static class AgileReportData
 
         var timelines = workItemIds.ToDictionary(
             id => id,
-            id => new StatusTimeline(statusEntries.Where(entry => entry.WorkItemId == id).ToArray()));
+            id => new StatusTimeline(
+                statusEntries.Where(entry => entry.WorkItemId == id).ToArray(), statusesByKey, defaultStatus));
 
-        return (sprint, facts, timelines);
+        return (sprint, facts, timelines, statuses);
     }
 
     /// <summary>
@@ -134,22 +147,30 @@ internal static class AgileReportData
 }
 
 /// <summary>
-/// A work item's status at any point in time, derived from its "Status" history entries.
-/// Before its first recorded transition a work item is assumed to hold the fixed safe initial
-/// status every item is created with (§13.5.2, <see cref="WorkItemStatus.Backlog"/>).
+/// A work item's status at any point in time, derived from its "Status" history entries (which
+/// record the status <em>key</em>, not the display name, so a later rename doesn't break folding).
+/// Before its first recorded transition a work item is assumed to hold the project's default
+/// (lowest-order) status, matching the status every item is created with (§13.5.2).
 /// </summary>
 internal sealed class StatusTimeline
 {
     private readonly IReadOnlyList<WorkItemHistoryEntry> _orderedEntries;
+    private readonly IReadOnlyDictionary<string, WorkItemStatusDefinition> _statusesByKey;
+    private readonly WorkItemStatusDefinition? _defaultStatus;
 
-    public StatusTimeline(IReadOnlyList<WorkItemHistoryEntry> entries)
+    public StatusTimeline(
+        IReadOnlyList<WorkItemHistoryEntry> entries,
+        IReadOnlyDictionary<string, WorkItemStatusDefinition> statusesByKey,
+        WorkItemStatusDefinition? defaultStatus)
     {
         _orderedEntries = entries.OrderBy(entry => entry.ChangedAt).ToArray();
+        _statusesByKey = statusesByKey;
+        _defaultStatus = defaultStatus;
     }
 
-    public WorkItemStatus StatusAt(DateTimeOffset instant)
+    public WorkItemStatusDefinition? StatusAt(DateTimeOffset instant)
     {
-        var status = WorkItemStatus.Backlog;
+        var status = _defaultStatus;
         foreach (var entry in _orderedEntries)
         {
             if (entry.ChangedAt > instant)
@@ -157,9 +178,9 @@ internal sealed class StatusTimeline
                 break;
             }
 
-            if (Enum.TryParse<WorkItemStatus>(entry.NewValue, out var parsed))
+            if (entry.NewValue is not null && _statusesByKey.TryGetValue(entry.NewValue, out var resolved))
             {
-                status = parsed;
+                status = resolved;
             }
         }
 
@@ -167,15 +188,17 @@ internal sealed class StatusTimeline
     }
 
     /// <summary>
-    /// The (StartedAt, CompletedAt) pair for cycle time: the first transition into
-    /// <see cref="WorkItemStatus.InProgress"/> before the last transition into
-    /// <see cref="WorkItemStatus.Done"/>. Returns null when the item never reached Done, or
-    /// reached Done without ever recording an InProgress transition (cycle time undefined).
+    /// The (StartedAt, CompletedAt) pair for cycle time: the first transition into a
+    /// <see cref="StatusCategory.InProgress"/> status before the last transition into a
+    /// <see cref="StatusCategory.Done"/> status. Returns null when the item never reached a Done
+    /// status, or reached Done without ever recording an InProgress transition (cycle time undefined).
     /// </summary>
     public (DateTimeOffset StartedAt, DateTimeOffset CompletedAt)? CycleTime()
     {
         var lastCompletedAt = _orderedEntries
-            .Where(entry => entry.NewValue == nameof(WorkItemStatus.Done))
+            .Where(entry => entry.NewValue is not null
+                && _statusesByKey.TryGetValue(entry.NewValue, out var status)
+                && status.Category == StatusCategory.Done)
             .Select(entry => (DateTimeOffset?)entry.ChangedAt)
             .LastOrDefault();
         if (lastCompletedAt is not { } completedAt)
@@ -184,7 +207,10 @@ internal sealed class StatusTimeline
         }
 
         var startedAt = _orderedEntries
-            .Where(entry => entry.NewValue == nameof(WorkItemStatus.InProgress) && entry.ChangedAt < completedAt)
+            .Where(entry => entry.ChangedAt < completedAt
+                && entry.NewValue is not null
+                && _statusesByKey.TryGetValue(entry.NewValue, out var status)
+                && status.Category == StatusCategory.InProgress)
             .Select(entry => (DateTimeOffset?)entry.ChangedAt)
             .FirstOrDefault();
         if (startedAt is not { } started)
@@ -201,15 +227,14 @@ public sealed class CumulativeFlowDiagramHandler(
     IProjectRepository projects,
     ISprintRepository sprints,
     ISprintScopeFactRepository sprintScopeFacts,
-    IWorkItemHistoryRepository history) : IRequestHandler<CumulativeFlowDiagramQuery, CumulativeFlowDiagramDto>
+    IWorkItemHistoryRepository history,
+    IWorkItemStatusRepository workItemStatuses) : IRequestHandler<CumulativeFlowDiagramQuery, CumulativeFlowDiagramDto>
 {
-    private static readonly WorkItemStatus[] AllStatuses = Enum.GetValues<WorkItemStatus>();
-
     public async Task<CumulativeFlowDiagramDto> Handle(
         CumulativeFlowDiagramQuery request, CancellationToken cancellationToken)
     {
-        var (sprint, facts, timelines) = await AgileReportData.LoadAsync(
-            request.SprintId, tenant, projects, sprints, sprintScopeFacts, history, cancellationToken);
+        var (sprint, facts, timelines, statuses) = await AgileReportData.LoadAsync(
+            request.SprintId, tenant, projects, sprints, sprintScopeFacts, history, workItemStatuses, cancellationToken);
 
         if (sprint.StartDate is not { } start)
         {
@@ -232,7 +257,7 @@ public sealed class CumulativeFlowDiagramHandler(
         for (var day = start; day <= end; day = day.AddDays(1))
         {
             var dayEnd = new DateTimeOffset(day.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
-            var counts = AllStatuses.ToDictionary(status => status, _ => 0);
+            var counts = statuses.ToDictionary(status => status.Id, _ => 0);
 
             foreach (var (workItemId, intervals) in membershipIntervals)
             {
@@ -242,12 +267,15 @@ public sealed class CumulativeFlowDiagramHandler(
                 }
 
                 var status = timelines[workItemId].StatusAt(dayEnd);
-                counts[status]++;
+                if (status is not null && counts.ContainsKey(status.Id))
+                {
+                    counts[status.Id]++;
+                }
             }
 
             points.Add(new CumulativeFlowPointDto(
                 day,
-                AllStatuses.Select(status => new CumulativeFlowStatusCountDto(status, counts[status])).ToArray()));
+                statuses.Select(status => new CumulativeFlowStatusCountDto(status.Id, status.Name, counts[status.Id])).ToArray()));
         }
 
         return new CumulativeFlowDiagramDto(sprint.Id, points);
@@ -259,12 +287,13 @@ public sealed class CycleTimeReportHandler(
     IProjectRepository projects,
     ISprintRepository sprints,
     ISprintScopeFactRepository sprintScopeFacts,
-    IWorkItemHistoryRepository history) : IRequestHandler<CycleTimeReportQuery, CycleTimeReportDto>
+    IWorkItemHistoryRepository history,
+    IWorkItemStatusRepository workItemStatuses) : IRequestHandler<CycleTimeReportQuery, CycleTimeReportDto>
 {
     public async Task<CycleTimeReportDto> Handle(CycleTimeReportQuery request, CancellationToken cancellationToken)
     {
-        var (sprint, _, timelines) = await AgileReportData.LoadAsync(
-            request.SprintId, tenant, projects, sprints, sprintScopeFacts, history, cancellationToken);
+        var (sprint, _, timelines, _) = await AgileReportData.LoadAsync(
+            request.SprintId, tenant, projects, sprints, sprintScopeFacts, history, workItemStatuses, cancellationToken);
 
         var items = BuildCompletedItems(timelines);
         var cycleTimeDays = items.Select(item => item.CycleTimeDays).OrderBy(days => days).ToArray();
@@ -308,12 +337,13 @@ public sealed class ControlChartHandler(
     IProjectRepository projects,
     ISprintRepository sprints,
     ISprintScopeFactRepository sprintScopeFacts,
-    IWorkItemHistoryRepository history) : IRequestHandler<ControlChartQuery, ControlChartDto>
+    IWorkItemHistoryRepository history,
+    IWorkItemStatusRepository workItemStatuses) : IRequestHandler<ControlChartQuery, ControlChartDto>
 {
     public async Task<ControlChartDto> Handle(ControlChartQuery request, CancellationToken cancellationToken)
     {
-        var (sprint, _, timelines) = await AgileReportData.LoadAsync(
-            request.SprintId, tenant, projects, sprints, sprintScopeFacts, history, cancellationToken);
+        var (sprint, _, timelines, _) = await AgileReportData.LoadAsync(
+            request.SprintId, tenant, projects, sprints, sprintScopeFacts, history, workItemStatuses, cancellationToken);
 
         var items = CycleTimeReportHandler.BuildCompletedItems(timelines);
         var cycleTimeDays = items.Select(item => item.CycleTimeDays).OrderBy(days => days).ToArray();

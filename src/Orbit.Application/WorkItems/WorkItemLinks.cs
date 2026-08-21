@@ -27,7 +27,7 @@ public sealed record WorkItemLinkDto(
     string Key,
     string Summary,
     WorkItemType Type,
-    WorkItemStatus Status)
+    Guid StatusId)
 {
     public static WorkItemLinkDto From(WorkItemLink link, WorkItem requestedItem, WorkItem other) =>
         new(
@@ -38,7 +38,7 @@ public sealed record WorkItemLinkDto(
             other.Key,
             other.Summary,
             other.Type,
-            other.Status);
+            other.StatusId);
 }
 
 // ---------------------------------------------------------------------------

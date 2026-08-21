@@ -10,7 +10,7 @@
 -- Falls back to a well-known local-only dev hash when no override is given.
 \if :{?seed_password_hash}
 \else
-\set seed_password_hash $argon2id$v=19$m=65536,t=3,p=2$bQS2n2sDDPqQihzDRSTd3g==$O+ckWzhUDiz20QRNDhfsjFlFkdwHUKeNsJyFIrrPMwY=
+\set seed_password_hash $argon2id$v=19$m=65536,t=3,p=2$BIZi2t1DrobCZ9tbOh01jA==$sp+YJn4lzGV/wJ2mNBI/ymH8RNieKmS7PdPIPi7wpLw=
 \endif
 
 SELECT set_config('orbit.seed_password_hash', :'seed_password_hash', false);

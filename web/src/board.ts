@@ -1,11 +1,11 @@
-import type { WorkItem, WorkItemStatus } from './api/types'
+import type { WorkItem } from './api/types'
 
 export function groupWorkItemsByStatus(
-  statuses: readonly WorkItemStatus[],
+  statusIds: readonly string[],
   workItems: readonly WorkItem[],
-): ReadonlyMap<WorkItemStatus, WorkItem[]> {
+): ReadonlyMap<string, WorkItem[]> {
   return new Map(
-    statuses.map((status) => [status, workItems.filter((item) => item.status === status)]),
+    statusIds.map((statusId) => [statusId, workItems.filter((item) => item.statusId === statusId)]),
   )
 }
 

@@ -270,7 +270,7 @@ export function RichTextEditor({
           ticketKey: ticket.key,
           ticketId: ticket.id,
           summary: ticket.summary,
-          status: ticket.status,
+          status: ticket.statusId,
         })
         .run()
       setTicketSuggestion(null)

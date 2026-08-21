@@ -352,7 +352,7 @@ public sealed class WorkItemCustomFieldValueHandlerTests
     private static WorkItem CreateWorkItem(Guid tenantId) =>
         WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Build the board", null, WorkItemType.Story, Priority.High,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
 

@@ -9,9 +9,10 @@ interface FilterBarProps {
   fields: WorkItemFilterFieldState[]
   activeCount: number
   onClearAll: () => void
+  betweenSearchAndFilter?: React.ReactNode
 }
 
-export function FilterBar({ searchTerm, onSearchChange, searchPlaceholder, fields, activeCount, onClearAll }: FilterBarProps) {
+export function FilterBar({ searchTerm, onSearchChange, searchPlaceholder, fields, activeCount, onClearAll, betweenSearchAndFilter }: FilterBarProps) {
   const [open, setOpen] = useState(false)
   const [activeFieldKey, setActiveFieldKey] = useState<WorkItemFilterFieldState['key']>(fields[0]?.key ?? 'status')
   const [fieldSearch, setFieldSearch] = useState('')
@@ -45,6 +46,8 @@ export function FilterBar({ searchTerm, onSearchChange, searchPlaceholder, field
           className="pl-9 pr-4 py-1.5 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:border-blue-500 text-sm w-full sm:w-64 bg-white dark:bg-[#22272b] dark:border-gray-600 dark:text-white"
         />
       </div>
+
+      {betweenSearchAndFilter}
 
       <div className="relative" ref={containerRef}>
         <button

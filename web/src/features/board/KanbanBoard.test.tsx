@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { KanbanBoard } from './KanbanBoard'
-import type { BoardColumn, WorkItem } from '../../api/types'
+import type { BoardColumn, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 
 function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
   return {
@@ -27,7 +27,7 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
     countries: [],
     attachmentNames: [],
     type: 'Story',
-    status: 'Backlog',
+    statusId: 'Backlog',
     priority: 'High',
     rank: 1024,
     isFlagged: false,
@@ -42,20 +42,27 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
 }
 
 const columns: BoardColumn[] = [
-  { status: 'Backlog', order: 0, wipLimit: null, wipLimitMode: 'Warn' },
-  { status: 'InProgress', order: 1, wipLimit: null, wipLimitMode: 'Warn' },
-  { status: 'Done', order: 2, wipLimit: 1, wipLimitMode: 'Block' },
+  { statusId: 'Backlog', order: 0, wipLimit: null, wipLimitMode: 'Warn' },
+  { statusId: 'InProgress', order: 1, wipLimit: null, wipLimitMode: 'Warn' },
+  { statusId: 'Done', order: 2, wipLimit: 1, wipLimitMode: 'Block' },
+]
+
+const statuses: WorkItemStatusDefinition[] = [
+  { id: 'Backlog', key: 'backlog', name: 'Backlog', category: 'ToDo', order: 0, colorToken: 'slate', isSystem: true, isDefault: false, version: 1 },
+  { id: 'InProgress', key: 'in-progress', name: 'In progress', category: 'InProgress', order: 1, colorToken: 'blue', isSystem: true, isDefault: false, version: 1 },
+  { id: 'Done', key: 'done', name: 'Done', category: 'Done', order: 2, colorToken: 'green', isSystem: true, isDefault: false, version: 1 },
 ]
 
 describe('KanbanBoard Drag and Drop', () => {
   it('calls onStatusChange when dragging an item to a different status column', () => {
     const onStatusChange = vi.fn()
     const onReorder = vi.fn()
-    const item1 = makeItem({ id: 'item-1', status: 'Backlog', summary: 'Item 1' })
+    const item1 = makeItem({ id: 'item-1', statusId: 'Backlog', summary: 'Item 1' })
 
     render(
       <KanbanBoard
         columns={columns}
+        statuses={statuses}
         workItems={[item1]}
         loading={false}
         onStatusChange={onStatusChange}
@@ -80,12 +87,13 @@ describe('KanbanBoard Drag and Drop', () => {
   it('calls onReorder when dropping within the same status column', () => {
     const onStatusChange = vi.fn()
     const onReorder = vi.fn()
-    const item1 = makeItem({ id: 'item-1', status: 'Backlog', rank: 1000, summary: 'Item 1' })
-    const item2 = makeItem({ id: 'item-2', status: 'Backlog', rank: 2000, summary: 'Item 2' })
+    const item1 = makeItem({ id: 'item-1', statusId: 'Backlog', rank: 1000, summary: 'Item 1' })
+    const item2 = makeItem({ id: 'item-2', statusId: 'Backlog', rank: 2000, summary: 'Item 2' })
 
     render(
       <KanbanBoard
         columns={columns}
+        statuses={statuses}
         workItems={[item1, item2]}
         loading={false}
         onStatusChange={onStatusChange}
@@ -107,12 +115,13 @@ describe('KanbanBoard Drag and Drop', () => {
   it('blocks drop when destination column reaches WIP limit and mode is Block', () => {
     const onStatusChange = vi.fn()
     const onReorder = vi.fn()
-    const item1 = makeItem({ id: 'item-1', status: 'Backlog', summary: 'Item 1' })
-    const itemDone = makeItem({ id: 'item-done', status: 'Done', summary: 'Done Item' })
+    const item1 = makeItem({ id: 'item-1', statusId: 'Backlog', summary: 'Item 1' })
+    const itemDone = makeItem({ id: 'item-done', statusId: 'Done', summary: 'Done Item' })
 
     render(
       <KanbanBoard
         columns={columns}
+        statuses={statuses}
         workItems={[item1, itemDone]}
         loading={false}
         onStatusChange={onStatusChange}

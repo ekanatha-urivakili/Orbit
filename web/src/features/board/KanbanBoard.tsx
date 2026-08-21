@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
-import type { BoardColumn, TenantMembership, WorkItem, WorkItemStatus } from '../../api/types'
+import type { BoardColumn, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 import { groupWorkItemsByStatus, neighborsForDrop } from '../../board'
 import { statusMeta } from './constants'
 import { WorkItemCard } from './WorkItemCard'
 
 export function KanbanBoard({
   columns,
+  statuses,
   workItems,
   loading,
   members = [],
@@ -15,23 +16,29 @@ export function KanbanBoard({
   onAssigneeChange,
   assigneeChangePending = false,
   compact = false,
+  hiddenFields = [],
+  columnSizeMode = 'Flexible',
 }: {
   columns: readonly BoardColumn[]
+  statuses: readonly WorkItemStatusDefinition[]
   workItems: WorkItem[]
   loading: boolean
   members?: TenantMembership[]
-  onStatusChange: (workItem: WorkItem, status: WorkItemStatus) => void
+  onStatusChange: (workItem: WorkItem, statusId: string) => void
   onReorder: (workItem: WorkItem, neighbors: { beforeId: string | null; afterId: string | null }) => void
   onOpen?: (workItem: WorkItem) => void
   onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
   assigneeChangePending?: boolean
   compact?: boolean
+  hiddenFields?: readonly string[]
+  columnSizeMode?: 'Fixed' | 'Flexible'
 }) {
   const [draggedId, setDraggedId] = useState<string | null>(null)
-  const [dragOverColumnStatus, setDragOverColumnStatus] = useState<WorkItemStatus | null>(null)
+  const [dragOverColumnStatusId, setDragOverColumnStatusId] = useState<string | null>(null)
+  const statusesById = useMemo(() => new Map(statuses.map((status) => [status.id, status])), [statuses])
   const orderedColumns = useMemo(() => [...columns].sort((a, b) => a.order - b.order), [columns])
   const grouped = useMemo(
-    () => groupWorkItemsByStatus(orderedColumns.map((column) => column.status), workItems),
+    () => groupWorkItemsByStatus(orderedColumns.map((column) => column.statusId), workItems),
     [orderedColumns, workItems],
   )
 
@@ -39,11 +46,11 @@ export function KanbanBoard({
 
   function drop(column: BoardColumn, columnItems: WorkItem[], dropIndex: number) {
     const dragged = draggedId && workItems.find((item) => item.id === draggedId)
-    setDragOverColumnStatus(null)
+    setDragOverColumnStatusId(null)
     setDraggedId(null)
     if (!dragged) return
 
-    if (dragged.status !== column.status) {
+    if (dragged.statusId !== column.statusId) {
       if (
         column.wipLimit != null &&
         column.wipLimitMode === 'Block' &&
@@ -51,7 +58,7 @@ export function KanbanBoard({
       ) {
         return
       }
-      onStatusChange(dragged, column.status)
+      onStatusChange(dragged, column.statusId)
       return
     }
 
@@ -59,35 +66,37 @@ export function KanbanBoard({
   }
 
   return (
-    <div className={`kanban${compact ? ' kanban--lane' : ''}`} aria-label="Kanban board">
+    <div className={`kanban${compact ? ' kanban--lane' : ''}${columnSizeMode === 'Fixed' ? ' kanban--fixed-columns' : ''}`} aria-label="Kanban board">
       {orderedColumns.map((column) => {
-        const columnItems = grouped.get(column.status) ?? []
-        const meta = statusMeta[column.status]
+        const columnItems = grouped.get(column.statusId) ?? []
+        const status = statusesById.get(column.statusId)
+        if (!status) return null
+        const meta = statusMeta(status)
         const overLimit = column.wipLimit != null && columnItems.length > column.wipLimit
-        const isDragOver = dragOverColumnStatus === column.status
+        const isDragOver = dragOverColumnStatusId === column.statusId
         const isBlocked =
           Boolean(draggedId) &&
-          dragOverColumnStatus === column.status &&
+          dragOverColumnStatusId === column.statusId &&
           column.wipLimit != null &&
           column.wipLimitMode === 'Block' &&
           columnItems.length >= column.wipLimit &&
-          workItems.find((i) => i.id === draggedId)?.status !== column.status
+          workItems.find((i) => i.id === draggedId)?.statusId !== column.statusId
 
         return (
           <section
             className={`kanban-column${isDragOver ? ' kanban-column--drag-over' : ''}${isBlocked ? ' kanban-column--drag-blocked' : ''}`}
-            key={column.status}
-            aria-labelledby={`column-${column.status}`}
-            onDragEnter={() => setDragOverColumnStatus(column.status)}
+            key={column.statusId}
+            aria-labelledby={`column-${column.statusId}`}
+            onDragEnter={() => setDragOverColumnStatusId(column.statusId)}
             onDragLeave={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                setDragOverColumnStatus((current) => (current === column.status ? null : current))
+                setDragOverColumnStatusId((current) => (current === column.statusId ? null : current))
               }
             }}
           >
             <header>
               <span className={`status-dot ${meta.tone}`} />
-              <h2 id={`column-${column.status}`}>{meta.label}</h2>
+              <h2 id={`column-${column.statusId}`}>{meta.label}</h2>
               <span className={`item-count${overLimit ? ' item-count--over-limit' : ''}`}>
                 {columnItems.length}
                 {column.wipLimit != null ? ` / ${column.wipLimit}` : ''}
@@ -111,17 +120,20 @@ export function KanbanBoard({
                   key={item.id}
                   item={item}
                   columns={orderedColumns}
+                  statuses={statuses}
                   columnCounts={grouped}
                   members={members}
+                  allWorkItems={workItems}
                   onStatusChange={onStatusChange}
                   onOpen={onOpen}
                   onAssigneeChange={onAssigneeChange}
                   assigneeChangePending={assigneeChangePending}
+                  hiddenFields={hiddenFields}
                   dragging={item.id === draggedId}
                   onDragStart={() => setDraggedId(item.id)}
                   onDragEnd={() => {
                     setDraggedId(null)
-                    setDragOverColumnStatus(null)
+                    setDragOverColumnStatusId(null)
                   }}
                   onDragOver={(event) => {
                     event.preventDefault()

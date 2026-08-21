@@ -61,7 +61,7 @@ public sealed class WorkItemVoteHandlerTests
     private static WorkItem CreateWorkItem(Guid tenantId) =>
         WorkItem.Create(
             tenantId, Guid.NewGuid(), 1, "ORB", "Vote for this card", null, WorkItemType.Story, Priority.High,
-            DateTimeOffset.UtcNow);
+            Guid.NewGuid(), DateTimeOffset.UtcNow);
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;
 

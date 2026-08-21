@@ -6,6 +6,7 @@ using Orbit.Domain.Access;
 using Orbit.Domain.Boards;
 using Orbit.Domain.Choices;
 using Orbit.Domain.WorkItems;
+using Orbit.Domain.Configuration;
 
 namespace Orbit.Application.WorkItems;
 
@@ -53,6 +54,7 @@ public sealed class UpdateWorkItemHandler(
     ITenantContext tenantContext,
     ICurrentPrincipal principal,
     IWorkItemRepository workItems,
+    IWorkItemStatusRepository workItemStatuses,
     ISprintMembershipRepository sprintMemberships,
     ISprintScopeFactRepository sprintScopeFacts,
     ITenantMembershipRepository tenantMemberships,
@@ -87,7 +89,9 @@ public sealed class UpdateWorkItemHandler(
         }
 
         var previousStoryPoints = workItem.StoryPoints;
-        var previousStatus = workItem.Status;
+        var previousStatusCategory = (await workItemStatuses.GetAsync(
+                tenantContext.TenantId, workItem.ProjectId, workItem.StatusId, cancellationToken))
+            ?.Category;
         var previousAssigneeUserId = workItem.AssigneeUserId;
         var previousSummary = workItem.Summary;
         var previousDescription = workItem.Description;
@@ -130,7 +134,7 @@ public sealed class UpdateWorkItemHandler(
 
         // Only an estimate change on a not-yet-Done item moves the burndown line; re-pointing a
         // completed item doesn't retroactively change points already burned down.
-        if (workItem.StoryPoints != previousStoryPoints && previousStatus != WorkItemStatus.Done)
+        if (workItem.StoryPoints != previousStoryPoints && previousStatusCategory != StatusCategory.Done)
         {
             var membership = await sprintMemberships.GetCurrentByWorkItemAsync(
                 tenantContext.TenantId, workItem.Id, cancellationToken);

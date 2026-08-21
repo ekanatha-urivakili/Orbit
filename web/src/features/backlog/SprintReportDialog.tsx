@@ -1,21 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { orbitApi } from '../../api/client'
-import type { CompletedItem, SprintScopeChange, WorkItemStatus } from '../../api/types'
+import type { CompletedItem, SprintScopeChange } from '../../api/types'
 
 const CHART_WIDTH = 600
 const CHART_HEIGHT = 220
 const CHART_PADDING = 32
 
-const STATUS_ORDER: WorkItemStatus[] = ['Backlog', 'Selected', 'InProgress', 'InReview', 'Done', 'Blocked']
-const STATUS_COLORS: Record<WorkItemStatus, string> = {
-  Backlog: '#9ca3af',
-  Selected: '#a78bfa',
-  InProgress: '#2563eb',
-  InReview: '#f59e0b',
-  Done: '#16a34a',
-  Blocked: '#dc2626',
-}
+// Cycled by status position rather than a fixed enum, since a project's workflow statuses are
+// now a per-project catalog (§13.5 "Edit workflow"), not a closed set.
+const STATUS_COLOR_PALETTE = ['#9ca3af', '#a78bfa', '#2563eb', '#f59e0b', '#16a34a', '#dc2626', '#0891b2', '#db2777']
 
 function shortDate(isoDate: string): string {
   const [, month, day] = isoDate.split('-').map(Number)
@@ -39,6 +33,8 @@ function CumulativeFlowSection({ sprintId }: { sprintId: string }) {
     queryFn: () => orbitApi.getSprintCumulativeFlowDiagram(sprintId),
   })
   const points = query.data?.points ?? []
+  const statusOrder = points[0]?.statusCounts.map((s) => ({ id: s.statusId, name: s.statusName })) ?? []
+  const colorByStatusId = new Map(statusOrder.map((status, index) => [status.id, STATUS_COLOR_PALETTE[index % STATUS_COLOR_PALETTE.length]]))
   const maxCount = Math.max(1, ...points.map((point) => point.statusCounts.reduce((sum, s) => sum + s.count, 0)))
   const barWidth = points.length > 0 ? (CHART_WIDTH - CHART_PADDING * 2) / points.length : 0
   const plotHeight = CHART_HEIGHT - CHART_PADDING * 2
@@ -58,8 +54,8 @@ function CumulativeFlowSection({ sprintId }: { sprintId: string }) {
               let stackedY = CHART_HEIGHT - CHART_PADDING
               return (
                 <g key={point.date}>
-                  {STATUS_ORDER.map((status) => {
-                    const count = point.statusCounts.find((s) => s.status === status)?.count ?? 0
+                  {statusOrder.map((status) => {
+                    const count = point.statusCounts.find((s) => s.statusId === status.id)?.count ?? 0
                     const segmentHeight = (count / maxCount) * plotHeight
                     const y = stackedY - segmentHeight
                     stackedY = y
@@ -67,8 +63,8 @@ function CumulativeFlowSection({ sprintId }: { sprintId: string }) {
                       return null
                     }
                     return (
-                      <rect key={status} x={x + 1} y={y} width={Math.max(barWidth - 2, 1)} height={segmentHeight} fill={STATUS_COLORS[status]}>
-                        <title>{`${status}: ${count}`}</title>
+                      <rect key={status.id} x={x + 1} y={y} width={Math.max(barWidth - 2, 1)} height={segmentHeight} fill={colorByStatusId.get(status.id)}>
+                        <title>{`${status.name}: ${count}`}</title>
                       </rect>
                     )
                   })}
@@ -80,10 +76,10 @@ function CumulativeFlowSection({ sprintId }: { sprintId: string }) {
             })}
           </svg>
           <div className="flex flex-wrap gap-3 mt-2">
-            {STATUS_ORDER.map((status) => (
-              <div key={status} className="flex items-center gap-1 text-xs text-gray-600">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: STATUS_COLORS[status] }} />
-                {status}
+            {statusOrder.map((status) => (
+              <div key={status.id} className="flex items-center gap-1 text-xs text-gray-600">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: colorByStatusId.get(status.id) }} />
+                {status.name}
               </div>
             ))}
           </div>
