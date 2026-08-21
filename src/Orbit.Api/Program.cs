@@ -23,9 +23,35 @@ using Orbit.Infrastructure.Identity;
 using Orbit.Infrastructure.Persistence;
 using Orbit.Infrastructure.RateLimiting;
 using Scalar.AspNetCore;
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// §4.2: compact JSON to stdout outside Development so structured fields (CorrelationId, TraceId,
+// TenantId - pushed via ILogger.BeginScope in CorrelationIdMiddleware/TenantTransactionMiddleware)
+// are queryable rather than grepped from free text. Development keeps Serilog's readable console
+// format. Mirrors the existing appsettings.json Logging:LogLevel defaults in code rather than
+// adding a Serilog.Settings.Configuration dependency for a two-value override.
+builder.Host.UseSerilog((context, loggerConfiguration) =>
+{
+    loggerConfiguration
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+        .Enrich.FromLogContext();
+
+    if (context.HostingEnvironment.IsDevelopment())
+    {
+        loggerConfiguration.WriteTo.Console();
+    }
+    else
+    {
+        loggerConfiguration.WriteTo.Console(new CompactJsonFormatter());
+    }
+});
+
 const string bearerScheme = "OrbitBearer";
 const string localBearerScheme = "OrbitLocalBearer";
 const string externalBearerScheme = "OrbitExternalBearer";
