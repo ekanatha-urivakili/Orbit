@@ -18,6 +18,7 @@ using Orbit.Api.Observability;
 using Orbit.Api.Tenancy;
 using Orbit.Application;
 using Orbit.Application.Abstractions;
+using Orbit.Application.Caching;
 using Orbit.Infrastructure;
 using Orbit.Infrastructure.Identity;
 using Orbit.Infrastructure.Persistence;
@@ -235,6 +236,8 @@ builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation()
         .AddRuntimeInstrumentation()
         .AddMeter(RateLimitTelemetry.MeterName)
+        .AddMeter(CacheTelemetry.MeterName)
+        .AddMeter("Microsoft.Extensions.Caching.Hybrid")
         .AddOtlpExporter());
 
 var app = builder.Build();

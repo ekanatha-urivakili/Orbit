@@ -24,6 +24,13 @@ public sealed class Project
     public string Name { get; private set; } = string.Empty;
     public long NextItemSequence { get; private set; } = 1;
     public long Version { get; private set; } = 1;
+
+    /// <summary>
+    /// Bumped whenever workflow status catalog or custom-field config changes, so a HybridCache
+    /// entry keyed on it (OBSERVABILITY-CACHING-ARCHITECTURE.md §5.1 principle 3) is invalidated
+    /// on the next read without an explicit cache-delete call. Mirrors Workspace.AuthorizationEpoch.
+    /// </summary>
+    public long ConfigEpoch { get; private set; } = 1;
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
@@ -57,4 +64,6 @@ public sealed class Project
         UpdatedAt = now;
         return allocated;
     }
+
+    public void IncrementConfigEpoch() => ConfigEpoch++;
 }

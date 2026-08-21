@@ -265,6 +265,11 @@
           "Microsoft.EntityFrameworkCore": "10.0.0"
         }
       },
+      "Microsoft.Extensions.Caching.Hybrid": {
+        "type": "Transitive",
+        "resolved": "10.9.0",
+        "contentHash": "D0tHRbUCliInxTfPgN9K6RxrCVaWu9kyIT66vbIJ/YwA6BV2xa8vTqoE3JQXA2Rf2vRdgd29+HR6Ay6KmzDslw=="
+      },
       "Microsoft.Extensions.Caching.StackExchangeRedis": {
         "type": "Transitive",
         "resolved": "10.0.10",
@@ -474,6 +479,7 @@
           "DocumentFormat.OpenXml": "[3.5.1, )",
           "FluentValidation.DependencyInjectionExtensions": "[12.1.1, )",
           "MediatR": "[14.2.0, )",
+          "Microsoft.Extensions.Caching.Hybrid": "[10.9.0, )",
           "Orbit.Domain": "[1.0.0, )"
         }
       },
@@ -488,6 +494,7 @@
           "MailKit": "[4.17.0, )",
           "Microsoft.AspNetCore.DataProtection.StackExchangeRedis": "[10.0.11, )",
           "Microsoft.EntityFrameworkCore": "[10.0.0, )",
+          "Microsoft.Extensions.Caching.Hybrid": "[10.9.0, )",
           "Microsoft.Extensions.Caching.StackExchangeRedis": "[10.0.10, )",
           "Microsoft.IdentityModel.Protocols.OpenIdConnect": "[8.19.2, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.0, )",

@@ -229,6 +229,48 @@ public sealed class CustomFieldHandlerTests
     }
 
     [Fact]
+    public async Task Create_IncrementsProjectConfigEpoch()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var handler = new CreateCustomFieldHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
+            new RepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new CreateCustomFieldCommand(project.Id, "Severity", "Severity", CustomFieldType.Text, false, 10, [], []),
+            CancellationToken.None);
+
+        Assert.Equal(2, project.ConfigEpoch);
+    }
+
+    [Fact]
+    public async Task Update_IncrementsProjectConfigEpoch()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var definition = CustomFieldDefinition.Create(
+            tenantId, project.Id, "severity", "Severity", CustomFieldType.Text, false, 10, [], [], DateTimeOffset.UtcNow);
+        var repository = new RepositoryStub();
+        repository.Definitions.Add(definition);
+        var handler = new UpdateCustomFieldHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
+            repository,
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new UpdateCustomFieldCommand(project.Id, definition.Id, "Severity level", true, 15, false, [], [], definition.Version),
+            CancellationToken.None);
+
+        Assert.Equal(2, project.ConfigEpoch);
+    }
+
+    [Fact]
     public void CreateValidator_RejectsMoreThan100ChoiceOptions()
     {
         var validator = new CreateCustomFieldValidator();
