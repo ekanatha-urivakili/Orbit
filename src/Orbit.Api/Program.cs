@@ -14,6 +14,7 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Orbit.Api.Endpoints;
 using Orbit.Api.Errors;
+using Orbit.Api.Observability;
 using Orbit.Api.Tenancy;
 using Orbit.Application;
 using Orbit.Application.Abstractions;
@@ -234,6 +235,7 @@ if (app.Configuration.GetValue("DatabaseSecurity:EnforceRuntimeRole", app.Enviro
         .ValidateAsync(CancellationToken.None);
 }
 
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 if (app.Environment.IsProduction())
 {

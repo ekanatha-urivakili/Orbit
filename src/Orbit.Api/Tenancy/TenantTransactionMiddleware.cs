@@ -21,7 +21,8 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         IAuthorizationContextCache authorizationCache,
         IAuthenticationRepository authentication,
         OrbitDbContext dbContext,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILogger<TenantTransactionMiddleware> logger)
     {
         if (!RequiresTenant(context))
         {
@@ -84,6 +85,7 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         }
 
         tenantContext.SetTenant(tenantId);
+        using var tenantScope = logger.BeginScope(new Dictionary<string, object?> { ["TenantId"] = tenantId });
         await using var transaction = await dbContext.Database.BeginTransactionAsync(context.RequestAborted);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT set_config('app.tenant_id', {tenantId.ToString()}, true)",
@@ -96,8 +98,9 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
                 await next(context);
                 await transaction.CommitAsync(context.RequestAborted);
             }
-            catch
+            catch (Exception exception)
             {
+                logger.LogWarning(exception, "Transaction rolled back for {Path}", context.Request.Path);
                 await transaction.RollbackAsync(CancellationToken.None);
                 throw;
             }
@@ -193,8 +196,9 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
             await next(context);
             await transaction.CommitAsync(context.RequestAborted);
         }
-        catch
+        catch (Exception exception)
         {
+            logger.LogWarning(exception, "Transaction rolled back for {Path}", context.Request.Path);
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
