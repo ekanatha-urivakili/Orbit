@@ -100,7 +100,7 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
             }
             catch (Exception exception)
             {
-                logger.LogWarning(exception, "Transaction rolled back for {Path}", context.Request.Path);
+                logger.LogWarning(exception, "Transaction rolled back for {Path}", SanitizeForLog(context.Request.Path));
                 await transaction.RollbackAsync(CancellationToken.None);
                 throw;
             }
@@ -198,7 +198,7 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "Transaction rolled back for {Path}", context.Request.Path);
+            logger.LogWarning(exception, "Transaction rolled back for {Path}", SanitizeForLog(context.Request.Path));
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
@@ -300,4 +300,9 @@ public sealed class TenantTransactionMiddleware(RequestDelegate next)
         path.StartsWithSegments("/api/v1/workspaces")
         && (path.Value?.EndsWith("/invitations/accept", StringComparison.OrdinalIgnoreCase) == true
             || path.Value?.EndsWith("/invitations/accept-external", StringComparison.OrdinalIgnoreCase) == true);
+
+    // CodeQL cs/log-injection: the decoded request path is attacker-controlled and can contain
+    // CR/LF, which would let a crafted URL forge extra lines in a plain-text log sink.
+    private static string SanitizeForLog(PathString path) =>
+        (path.Value ?? string.Empty).Replace('\r', '_').Replace('\n', '_');
 }
