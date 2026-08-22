@@ -223,10 +223,14 @@ export function SearchableSelect<T extends string = string>({
       }
     }
 
+    let rafId: number | null = null
     const handleScrollOrResize = (e: Event) => {
       // Don't close if scrolling inside the dropdown menu itself
       if (menuRef.current && menuRef.current.contains(e.target as Node)) return
-      updatePosition()
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        updatePosition()
+      })
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -235,6 +239,7 @@ export function SearchableSelect<T extends string = string>({
     window.addEventListener('resize', handleScrollOrResize)
 
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
       window.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handleClickOutside)
       window.removeEventListener('scroll', handleScrollOrResize, true)
@@ -276,13 +281,13 @@ export function SearchableSelect<T extends string = string>({
 
   const variantClasses = {
     default:
-      'bg-white dark:bg-[#22272b] border border-gray-300 dark:border-[#4b5563] text-gray-900 dark:text-gray-100 shadow-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20',
+      'bg-white dark:bg-[#22272b] border border-gray-300 dark:border-[#4b5563] text-gray-900 dark:text-gray-100 shadow-sm hover:border-gray-400 dark:hover:border-gray-500 focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20',
     panel:
-      'bg-white dark:bg-[#22272b] border border-gray-300 dark:border-[#4b5563] text-gray-900 dark:text-gray-100 shadow-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20',
+      'bg-white dark:bg-[#22272b] border border-gray-300 dark:border-[#4b5563] text-gray-900 dark:text-gray-100 shadow-sm hover:border-gray-400 dark:hover:border-gray-500 focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20',
     header:
-      'bg-white/15 hover:bg-white/25 border border-white/30 text-white shadow-none focus:ring-2 focus:ring-white/40',
+      'bg-white/15 hover:bg-white/25 border border-white/30 text-white shadow-none focus-within:ring-2 focus-within:ring-white/40',
     compact:
-      'bg-white dark:bg-[#22272b] border border-gray-200 dark:border-[#394047] text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500',
+      'bg-white dark:bg-[#22272b] border border-gray-200 dark:border-[#394047] text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600 focus-within:border-blue-500',
   }[variant]
 
   const showSearch = searchable && options.length > 3
@@ -292,60 +297,74 @@ export function SearchableSelect<T extends string = string>({
       {/* Hidden input for form integration */}
       {name && <input type="hidden" name={name} value={value ?? ''} required={required} />}
 
-      {/* Trigger Button */}
-      <button
-        ref={triggerRef}
-        id={selectId}
-        type="button"
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        aria-label={ariaLabel}
-        onClick={toggleOpen}
-        className={`group flex w-full items-center justify-between gap-2 text-left font-normal transition-all duration-150 outline-none select-none disabled:cursor-not-allowed disabled:opacity-50 ${sizeClasses} ${variantClasses} ${triggerClassName}`}
+      {/* Trigger Container */}
+      <div
+        className={`group flex w-full items-center justify-between gap-1 text-left font-normal transition-all duration-150 select-none ${sizeClasses} ${variantClasses} ${disabled ? 'cursor-not-allowed opacity-50' : ''} ${triggerClassName}`}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          {selectedOption?.icon && (
-            <span className="shrink-0 flex items-center">{selectedOption.icon}</span>
-          )}
-          {selectedOption ? (
-            <span className="truncate block font-medium">
-              {selectedOption.label}
-              {selectedOption.badge && (
-                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-                  {selectedOption.badge}
-                </span>
-              )}
-            </span>
-          ) : (
-            <span className={`truncate block ${variant === 'header' ? 'text-white/70' : 'text-gray-400 dark:text-gray-500'}`}>
-              {placeholder}
-            </span>
-          )}
-        </div>
+        <button
+          ref={triggerRef}
+          id={selectId}
+          type="button"
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-controls={`${selectId}-listbox`}
+          aria-label={ariaLabel}
+          onClick={toggleOpen}
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 bg-transparent text-left outline-none disabled:cursor-not-allowed"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {selectedOption?.icon && (
+              <span className="shrink-0 flex items-center">{selectedOption.icon}</span>
+            )}
+            {selectedOption ? (
+              <span className="truncate block font-medium">
+                {selectedOption.label}
+                {selectedOption.badge && (
+                  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                    {selectedOption.badge}
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className={`truncate block ${variant === 'header' ? 'text-white/70' : 'text-gray-400 dark:text-gray-500'}`}>
+                {placeholder}
+              </span>
+            )}
+          </div>
+        </button>
 
-        <div className="flex shrink-0 items-center gap-1.5 ml-1">
+        <div className="flex shrink-0 items-center gap-1 ml-1">
           {clearable && selectedOption && !disabled && (
-            <span
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               onClick={handleClear}
               className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
               title="Clear selection"
+              aria-label="Clear selection"
             >
               <X size={13} />
-            </span>
+            </button>
           )}
-          <ChevronDown
-            size={size === 'sm' ? 14 : 16}
-            className={`transition-transform duration-200 ease-in-out shrink-0 ${
-              variant === 'header'
-                ? 'text-white/80'
-                : 'text-gray-400 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200'
-            } ${isOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''}`}
-          />
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={disabled}
+            onClick={toggleOpen}
+            aria-label="Toggle options menu"
+            className="flex items-center justify-center p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 outline-none"
+          >
+            <ChevronDown
+              size={size === 'sm' ? 14 : 16}
+              className={`transition-transform duration-200 ease-in-out shrink-0 ${
+                variant === 'header'
+                  ? 'text-white/80'
+                  : 'text-gray-400 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200'
+              } ${isOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''}`}
+            />
+          </button>
         </div>
-      </button>
+      </div>
 
       {/* Dropdown Menu Portal */}
       {isOpen &&
@@ -409,6 +428,7 @@ export function SearchableSelect<T extends string = string>({
             {/* Options List */}
             <ul
               ref={listRef}
+              id={`${selectId}-listbox`}
               role="listbox"
               aria-label={ariaLabel || 'Options'}
               className="flex-1 overflow-y-auto p-1.5 max-h-60 space-y-0.5 focus:outline-none scrollbar-thin"

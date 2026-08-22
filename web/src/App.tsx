@@ -560,9 +560,16 @@ function App() {
     onSuccess: patchSprint,
   })
   const completeSprintMutation = useMutation({
-    mutationFn: ({ sprint, rolloverTargetSprintId }: { sprint: Sprint; rolloverTargetSprintId: string | null }) =>
-      orbitApi.completeSprint(sprint, rolloverTargetSprintId),
-    onSuccess: patchSprint,
+    mutationFn: ({ sprint, createRolloverSprint }: { sprint: Sprint; createRolloverSprint: boolean }) =>
+      orbitApi.completeSprint(sprint, createRolloverSprint),
+    onSuccess: (updated, { createRolloverSprint }) => {
+      patchSprint(updated)
+      // A "yes" close auto-creates a new sprint server-side that this response doesn't include -
+      // refetch so it shows up in the Backlog/Board sprint lists.
+      if (createRolloverSprint) {
+        queryClient.invalidateQueries({ queryKey: ['sprints', updated.projectId] })
+      }
+    },
   })
   const reopenSprintMutation = useMutation({
     mutationFn: (sprint: Sprint) => orbitApi.reopenSprint(sprint),
@@ -798,7 +805,7 @@ function App() {
                 sprintsLoading={sprintsQuery.isPending}
                 onCreateSprint={(name) => createSprintMutation.mutate(name)}
                 onStartSprint={(sprint) => startSprintMutation.mutate({ sprint, goal: null, startDate: null, endDate: null })}
-                onCompleteSprint={(sprint, rolloverTargetSprintId) => completeSprintMutation.mutate({ sprint, rolloverTargetSprintId })}
+                onCompleteSprint={(sprint, createRolloverSprint) => completeSprintMutation.mutate({ sprint, createRolloverSprint })}
                 onReopenSprint={(sprint) => reopenSprintMutation.mutate(sprint)}
                 onAssignToSprint={(workItemId, sprintId) => assignToSprintMutation.mutate({ workItemId, sprintId })}
                 onRemoveFromSprint={(workItemId) => removeFromSprintMutation.mutate(workItemId)}
@@ -830,9 +837,8 @@ function App() {
                     columnSizeMode={boardViewPreferenceQuery.data?.columnSizeMode ?? 'Flexible'}
                     hideDoneItemsAfter={boardViewPreferenceQuery.data?.hideDoneItemsAfter ?? 'Never'}
                     activeSprint={activeSprint}
-                    futureSprints={sprints.filter((s) => s.state === 'Future')}
-                    onCompleteSprint={(sprint, rolloverTargetSprintId) =>
-                      completeSprintMutation.mutate({ sprint, rolloverTargetSprintId })
+                    onCompleteSprint={(sprint, createRolloverSprint) =>
+                      completeSprintMutation.mutate({ sprint, createRolloverSprint })
                     }
                     completeSprintPending={completeSprintMutation.isPending}
                     onToggleInsights={() => setSprintInsightsOpen((curr) => !curr)}

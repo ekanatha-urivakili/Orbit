@@ -81,6 +81,8 @@ public sealed class ToggleWorkItemFlagHandlerTests
             Task.FromResult<IReadOnlyList<WorkItem>>([]);
         public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
             Task.FromResult(false);
+        public Task<decimal?> GetMinBacklogRankAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<decimal?>(null);
         public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 

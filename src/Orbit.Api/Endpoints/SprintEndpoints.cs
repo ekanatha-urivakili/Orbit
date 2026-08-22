@@ -95,7 +95,7 @@ public static class SprintEndpoints
             }
 
             var sprint = await sender.Send(
-                new CompleteSprintCommand(sprintId, expectedVersion, request.RolloverTargetSprintId),
+                new CompleteSprintCommand(sprintId, expectedVersion, request.CreateRolloverSprint),
                 cancellationToken);
             httpResponse.Headers.ETag = $"\"{sprint.Version}\"";
             return Results.Ok(sprint);
@@ -181,7 +181,7 @@ public static class SprintEndpoints
 
     public sealed record StartSprintRequest(string? Goal, DateOnly? StartDate, DateOnly? EndDate);
 
-    public sealed record CompleteSprintRequest(Guid? RolloverTargetSprintId);
+    public sealed record CompleteSprintRequest(bool CreateRolloverSprint);
 
     public sealed record AssignWorkItemToSprintRequest(Guid SprintId);
 }

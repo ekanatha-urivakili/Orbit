@@ -211,7 +211,7 @@ public sealed class StartSprintHandler(
 public sealed record CompleteSprintCommand(
     Guid SprintId,
     long ExpectedVersion,
-    Guid? RolloverTargetSprintId) : ICommand<SprintDto>;
+    bool CreateRolloverSprint) : ICommand<SprintDto>;
 
 public sealed class CompleteSprintValidator : AbstractValidator<CompleteSprintCommand>
 {
@@ -235,12 +235,15 @@ public sealed class CompleteSprintHandler(
     ISprintScopeFactRepository facts,
     IWorkItemRepository workItems,
     IWorkItemStatusRepository workItemStatuses,
+    IProjectAccessRepository projectAccess,
     ICurrentPrincipal principal,
     ISettingsRepository settings,
     IOutboxRepository outbox,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IRequestHandler<CompleteSprintCommand, SprintDto>
 {
+    private const decimal RankGap = 1024m;
+
     public async Task<SprintDto> Handle(CompleteSprintCommand request, CancellationToken cancellationToken)
     {
         var sprint = await sprints.GetAsync(tenant.TenantId, request.SprintId, cancellationToken)
@@ -269,28 +272,29 @@ public sealed class CompleteSprintHandler(
 
         if (operation is null)
         {
-            if (request.RolloverTargetSprintId is { } targetId)
+            Guid? rolloverTargetSprintId = null;
+            if (request.CreateRolloverSprint)
             {
-                if (targetId == sprint.Id)
-                {
-                    throw new DomainException("A sprint cannot roll over into itself.");
-                }
-
-                var rolloverTarget = await sprints.GetAsync(tenant.TenantId, targetId, cancellationToken)
-                    ?? throw new NotFoundException("Rollover target sprint was not found.");
-                if (rolloverTarget.ProjectId != sprint.ProjectId || rolloverTarget.State != SprintState.Future)
-                {
-                    throw new DomainException("The rollover target must be a future sprint in the same project.");
-                }
+                var fallbackDate = DateOnly.FromDateTime(now.UtcDateTime);
+                var name = Sprint.NextRolloverName(sprint.Name, fallbackDate);
+                var newStart = (sprint.EndDate ?? fallbackDate).AddDays(1);
+                var lengthInDays = sprint.StartDate is { } start && sprint.EndDate is { } end
+                    ? end.DayNumber - start.DayNumber
+                    : 0;
+                var rolloverSprint = Sprint.Create(tenant.TenantId, sprint.ProjectId, name, now);
+                rolloverSprint.Edit(name, goal: null, newStart, newStart.AddDays(lengthInDays), now);
+                await sprints.AddAsync(rolloverSprint, cancellationToken);
+                rolloverTargetSprintId = rolloverSprint.Id;
             }
 
             sprint.StartClosing(now);
             operation = SprintCompletionOperation.Create(
-                tenant.TenantId, sprint.Id, request.RolloverTargetSprintId, members.Count, now);
+                tenant.TenantId, sprint.Id, rolloverTargetSprintId, members.Count, now);
             await completionOperations.AddAsync(operation, cancellationToken);
         }
 
         var remaining = new List<Guid>();
+        var movedToBacklog = new List<WorkItem>();
         var workItemsById = (await workItems.ListByIdsAsync(
                 tenant.TenantId,
                 members.Select(membership => membership.WorkItemId).ToArray(),
@@ -322,6 +326,10 @@ public sealed class CompleteSprintHandler(
                             workItem.StoryPoints ?? 0, now, now),
                         cancellationToken);
                 }
+                else
+                {
+                    movedToBacklog.Add(workItem);
+                }
             }
             else
             {
@@ -330,24 +338,37 @@ public sealed class CompleteSprintHandler(
 
         }
 
+        if (movedToBacklog.Count > 0)
+        {
+            var minRank = await workItems.GetMinBacklogRankAsync(tenant.TenantId, sprint.ProjectId, cancellationToken);
+            var rank = minRank ?? 0m;
+            foreach (var workItem in movedToBacklog.OrderBy(item => item.Rank))
+            {
+                rank -= RankGap;
+                workItem.Reorder(rank, now);
+            }
+        }
+
         sprint.FinishClosing(now);
         operation.RecordProgress(operation.TotalCount, now);
         operation.MarkCompleted(now);
         await facts.AddAsync(
             SprintScopeFact.Create(tenant.TenantId, sprint.Id, null, AgileFactType.SprintCompleted, null, now, now),
             cancellationToken);
-        await SprintNotifications.NotifyAsync(
-            principal, settings, outbox, sprint, "completed", workItemsById.Values, now, cancellationToken);
+        await SprintNotifications.NotifyProjectViewersAsync(
+            principal, projectAccess, settings, outbox, sprint, "completed", now, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SprintDto.From(sprint, remaining);
     }
 }
 
 /// <summary>
-/// Fires the §10.5 "sprint started/completed" notification: the sprint's member work items'
-/// owner fields (Assignee/Developer/ProductOwner, deduplicated) are the recipient set, gated by
-/// each recipient's <see cref="Domain.Settings.NotificationPreference"/> the same way as the
-/// comment-mention (v1.25) and status-transition (v1.26) triggers.
+/// Fires the §10.5 "sprint started/completed" notification, gated by each recipient's
+/// <see cref="Domain.Settings.NotificationPreference"/> the same way as the comment-mention
+/// (v1.25) and status-transition (v1.26) triggers. Sprint-started keeps notifying the sprint's
+/// member work items' owner fields (Assignee/Developer/ProductOwner, deduplicated). Sprint-completed
+/// instead notifies everyone with board/backlog (View) access to the project, since closing a
+/// sprint changes what every viewer sees, not just what item owners see (§13.5).
 /// </summary>
 internal static class SprintNotifications
 {
@@ -367,7 +388,35 @@ internal static class SprintNotifications
             .Select(id => id!.Value)
             .Distinct()
             .ToArray();
-        if (recipientIds.Length == 0)
+        await SendAsync(principal, settings, outbox, sprint, eventLabel, recipientIds, now, cancellationToken);
+    }
+
+    public static async Task NotifyProjectViewersAsync(
+        ICurrentPrincipal principal,
+        IProjectAccessRepository projectAccess,
+        ISettingsRepository settings,
+        IOutboxRepository outbox,
+        Sprint sprint,
+        string eventLabel,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var recipientIds = await projectAccess.ListUserIdsWithPermissionAsync(
+            sprint.TenantId, sprint.ProjectId, ProjectPermission.View, cancellationToken);
+        await SendAsync(principal, settings, outbox, sprint, eventLabel, recipientIds, now, cancellationToken);
+    }
+
+    private static async Task SendAsync(
+        ICurrentPrincipal principal,
+        ISettingsRepository settings,
+        IOutboxRepository outbox,
+        Sprint sprint,
+        string eventLabel,
+        IReadOnlyCollection<Guid> recipientIds,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (recipientIds.Count == 0)
         {
             return;
         }

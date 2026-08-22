@@ -1,28 +1,26 @@
 import { useState } from 'react'
 import { X, CheckCircle2, CircleDot } from 'lucide-react'
 import type { Sprint, WorkItem, WorkItemStatusDefinition } from '../../api/types'
-import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { RolloverChoice } from './RolloverChoice'
 
 interface CompleteSprintDialogProps {
   sprint: Sprint
   workItems: WorkItem[]
   statuses: WorkItemStatusDefinition[]
-  futureSprints: Sprint[]
   pending?: boolean
   onClose: () => void
-  onComplete: (rolloverTargetSprintId: string | null) => void
+  onComplete: (createRolloverSprint: boolean) => void
 }
 
 export function CompleteSprintDialog({
   sprint,
   workItems,
   statuses,
-  futureSprints,
   pending = false,
   onClose,
   onComplete,
 }: CompleteSprintDialogProps) {
-  const [rolloverTargetId, setRolloverTargetId] = useState<string>('')
+  const [createRollover, setCreateRollover] = useState(false)
 
   // Determine sprint items and counts
   const sprintItemIds = new Set(sprint.workItemIds)
@@ -38,11 +36,9 @@ export function CompleteSprintDialog({
     return status?.category !== 'Done'
   })
 
-  const otherFutureSprints = futureSprints.filter((s) => s.id !== sprint.id && s.state === 'Future')
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onComplete(rolloverTargetId || null)
+    onComplete(createRollover)
   }
 
   return (
@@ -88,19 +84,13 @@ export function CompleteSprintDialog({
           {openItems.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-[#394047]">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                Select where all open work items should be moved:
+                Move incomplete items to a new sprint?
               </label>
-              <SearchableSelect
-                value={rolloverTargetId}
-                onChange={(val) => setRolloverTargetId(val)}
-                options={[
-                  { value: '', label: 'Backlog' },
-                  ...otherFutureSprints.map((target) => ({
-                    value: target.id,
-                    label: target.name,
-                  })),
-                ]}
-                searchable={false}
+              <RolloverChoice
+                sprintName={sprint.name}
+                createRollover={createRollover}
+                onChange={setCreateRollover}
+                idPrefix="complete-sprint-dialog"
               />
             </div>
           )}

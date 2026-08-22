@@ -106,7 +106,9 @@
       "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit)",
       "Bash(git stash *)",
       "Bash(git fetch *)",
-      "Bash(git rev-list *)"
+      "Bash(git rev-list *)",
+      "Bash(npx vitest *)",
+      "Bash(python3 -)"
     ]
   }
 }

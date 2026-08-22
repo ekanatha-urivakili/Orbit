@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Domain.Access;
+using Orbit.Domain.Choices;
 using Orbit.Domain.WorkItems;
 
 namespace Orbit.Infrastructure.Persistence;
@@ -59,6 +60,27 @@ internal sealed class WorkItemRepository(
             .AnyAsync(
                 workItem => workItem.TenantId == tenantId && workItem.ParentId == parentWorkItemId,
                 cancellationToken);
+
+    public Task<decimal?> GetMinBacklogRankAsync(
+        Guid tenantId, Guid projectId, CancellationToken cancellationToken)
+    {
+        var openSprintIds = dbContext.Sprints
+            .Where(sprint => sprint.TenantId == tenantId && sprint.ProjectId == projectId && sprint.State != SprintState.Closed)
+            .Select(sprint => sprint.Id);
+        var assignedWorkItemIds = dbContext.SprintMemberships
+            .Where(membership => membership.TenantId == tenantId
+                && membership.RemovedAt == null
+                && openSprintIds.Contains(membership.SprintId))
+            .Select(membership => membership.WorkItemId);
+
+        return dbContext.WorkItems
+            .AsNoTracking()
+            .Where(workItem => workItem.TenantId == tenantId
+                && workItem.ProjectId == projectId
+                && !assignedWorkItemIds.Contains(workItem.Id))
+            .Select(workItem => (decimal?)workItem.Rank)
+            .MinAsync(cancellationToken);
+    }
 
     public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken)
     {
