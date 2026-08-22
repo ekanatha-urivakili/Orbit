@@ -23,26 +23,18 @@ public static class HealthEndpoints
 
         try
         {
-            var dbConnected = await dbContext.Database.CanConnectAsync(probeToken);
-            if (!dbConnected)
+            // DB connectivity and the cache round-trip are independent dependencies - run them
+            // concurrently so a slow one doesn't starve the other's share of ProbeTimeout.
+            var dbConnectedTask = dbContext.Database.CanConnectAsync(probeToken);
+            var cacheTask = ProbeCacheAsync(cache, probeToken);
+            await Task.WhenAll(dbConnectedTask, cacheTask);
+
+            if (!dbConnectedTask.Result)
             {
                 return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Database unavailable");
             }
 
-            // The authorization cache (Orbit.Infrastructure.Authorization.AuthorizationContextCache)
-            // reads through this same IDistributedCache on every tenant-scoped request - if the
-            // backing store is unreachable, or accepts writes but fails reads, that path fails, so
-            // exercise both directions here rather than reporting ready while authenticated traffic
-            // is about to start failing. Because IDistributedCache falls back to
-            // AddDistributedMemoryCache() when ConnectionStrings:Redis is unset, this round-trip is
-            // meaningful in every environment as written - it exercises whatever is actually
-            // registered rather than assuming Valkey specifically.
-            await cache.SetStringAsync(
-                CacheProbeKey, DateTimeOffset.UtcNow.ToString("O"),
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30) },
-                probeToken);
-            var cachedValue = await cache.GetStringAsync(CacheProbeKey, probeToken);
-            if (string.IsNullOrEmpty(cachedValue))
+            if (!cacheTask.Result)
             {
                 return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Cache unavailable");
             }
@@ -55,5 +47,22 @@ public static class HealthEndpoints
         }
 
         return Results.Ok(new { status = "ready" });
+    }
+
+    // The authorization cache (Orbit.Infrastructure.Authorization.AuthorizationContextCache) reads
+    // through this same IDistributedCache on every tenant-scoped request - if the backing store is
+    // unreachable, or accepts writes but fails reads, that path fails, so exercise both directions
+    // here rather than reporting ready while authenticated traffic is about to start failing.
+    // Because IDistributedCache falls back to AddDistributedMemoryCache() when
+    // ConnectionStrings:Redis is unset, this round-trip is meaningful in every environment as
+    // written - it exercises whatever is actually registered rather than assuming Valkey specifically.
+    private static async Task<bool> ProbeCacheAsync(IDistributedCache cache, CancellationToken probeToken)
+    {
+        await cache.SetStringAsync(
+            CacheProbeKey, DateTimeOffset.UtcNow.ToString("O"),
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30) },
+            probeToken);
+        var cachedValue = await cache.GetStringAsync(CacheProbeKey, probeToken);
+        return !string.IsNullOrEmpty(cachedValue);
     }
 }

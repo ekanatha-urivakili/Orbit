@@ -3,32 +3,16 @@ import { Field } from '../../components/form/Field'
 import { HelpCircle } from 'lucide-react'
 import { Panel } from './SettingsView'
 
-interface CustomFilter {
-  id: string
-  name: string
-  description: string
-  query: string
-}
-
+// No custom-filters backend exists yet (WQL is unshipped — see
+// OBSERVABILITY-CACHING-ARCHITECTURE.md's row 3 note). This form intentionally does not persist:
+// wire it to a real create mutation once the API exists instead of faking storage with local state.
 export function CustomFiltersPanel() {
-  const [filters, setFilters] = useState<CustomFilter[]>([])
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [query, setQuery] = useState('')
 
   const handleCreate = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!name || !query) return
-    const newFilter: CustomFilter = {
-      id: Date.now().toString(),
-      name,
-      description,
-      query,
-    }
-    setFilters([...filters, newFilter])
-    setName('')
-    setDescription('')
-    setQuery('')
   }
 
   return (
@@ -86,38 +70,14 @@ export function CustomFiltersPanel() {
             <button
               type="submit"
               className="primary-button"
-              disabled={!name.trim() || !query.trim()}
+              disabled
+              title="Custom filters are not available yet"
             >
               Create
             </button>
           </div>
         </form>
       </Panel>
-
-      {filters.length > 0 && (
-        <Panel title="Saved filters">
-          <div className="space-y-3">
-            {filters.map(filter => (
-              <div key={filter.id} className="p-4 border border-gray-200 rounded-lg flex justify-between items-center bg-white">
-                <div>
-                  <h4 className="font-semibold text-gray-900">{filter.name}</h4>
-                  <p className="text-sm text-gray-500">{filter.description}</p>
-                  <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 mt-1 block w-fit">
-                    {filter.query}
-                  </code>
-                </div>
-                <button
-                  type="button"
-                  className="text-red-600 hover:text-red-700 text-sm font-medium"
-                  onClick={() => setFilters(filters.filter(f => f.id !== filter.id))}
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
     </div>
   )
 }

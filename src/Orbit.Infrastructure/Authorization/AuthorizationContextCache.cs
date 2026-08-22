@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Distributed;
+using Orbit.Application.Caching;
 using Orbit.Domain.Access;
 
 namespace Orbit.Infrastructure.Authorization;
@@ -46,5 +47,6 @@ public sealed class AuthorizationContextCache(IDistributedCache cache) : IAuthor
             new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = Ttl },
             cancellationToken);
 
-    private static string Key(Guid tenantId, Guid userId, long epoch) => $"authz:{tenantId}:{userId}:{epoch}";
+    private static string Key(Guid tenantId, Guid userId, long epoch) =>
+        TenantCacheKey.For(tenantId, "authz", userId.ToString(), epoch.ToString());
 }

@@ -16,7 +16,15 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
     {
         var correlationId = ResolveCorrelationId(context);
         context.TraceIdentifier = correlationId;
-        context.Response.Headers[HeaderName] = correlationId;
+
+        // OnStarting fires right before the first byte is written, after UseExceptionHandler
+        // (downstream) has finished clearing/rewriting the response for a handled exception - a
+        // header set before next(context) would otherwise be wiped by that rewrite.
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers[HeaderName] = correlationId;
+            return Task.CompletedTask;
+        });
 
         using (logger.BeginScope(new Dictionary<string, object?>
         {
@@ -25,13 +33,6 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
         }))
         {
             await next(context);
-        }
-
-        // UseExceptionHandler (downstream) clears the response before writing a problem-details
-        // body on an unhandled exception, which would otherwise wipe the header set above.
-        if (!context.Response.HasStarted)
-        {
-            context.Response.Headers[HeaderName] = correlationId;
         }
     }
 

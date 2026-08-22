@@ -20,23 +20,25 @@ public static class CacheFailOpen
         CancellationToken cancellationToken)
     {
         var factoryInvoked = false;
+        var loaded = default(T)!;
         try
         {
             return await cache.GetOrCreateAsync(
                 key,
                 async token =>
                 {
+                    loaded = await factory(token);
                     factoryInvoked = true;
-                    return await factory(token);
+                    return loaded;
                 },
                 options,
                 cancellationToken: cancellationToken);
         }
-        catch (Exception exception) when (!factoryInvoked)
+        catch (Exception exception)
         {
             CacheTelemetry.FailOpenTotal.Add(1);
             logger.LogWarning(exception, "Cache unavailable for {CacheKey}; loading directly", key);
-            return await factory(cancellationToken);
+            return factoryInvoked ? loaded : await factory(cancellationToken);
         }
     }
 }

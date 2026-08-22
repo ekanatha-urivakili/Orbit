@@ -103,7 +103,10 @@
       "Bash(curl -s -o /dev/null -w '%{http_code}\\\\n' -X DELETE http://localhost:5000/api/v1/roles/01a02466-860a-79f7-866e-27d5cae33056 -H 'X-Tenant-Id: 01a00f26-91e1-7433-bce6-9bb044fa67eb')",
       "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit -f scripts/seed_orbit_large.sql)",
       "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit -c \"\\\\d site_role_assignments\")",
-      "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit)"
+      "Bash(PGPASSWORD=orbit_local psql -h localhost -U orbit -d orbit)",
+      "Bash(git stash *)",
+      "Bash(git fetch *)",
+      "Bash(git rev-list *)"
     ]
   }
 }

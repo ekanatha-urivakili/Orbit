@@ -65,5 +65,9 @@ public sealed class Project
         return allocated;
     }
 
-    public void IncrementConfigEpoch() => ConfigEpoch++;
+    public void IncrementConfigEpoch()
+    {
+        ConfigEpoch++;
+        Version++;
+    }
 }

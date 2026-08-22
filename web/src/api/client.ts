@@ -69,6 +69,7 @@ function getTenantId(): string {
 interface ProblemDetails {
   title?: string
   detail?: string
+  correlationId?: string
 }
 
 // §4.5: carries the X-Correlation-Id response header (set by CorrelationIdMiddleware) so a
@@ -94,8 +95,8 @@ async function request<T>(path: string, init?: RequestInit, tenantScoped = true)
 
   const response = await fetch(`${apiUrl}${path}`, { ...init, headers })
   if (!response.ok) {
-    const correlationId = response.headers.get('X-Correlation-Id') ?? undefined
     const problem = (await response.json().catch(() => ({}))) as ProblemDetails
+    const correlationId = response.headers.get('X-Correlation-Id') ?? problem.correlationId ?? undefined
     throw new ApiError(
       problem.detail ?? problem.title ?? `Request failed (${response.status})`,
       response.status,
