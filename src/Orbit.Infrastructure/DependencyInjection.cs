@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -124,6 +125,12 @@ public static class DependencyInjection
             services.AddDistributedMemoryCache();
             services.AddDataProtection().SetApplicationName("Orbit");
         }
+
+        // §5.1: HybridCache picks up whichever IDistributedCache was just registered above as its
+        // L2 tier automatically - no extra branching needed here. GetOrCreateAsync's single-flight
+        // de-duplication (principle 6) is per-process, bounded to one PostgreSQL load per key per
+        // replica rather than per waiting request.
+        services.AddHybridCache();
 
         return services;
     }

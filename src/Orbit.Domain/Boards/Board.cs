@@ -49,6 +49,16 @@ public sealed class Board
     public string Name { get; private set; } = string.Empty;
     public BoardType Type { get; private set; }
     public long Version { get; private set; }
+
+    /// <summary>
+    /// Bumped on a write affecting the cached board config - column/board update
+    /// (<see cref="Update"/>) or a workflow status catalog change
+    /// (OBSERVABILITY-CACHING-ARCHITECTURE.md §5.2 row 1) - separate from Version's
+    /// optimistic-concurrency role. Mirrors Workspace.AuthorizationEpoch/Project.ConfigEpoch. Not
+    /// bumped on item transition/reorder: BoardDto carries no per-item state, so there is nothing
+    /// for those writes to invalidate today.
+    /// </summary>
+    public long Epoch { get; private set; } = 1;
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public IReadOnlyList<BoardColumn> Columns => _columns;
@@ -79,6 +89,8 @@ public sealed class Board
         Version++;
         UpdatedAt = now;
     }
+
+    public void IncrementEpoch() => Epoch++;
 
     private void ReplaceColumns(IReadOnlyList<BoardColumnInput> columns)
     {

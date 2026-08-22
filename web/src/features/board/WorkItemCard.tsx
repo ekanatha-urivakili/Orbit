@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, AlertTriangle, GitFork } from 'lucide-react'
-import type { BoardColumn, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
+import type { TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
 import { statusMeta } from './constants'
 import { WorkItemTypeIcon } from '../workitems/typeIcons'
 import { AssigneePicker } from '../../components/AssigneePicker'
@@ -56,12 +56,9 @@ function PriorityIcon({ priority }: { priority: string }) {
 
 export function WorkItemCard({
   item,
-  columns,
   statuses,
-  columnCounts,
   members = [],
   allWorkItems = [],
-  onStatusChange,
   onOpen,
   onAssigneeChange,
   assigneeChangePending = false,
@@ -73,12 +70,9 @@ export function WorkItemCard({
   hiddenFields = [],
 }: {
   item: WorkItem
-  columns: readonly BoardColumn[]
   statuses: readonly WorkItemStatusDefinition[]
-  columnCounts: ReadonlyMap<string, WorkItem[]>
   members?: TenantMembership[]
   allWorkItems?: readonly WorkItem[]
-  onStatusChange: (workItem: WorkItem, statusId: string) => void
   onOpen?: (workItem: WorkItem) => void
   onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
   assigneeChangePending?: boolean

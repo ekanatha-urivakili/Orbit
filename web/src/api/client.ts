@@ -69,6 +69,21 @@ function getTenantId(): string {
 interface ProblemDetails {
   title?: string
   detail?: string
+  correlationId?: string
+}
+
+// §4.5: carries the X-Correlation-Id response header (set by CorrelationIdMiddleware) so a
+// user-reported bug can be joined to the exact backend trace/log lines.
+export class ApiError extends Error {
+  readonly status: number
+  readonly correlationId?: string
+
+  constructor(message: string, status: number, correlationId?: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.correlationId = correlationId
+  }
 }
 
 async function request<T>(path: string, init?: RequestInit, tenantScoped = true): Promise<T> {
@@ -81,7 +96,12 @@ async function request<T>(path: string, init?: RequestInit, tenantScoped = true)
   const response = await fetch(`${apiUrl}${path}`, { ...init, headers })
   if (!response.ok) {
     const problem = (await response.json().catch(() => ({}))) as ProblemDetails
-    throw new Error(problem.detail ?? problem.title ?? `Request failed (${response.status})`)
+    const correlationId = response.headers.get('X-Correlation-Id') ?? problem.correlationId ?? undefined
+    throw new ApiError(
+      problem.detail ?? problem.title ?? `Request failed (${response.status})`,
+      response.status,
+      correlationId,
+    )
   }
 
   if (response.status === 204) return undefined as T

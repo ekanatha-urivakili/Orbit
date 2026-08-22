@@ -1,7 +1,10 @@
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Logging;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Boards;
+using Orbit.Application.Caching;
 using Orbit.Application.Common;
 using Orbit.Application.Settings;
 using Orbit.Domain.Access;
@@ -48,20 +51,43 @@ public sealed class ListWorkItemStatusesValidator : AbstractValidator<ListWorkIt
     public ListWorkItemStatusesValidator() => RuleFor(query => query.ProjectId).NotEmpty();
 }
 
+/// <summary>
+/// Cached per OBSERVABILITY-CACHING-ARCHITECTURE.md §5.2 row 2: the status catalog is read on
+/// every item render and changes rarely. Keyed on Project.ConfigEpoch (read fresh from PostgreSQL
+/// every call, per §5.1 principle 7) so a write in the handlers above is visible on the very next
+/// read without an explicit cache-delete.
+/// </summary>
 public sealed class ListWorkItemStatusesHandler(
     ITenantContext tenant,
     IProjectRepository projects,
-    IWorkItemStatusRepository repository)
+    IWorkItemStatusRepository repository,
+    HybridCache cache,
+    ILogger<ListWorkItemStatusesHandler> logger)
     : IRequestHandler<ListWorkItemStatusesQuery, IReadOnlyList<WorkItemStatusDefinitionDto>>
 {
+    private static readonly HybridCacheEntryOptions CacheOptions = new()
+    {
+        Expiration = TimeSpan.FromMinutes(5),
+        LocalCacheExpiration = TimeSpan.FromMinutes(5),
+    };
+
     public async Task<IReadOnlyList<WorkItemStatusDefinitionDto>> Handle(
         ListWorkItemStatusesQuery request, CancellationToken cancellationToken)
     {
-        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.View, cancellationToken)
+        var project = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.View, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
-        return (await repository.ListByProjectAsync(tenant.TenantId, request.ProjectId, cancellationToken))
-            .Select(WorkItemStatusDefinitionDto.From)
-            .ToArray();
+
+        var key = TenantCacheKey.For(
+            tenant.TenantId, "config", "statuses", $"{request.ProjectId}:v{project.ConfigEpoch}");
+        return await CacheFailOpen.GetOrCreateAsync<IReadOnlyList<WorkItemStatusDefinitionDto>>(
+            cache,
+            logger,
+            key,
+            async token => (await repository.ListByProjectAsync(tenant.TenantId, request.ProjectId, token))
+                .Select(WorkItemStatusDefinitionDto.From)
+                .ToArray(),
+            CacheOptions,
+            cancellationToken);
     }
 }
 
@@ -103,8 +129,9 @@ public sealed class CreateWorkItemStatusHandler(
     public async Task<WorkItemStatusDefinitionDto> Handle(
         CreateWorkItemStatusCommand request, CancellationToken cancellationToken)
     {
-        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
+        var project = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
+        project.IncrementConfigEpoch();
 
         var existing = await repository.ListByProjectAsync(tenant.TenantId, request.ProjectId, cancellationToken);
         var normalizedKey = WorkItemStatusDefinition.NormalizeKey(request.Key);
@@ -127,6 +154,7 @@ public sealed class CreateWorkItemStatusHandler(
                 .Append(new BoardColumnInput(definition.Id, null, WipLimitMode.Warn))
                 .ToList();
             board.Update(board.Name, board.Type, columns, now);
+            board.IncrementEpoch();
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -168,8 +196,9 @@ public sealed class UpdateWorkItemStatusHandler(
     public async Task<WorkItemStatusDefinitionDto> Handle(
         UpdateWorkItemStatusCommand request, CancellationToken cancellationToken)
     {
-        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
+        var project = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
+        project.IncrementConfigEpoch();
         var definition = await repository.GetAsync(tenant.TenantId, request.ProjectId, request.StatusId, cancellationToken)
             ?? throw new NotFoundException("Status was not found.");
         SettingsConcurrency.EnsureVersion(
@@ -221,8 +250,9 @@ public sealed class SetDefaultWorkItemStatusHandler(
     public async Task<WorkItemStatusDefinitionDto> Handle(
         SetDefaultWorkItemStatusCommand request, CancellationToken cancellationToken)
     {
-        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
+        var project = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
+        project.IncrementConfigEpoch();
         var target = await repository.GetAsync(tenant.TenantId, request.ProjectId, request.StatusId, cancellationToken)
             ?? throw new NotFoundException("Status was not found.");
 
@@ -259,8 +289,9 @@ public sealed class DeleteWorkItemStatusHandler(
 {
     public async Task<Unit> Handle(DeleteWorkItemStatusCommand request, CancellationToken cancellationToken)
     {
-        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
+        var project = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
+        project.IncrementConfigEpoch();
         var definition = await repository.GetAsync(tenant.TenantId, request.ProjectId, request.StatusId, cancellationToken)
             ?? throw new NotFoundException("Status was not found.");
 

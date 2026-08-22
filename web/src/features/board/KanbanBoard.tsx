@@ -142,12 +142,9 @@ export function KanbanBoard({
                 <WorkItemCard
                   key={item.id}
                   item={item}
-                  columns={orderedColumns}
                   statuses={statuses}
-                  columnCounts={grouped}
                   members={members}
                   allWorkItems={workItems}
-                  onStatusChange={onStatusChange}
                   onOpen={onOpen}
                   onAssigneeChange={onAssigneeChange}
                   assigneeChangePending={assigneeChangePending}

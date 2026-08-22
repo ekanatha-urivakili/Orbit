@@ -1,6 +1,9 @@
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Logging;
 using Orbit.Application.Abstractions;
+using Orbit.Application.Caching;
 using Orbit.Application.Common;
 using Orbit.Application.Settings;
 using Orbit.Domain.Access;
@@ -32,24 +35,44 @@ public sealed record BoardDto(Guid ProjectId, string Name, BoardType Type, long 
 
 public sealed record GetBoardQuery(Guid ProjectId) : IQuery<BoardDto>;
 
+/// <summary>
+/// The board's own columns/config are cached per OBSERVABILITY-CACHING-ARCHITECTURE.md §5.2 row
+/// 1, epoch-bumped on any write affecting the board. Only applies once a Board row exists - the
+/// synthesized "no board yet" default has no epoch to key on and is cheap to recompute regardless.
+/// </summary>
 public sealed class GetBoardHandler(
     ITenantContext tenant,
     IProjectRepository projects,
     IBoardRepository boards,
-    IWorkItemStatusRepository workItemStatuses) : IRequestHandler<GetBoardQuery, BoardDto>
+    IWorkItemStatusRepository workItemStatuses,
+    HybridCache cache,
+    ILogger<GetBoardHandler> logger) : IRequestHandler<GetBoardQuery, BoardDto>
 {
+    private static readonly HybridCacheEntryOptions CacheOptions = new()
+    {
+        Expiration = TimeSpan.FromSeconds(60),
+        LocalCacheExpiration = TimeSpan.FromSeconds(60),
+    };
+
     public async Task<BoardDto> Handle(GetBoardQuery request, CancellationToken cancellationToken)
     {
         _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.View, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
         var board = await boards.GetAsync(tenant.TenantId, request.ProjectId, cancellationToken);
-        if (board is not null)
+        if (board is null)
         {
-            return BoardDto.From(board);
+            var statuses = await workItemStatuses.ListByProjectAsync(tenant.TenantId, request.ProjectId, cancellationToken);
+            return BoardDto.CreateDefault(request.ProjectId, statuses);
         }
 
-        var statuses = await workItemStatuses.ListByProjectAsync(tenant.TenantId, request.ProjectId, cancellationToken);
-        return BoardDto.CreateDefault(request.ProjectId, statuses);
+        var key = TenantCacheKey.For(tenant.TenantId, "board", "config", $"{request.ProjectId}:v{board.Epoch}");
+        return await CacheFailOpen.GetOrCreateAsync(
+            cache,
+            logger,
+            key,
+            token => ValueTask.FromResult(BoardDto.From(board)),
+            CacheOptions,
+            cancellationToken);
     }
 }
 
@@ -123,6 +146,7 @@ public sealed class UpdateBoardHandler(
         else
         {
             board.Update(request.Name, request.Type, columns, timeProvider.GetUtcNow());
+            board.IncrementEpoch();
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

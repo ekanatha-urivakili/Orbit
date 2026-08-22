@@ -10,6 +10,7 @@ import { applyTheme } from '../../lib/theme'
 import { getOidcConfig, startOidcLogin } from '../auth/oidcPkce'
 import { Field, Hint, SubmitRow } from '../../components/form/Field'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { CustomFiltersPanel } from './CustomFiltersPanel'
 import type {
   CreateMembershipInput,
   CustomFieldChoiceOptionInput,
@@ -36,7 +37,7 @@ import type {
 } from '../../api/types'
 import { applyTypographySetting } from '../../typography'
 
-export type SettingsSection = 'profile' | 'notifications' | 'workspace' | 'project' | 'item-types' | 'custom-fields' | 'members' | 'teams' | 'security' | 'appearance'
+export type SettingsSection = 'profile' | 'notifications' | 'workspace' | 'project' | 'item-types' | 'custom-fields' | 'members' | 'teams' | 'security' | 'appearance' | 'filters'
 
 const ALL_PROJECT_PERMISSIONS: ProjectPermission[] = ['View', 'CreateWorkItem', 'TransitionWorkItem', 'Administer']
 
@@ -48,6 +49,7 @@ const sections: Array<{ id: SettingsSection; label: string; icon: typeof UserRou
   { id: 'security', label: 'Account security', icon: LockKeyhole },
   { id: 'workspace', label: 'Workspace', icon: Building2 },
   { id: 'appearance', label: 'Appearance', icon: Paintbrush },
+  { id: 'filters', label: 'Custom filters', icon: Tags },
   { id: 'project', label: 'Project defaults', icon: FolderCog },
   { id: 'item-types', label: 'Work item types', icon: Tags },
   { id: 'custom-fields', label: 'Custom fields', icon: Tags },
@@ -107,6 +109,7 @@ export function SettingsView({ project, initialSection = 'profile', onClose }: {
           {activeSection === 'project' && <QueryState query={projectQuery} render={(setting) => <ProjectForm project={project} setting={setting} itemTypes={itemTypesQuery.data ?? []} />} />}
           {activeSection === 'item-types' && <QueryState query={itemTypesQuery} render={(definitions) => <ItemTypesPanel definitions={definitions} />} />}
           {activeSection === 'custom-fields' && <QueryState query={customFieldsQuery} render={(fields) => <CustomFieldsPanel projectId={project.id} fields={fields} />} />}
+          {activeSection === 'filters' && <CustomFiltersPanel />}
           {activeSection === 'members' && <MembersPanel project={project} />}
           {activeSection === 'teams' && <TeamsPanel />}
           {activeSection === 'security' && <SecurityPanel />}
@@ -1322,7 +1325,7 @@ function SecurityPanel() {
   )
 }
 
-function Panel({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+export function Panel({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7"><h2 className="text-xl font-semibold text-gray-900">{title}</h2>{description && <p className="mt-1 mb-6 text-sm text-gray-500">{description}</p>}<div className={description ? '' : 'mt-5'}>{children}</div></div>
 }
 

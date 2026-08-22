@@ -1,4 +1,7 @@
 using FluentValidation;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Orbit.Application.Abstractions;
 using Orbit.Application.Common;
 using Orbit.Application.Configuration;
@@ -13,6 +16,13 @@ namespace Orbit.Application.Tests;
 
 public sealed class WorkItemStatusHandlerTests
 {
+    private static HybridCache CreateHybridCache()
+    {
+        var services = new ServiceCollection();
+        services.AddHybridCache();
+        return services.BuildServiceProvider().GetRequiredService<HybridCache>();
+    }
+
     [Fact]
     public async Task ListWorkItemStatuses_ReturnsProjectCatalogInOrder()
     {
@@ -22,13 +32,39 @@ public sealed class WorkItemStatusHandlerTests
         var handler = new ListWorkItemStatusesHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.View]),
-            new WorkItemStatusRepositoryStub(statuses));
+            new WorkItemStatusRepositoryStub(statuses),
+            CreateHybridCache(),
+            NullLogger<ListWorkItemStatusesHandler>.Instance);
 
         var result = await handler.Handle(new ListWorkItemStatusesQuery(project.Id), CancellationToken.None);
 
         Assert.Equal(6, result.Count);
         Assert.Equal("backlog", result[0].Key);
         Assert.Equal("blocked", result[^1].Key);
+    }
+
+    [Fact]
+    public async Task ListWorkItemStatuses_ReflectsAWriteMadeAfterAnEarlierCachedRead()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = new WorkItemStatusRepositoryStub([]);
+        var projects = new ProjectRepositoryStub(project, [ProjectPermission.View, ProjectPermission.Administer]);
+        var cache = CreateHybridCache();
+        var listHandler = new ListWorkItemStatusesHandler(
+            new TenantContextStub(tenantId), projects, statuses, cache, NullLogger<ListWorkItemStatusesHandler>.Instance);
+        var createHandler = new CreateWorkItemStatusHandler(
+            new TenantContextStub(tenantId), projects, statuses, new BoardRepositoryStub(), new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        var before = await listHandler.Handle(new ListWorkItemStatusesQuery(project.Id), CancellationToken.None);
+        await createHandler.Handle(
+            new CreateWorkItemStatusCommand(project.Id, "ready-for-qa", "Ready for QA", StatusCategory.InProgress, 45, "purple"),
+            CancellationToken.None);
+        var after = await listHandler.Handle(new ListWorkItemStatusesQuery(project.Id), CancellationToken.None);
+
+        Assert.Empty(before);
+        Assert.Contains(after, status => status.Key == "ready-for-qa");
     }
 
     [Fact]
@@ -78,6 +114,7 @@ public sealed class WorkItemStatusHandlerTests
 
         Assert.Equal(2, board.Columns.Count);
         Assert.Contains(board.Columns, column => column.StatusId == result.Id);
+        Assert.Equal(2, board.Epoch);
     }
 
     [Fact]
@@ -260,6 +297,84 @@ public sealed class WorkItemStatusHandlerTests
         await handler.Handle(new DeleteWorkItemStatusCommand(project.Id, blocked.Id), CancellationToken.None);
 
         Assert.Equal(blocked.Id, repository.Removed?.Id);
+    }
+
+    [Fact]
+    public async Task CreateWorkItemStatus_IncrementsProjectConfigEpoch()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var handler = new CreateWorkItemStatusHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
+            new WorkItemStatusRepositoryStub([]),
+            new BoardRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new CreateWorkItemStatusCommand(project.Id, "ready-for-qa", "Ready for QA", StatusCategory.InProgress, 45, "purple"),
+            CancellationToken.None);
+
+        Assert.Equal(2, project.ConfigEpoch);
+    }
+
+    [Fact]
+    public async Task UpdateWorkItemStatus_IncrementsProjectConfigEpoch()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
+        var blocked = statuses.Single(status => status.Key == "blocked");
+        var handler = new UpdateWorkItemStatusHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
+            new WorkItemStatusRepositoryStub(statuses),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new UpdateWorkItemStatusCommand(project.Id, blocked.Id, "Blocked (urgent)", StatusCategory.ToDo, 5, "orange", blocked.Version),
+            CancellationToken.None);
+
+        Assert.Equal(2, project.ConfigEpoch);
+    }
+
+    [Fact]
+    public async Task SetDefaultWorkItemStatus_IncrementsProjectConfigEpoch()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
+        var selected = statuses.Single(status => status.Key == "selected");
+        var handler = new SetDefaultWorkItemStatusHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
+            new WorkItemStatusRepositoryStub(statuses),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(new SetDefaultWorkItemStatusCommand(project.Id, selected.Id), CancellationToken.None);
+
+        Assert.Equal(2, project.ConfigEpoch);
+    }
+
+    [Fact]
+    public async Task DeleteWorkItemStatus_IncrementsProjectConfigEpoch()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var statuses = WorkItemStatusDefinition.CreateSoftwareDefaults(tenantId, project.Id, DateTimeOffset.UtcNow);
+        var blocked = statuses.Single(status => status.Key == "blocked");
+        var handler = new DeleteWorkItemStatusHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.Administer]),
+            new WorkItemStatusRepositoryStub(statuses),
+            new UnitOfWorkStub());
+
+        await handler.Handle(new DeleteWorkItemStatusCommand(project.Id, blocked.Id), CancellationToken.None);
+
+        Assert.Equal(2, project.ConfigEpoch);
     }
 
     private sealed record TenantContextStub(Guid TenantId) : ITenantContext;

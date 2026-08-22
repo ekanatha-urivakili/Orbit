@@ -339,6 +339,10 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<long>("Epoch")
+                        .HasColumnType("bigint")
+                        .HasColumnName("epoch");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -362,7 +366,10 @@ namespace Orbit.Infrastructure.Persistence.Migrations
 
                     b.HasKey("TenantId", "ProjectId");
 
-                    b.ToTable("boards", (string)null);
+                    b.ToTable("boards", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_boards_epoch", "epoch > 0");
+                        });
                 });
 
             modelBuilder.Entity("Orbit.Domain.Boards.Sprint", b =>
@@ -1577,6 +1584,10 @@ namespace Orbit.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<long>("ConfigEpoch")
+                        .HasColumnType("bigint")
+                        .HasColumnName("config_epoch");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1617,6 +1628,8 @@ namespace Orbit.Infrastructure.Persistence.Migrations
 
                     b.ToTable("projects", null, t =>
                         {
+                            t.HasCheckConstraint("ck_projects_config_epoch", "config_epoch > 0");
+
                             t.HasCheckConstraint("ck_projects_key", "key ~ '^[A-Z0-9]{2,10}$'");
 
                             t.HasCheckConstraint("ck_projects_next_sequence", "next_item_sequence > 0");

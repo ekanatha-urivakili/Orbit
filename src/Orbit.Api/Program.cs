@@ -14,17 +14,45 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Orbit.Api.Endpoints;
 using Orbit.Api.Errors;
+using Orbit.Api.Observability;
 using Orbit.Api.Tenancy;
 using Orbit.Application;
 using Orbit.Application.Abstractions;
+using Orbit.Application.Caching;
 using Orbit.Infrastructure;
 using Orbit.Infrastructure.Identity;
 using Orbit.Infrastructure.Persistence;
 using Orbit.Infrastructure.RateLimiting;
 using Scalar.AspNetCore;
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// §4.2: compact JSON to stdout outside Development so structured fields (CorrelationId, TraceId,
+// TenantId - pushed via ILogger.BeginScope in CorrelationIdMiddleware/TenantTransactionMiddleware)
+// are queryable rather than grepped from free text. Development keeps Serilog's readable console
+// format. Mirrors the existing appsettings.json Logging:LogLevel defaults in code rather than
+// adding a Serilog.Settings.Configuration dependency for a two-value override.
+builder.Host.UseSerilog((context, loggerConfiguration) =>
+{
+    loggerConfiguration
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+        .Enrich.FromLogContext();
+
+    if (context.HostingEnvironment.IsDevelopment())
+    {
+        loggerConfiguration.WriteTo.Console();
+    }
+    else
+    {
+        loggerConfiguration.WriteTo.Console(new CompactJsonFormatter());
+    }
+});
+
 const string bearerScheme = "OrbitBearer";
 const string localBearerScheme = "OrbitLocalBearer";
 const string externalBearerScheme = "OrbitExternalBearer";
@@ -188,7 +216,7 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
     {
         var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
-        policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod();
+        policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("X-Correlation-Id");
     }));
 
 // §13.7.2 (ADR-023): exports to the orbit-otel Collector via OTLP (standard OTEL_EXPORTER_OTLP_*
@@ -208,6 +236,8 @@ builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation()
         .AddRuntimeInstrumentation()
         .AddMeter(RateLimitTelemetry.MeterName)
+        .AddMeter(CacheTelemetry.MeterName)
+        .AddMeter("Microsoft.Extensions.Caching.Hybrid")
         .AddOtlpExporter());
 
 var app = builder.Build();
@@ -234,6 +264,7 @@ if (app.Configuration.GetValue("DatabaseSecurity:EnforceRuntimeRole", app.Enviro
         .ValidateAsync(CancellationToken.None);
 }
 
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 if (app.Environment.IsProduction())
 {

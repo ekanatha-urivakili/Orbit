@@ -44,6 +44,12 @@ import { HomeView } from './features/home/HomeView'
 import { CreateWorkspaceDialog } from './features/workspaces/CreateWorkspaceDialog'
 import { applyTypographySetting } from './typography'
 
+// §5.4 board/list-view cache class: matches the realtime fan-out that already pushes updates -
+// a short staleTime avoids redundant refetch storms on window focus while staying fresh. Exported
+// so the policy values themselves are unit-testable without mounting the full App component.
+export const BOARD_LIST_STALE_TIME_MS = 15_000
+export const BOARD_LIST_GC_TIME_MS = 10 * 60 * 1000
+
 type ActiveView = 'home' | 'project' | 'settings' | 'workitem'
 
 function App() {
@@ -403,6 +409,10 @@ function App() {
     queryKey: ['work-items', selectedProjectId],
     queryFn: () => orbitApi.listWorkItems(selectedProjectId ?? ''),
     enabled: Boolean(selectedProjectId),
+    // §5.4 board/list-view class: realtime fan-out already keeps this fresh, so a short staleTime
+    // just avoids a redundant refetch storm on every window focus.
+    staleTime: BOARD_LIST_STALE_TIME_MS,
+    gcTime: BOARD_LIST_GC_TIME_MS,
   })
   const workItems = useMemo(() => workItemsQuery.data?.items ?? [], [workItemsQuery.data?.items])
   const workItemsTruncated = (workItemsQuery.data?.totalCount ?? 0) > workItems.length
@@ -452,11 +462,15 @@ function App() {
     queryKey: ['board', selectedProjectId],
     queryFn: () => orbitApi.getBoard(selectedProjectId ?? ''),
     enabled: Boolean(selectedProjectId),
+    staleTime: BOARD_LIST_STALE_TIME_MS,
+    gcTime: BOARD_LIST_GC_TIME_MS,
   })
   const sprintsQuery = useQuery({
     queryKey: ['sprints', selectedProjectId],
     queryFn: () => orbitApi.listSprints(selectedProjectId ?? ''),
     enabled: Boolean(selectedProjectId),
+    staleTime: BOARD_LIST_STALE_TIME_MS,
+    gcTime: BOARD_LIST_GC_TIME_MS,
   })
   const sprints = sprintsQuery.data ?? []
   const statusesQuery = useQuery({
@@ -828,7 +842,7 @@ function App() {
                     onRefresh={() => {
                       queryClient.invalidateQueries({ queryKey: ['work-items'] })
                       queryClient.invalidateQueries({ queryKey: ['sprints'] })
-                      queryClient.invalidateQueries({ queryKey: ['boards'] })
+                      queryClient.invalidateQueries({ queryKey: ['board'] })
                       queryClient.invalidateQueries({ queryKey: ['sprint-insights'] })
                     }}
                     onConfigureColumns={() => setWorkflowEditorOpen(true)}

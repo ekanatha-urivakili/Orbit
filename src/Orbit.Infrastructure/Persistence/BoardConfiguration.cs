@@ -10,13 +10,14 @@ internal sealed class BoardConfiguration : IEntityTypeConfiguration<Board>
 {
     public void Configure(EntityTypeBuilder<Board> builder)
     {
-        builder.ToTable("boards");
+        builder.ToTable("boards", table => table.HasCheckConstraint("ck_boards_epoch", "epoch > 0"));
         builder.HasKey(board => new { board.TenantId, board.ProjectId });
         builder.Property(board => board.TenantId).HasColumnName("tenant_id");
         builder.Property(board => board.ProjectId).HasColumnName("project_id");
         builder.Property(board => board.Name).HasColumnName("name").HasMaxLength(120);
         builder.Property(board => board.Type).HasColumnName("type").HasConversion<string>().HasMaxLength(16);
         builder.Property(board => board.Version).HasColumnName("version").IsConcurrencyToken();
+        builder.Property(board => board.Epoch).HasColumnName("epoch");
         builder.Property(board => board.CreatedAt).HasColumnName("created_at");
         builder.Property(board => board.UpdatedAt).HasColumnName("updated_at");
         builder.HasOne<Project>().WithOne().HasForeignKey<Board>(board => new { board.TenantId, board.ProjectId })

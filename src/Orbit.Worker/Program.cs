@@ -6,8 +6,23 @@ using Orbit.Application.Abstractions;
 using Orbit.Infrastructure;
 using Orbit.Infrastructure.Messaging;
 using Orbit.Worker;
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+// §4.2: same compact-JSON-outside-Development policy as Orbit.Api.
+var loggerConfiguration = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.Extensions.Hosting", LogEventLevel.Warning)
+    .Enrich.FromLogContext();
+loggerConfiguration = builder.Environment.IsDevelopment()
+    ? loggerConfiguration.WriteTo.Console()
+    : loggerConfiguration.WriteTo.Console(new CompactJsonFormatter());
+Log.Logger = loggerConfiguration.CreateLogger();
+builder.Services.AddSerilog();
+
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ITenantContext, WorkerTenantContext>();
 builder.Services.AddScoped<ICurrentPrincipal, WorkerCurrentPrincipal>();

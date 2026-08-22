@@ -8,33 +8,61 @@ public static class HealthEndpoints
 {
     private const string CacheProbeKey = "health:probe";
 
+    // §4.4 point 3: bounded independent of Railway's healthcheckTimeout, so a slow-but-alive
+    // dependency degrades to a fast 503 rather than hanging the whole check window.
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
+
     public static async Task<IResult> ReadyAsync(
         OrbitDbContext dbContext,
         IDistributedCache cache,
         CancellationToken cancellationToken)
     {
-        var dbConnected = await dbContext.Database.CanConnectAsync(cancellationToken);
-        if (!dbConnected)
-        {
-            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Database unavailable");
-        }
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(ProbeTimeout);
+        var probeToken = timeoutCts.Token;
 
         try
         {
-            // The authorization cache (Orbit.Infrastructure.Authorization.AuthorizationContextCache)
-            // reads through this same IDistributedCache on every tenant-scoped request - if the
-            // backing store is unreachable that path throws, so surface it here rather than
-            // reporting ready while authenticated traffic is about to start failing.
-            await cache.SetStringAsync(
-                CacheProbeKey, DateTimeOffset.UtcNow.ToString("O"),
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30) },
-                cancellationToken);
+            // DB connectivity and the cache round-trip are independent dependencies - run them
+            // concurrently so a slow one doesn't starve the other's share of ProbeTimeout.
+            var dbConnectedTask = dbContext.Database.CanConnectAsync(probeToken);
+            var cacheTask = ProbeCacheAsync(cache, probeToken);
+            await Task.WhenAll(dbConnectedTask, cacheTask);
+
+            if (!dbConnectedTask.Result)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Database unavailable");
+            }
+
+            if (!cacheTask.Result)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Cache unavailable");
+            }
         }
-        catch
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Cache unavailable");
+            // Either a genuine dependency failure, or the probe's own timeout fired (as opposed to
+            // the caller disconnecting) - both mean "not ready", not an unhandled 500.
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Dependency unavailable");
         }
 
         return Results.Ok(new { status = "ready" });
+    }
+
+    // The authorization cache (Orbit.Infrastructure.Authorization.AuthorizationContextCache) reads
+    // through this same IDistributedCache on every tenant-scoped request - if the backing store is
+    // unreachable, or accepts writes but fails reads, that path fails, so exercise both directions
+    // here rather than reporting ready while authenticated traffic is about to start failing.
+    // Because IDistributedCache falls back to AddDistributedMemoryCache() when
+    // ConnectionStrings:Redis is unset, this round-trip is meaningful in every environment as
+    // written - it exercises whatever is actually registered rather than assuming Valkey specifically.
+    private static async Task<bool> ProbeCacheAsync(IDistributedCache cache, CancellationToken probeToken)
+    {
+        await cache.SetStringAsync(
+            CacheProbeKey, DateTimeOffset.UtcNow.ToString("O"),
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30) },
+            probeToken);
+        var cachedValue = await cache.GetStringAsync(CacheProbeKey, probeToken);
+        return !string.IsNullOrEmpty(cachedValue);
     }
 }

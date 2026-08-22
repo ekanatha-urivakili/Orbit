@@ -84,8 +84,9 @@ public sealed class CreateCustomFieldHandler(
         CreateCustomFieldCommand request,
         CancellationToken cancellationToken)
     {
-        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
+        var project = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
+        project.IncrementConfigEpoch();
 
         var normalizedKey = CustomFieldDefinition.NormalizeKey(request.Key);
         var existing = await repository.GetByKeyAsync(
@@ -173,8 +174,9 @@ public sealed class UpdateCustomFieldHandler(
         UpdateCustomFieldCommand request,
         CancellationToken cancellationToken)
     {
-        _ = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
+        var project = await projects.GetAsync(tenant.TenantId, request.ProjectId, ProjectPermission.Administer, cancellationToken)
             ?? throw new NotFoundException("Project was not found.");
+        project.IncrementConfigEpoch();
 
         var definition = await repository.GetAsync(tenant.TenantId, request.ProjectId, request.Id, cancellationToken)
             ?? throw new NotFoundException("Field was not found.");

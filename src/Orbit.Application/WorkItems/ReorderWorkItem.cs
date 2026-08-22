@@ -61,6 +61,7 @@ public sealed class ReorderWorkItemHandler(
         };
 
         workItem.Reorder(rank, timeProvider.GetUtcNow());
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return WorkItemDto.From(workItem);
     }

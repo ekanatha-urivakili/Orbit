@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   KanbanSquare,
+  Filter,
 } from 'lucide-react'
 import type { Project } from '../../api/types'
 import type { SettingsSection } from '../../features/settings/SettingsView'
@@ -194,6 +195,16 @@ export function Sidebar({
                 className="w-full text-left flex items-center gap-3 px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#22272b] rounded-md text-sm font-medium"
               >
                 <Shield size={18} className="text-emerald-600" /> Security
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenSettings?.('filters')
+                  setMobileMenuOpen(false)
+                }}
+                className="w-full text-left flex items-center gap-3 px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#22272b] rounded-md text-sm font-medium"
+              >
+                <Filter size={18} className="text-amber-600" /> Custom Filters
               </button>
             </nav>
           </div>
