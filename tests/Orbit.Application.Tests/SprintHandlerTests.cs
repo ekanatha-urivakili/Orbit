@@ -273,7 +273,7 @@ public sealed class SprintHandlerTests
     }
 
     [Fact]
-    public async Task CompleteSprint_MovesIncompleteItemsToBacklogAndKeepsDoneItems()
+    public async Task CompleteSprint_MovesIncompleteItemsToTopOfBacklogAndKeepsDoneItems()
     {
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
@@ -286,7 +286,7 @@ public sealed class SprintHandlerTests
         var memberships = new SprintMembershipRepositoryStub(doneMembership, todoMembership);
         var facts = new SprintScopeFactRepositoryStub();
         var unitOfWork = new UnitOfWorkStub();
-        var workItems = new WorkItemRepositoryStub(doneItem, todoItem);
+        var workItems = new WorkItemRepositoryStub(doneItem, todoItem) { MinBacklogRank = 500m };
         var handler = new CompleteSprintHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
@@ -296,6 +296,7 @@ public sealed class SprintHandlerTests
             facts,
             workItems,
             new WorkItemStatusRepositoryStub(),
+            new ProjectAccessRepositoryStub(),
             new CurrentPrincipalStub(null),
             new SettingsRepositoryStub([], []),
             new OutboxRepositoryStub(),
@@ -303,12 +304,13 @@ public sealed class SprintHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new CompleteSprintCommand(sprint.Id, sprint.Version, null), CancellationToken.None);
+            new CompleteSprintCommand(sprint.Id, sprint.Version, CreateRolloverSprint: false), CancellationToken.None);
 
         Assert.Equal(SprintState.Closed, result.State);
         Assert.Equal([doneItem.Id], result.WorkItemIds);
         Assert.NotNull(todoMembership.RemovedAt);
         Assert.Null(doneMembership.RemovedAt);
+        Assert.True(todoItem.Rank < 500m);
         Assert.Contains(facts.Added, fact => fact.FactType == AgileFactType.SprintRemoved && fact.WorkItemId == todoItem.Id);
         Assert.Contains(facts.Added, fact => fact.FactType == AgileFactType.SprintCompleted && fact.WorkItemId is null);
         Assert.Equal(1, workItems.ListByIdsCount);
@@ -316,7 +318,48 @@ public sealed class SprintHandlerTests
     }
 
     [Fact]
-    public async Task CompleteSprint_NotifiesMemberOwners()
+    public async Task CompleteSprint_MovesMultipleIncompleteItemsToBacklogPreservingRelativeOrder()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
+        sprint.Start(null, null, null, DateTimeOffset.UtcNow);
+        var firstItem = NewItem(tenantId, project.Id, InProgressStatusId, 1);
+        var secondItem = NewItem(tenantId, project.Id, InProgressStatusId, 2);
+        var thirdItem = NewItem(tenantId, project.Id, InProgressStatusId, 3);
+        var memberships = new SprintMembershipRepositoryStub(
+            SprintMembership.Create(tenantId, sprint.Id, firstItem.Id, DateTimeOffset.UtcNow),
+            SprintMembership.Create(tenantId, sprint.Id, secondItem.Id, DateTimeOffset.UtcNow),
+            SprintMembership.Create(tenantId, sprint.Id, thirdItem.Id, DateTimeOffset.UtcNow));
+        var facts = new SprintScopeFactRepositoryStub();
+        var unitOfWork = new UnitOfWorkStub();
+        var workItems = new WorkItemRepositoryStub(firstItem, secondItem, thirdItem) { MinBacklogRank = 500m };
+        var handler = new CompleteSprintHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
+            new SprintRepositoryStub(sprint),
+            memberships,
+            new SprintCompletionOperationRepositoryStub(),
+            facts,
+            workItems,
+            new WorkItemStatusRepositoryStub(),
+            new ProjectAccessRepositoryStub(),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
+            unitOfWork,
+            TimeProvider.System);
+
+        await handler.Handle(
+            new CompleteSprintCommand(sprint.Id, sprint.Version, CreateRolloverSprint: false), CancellationToken.None);
+
+        Assert.True(firstItem.Rank < secondItem.Rank);
+        Assert.True(secondItem.Rank < thirdItem.Rank);
+        Assert.True(thirdItem.Rank < 500m);
+    }
+
+    [Fact]
+    public async Task CompleteSprint_NotifiesEveryProjectViewer_NotJustWorkItemOwners()
     {
         var tenantId = Guid.NewGuid();
         var authorUserId = Guid.NewGuid();
@@ -324,6 +367,7 @@ public sealed class SprintHandlerTests
         var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
         sprint.Start(null, null, null, DateTimeOffset.UtcNow);
         var assigneeAccount = UserAccount.Create("assignee@example.com", "Assignee", DateTimeOffset.UtcNow);
+        var viewerAccount = UserAccount.Create("viewer@example.com", "Viewer", DateTimeOffset.UtcNow);
         var doneItem = NewItem(tenantId, project.Id, DoneStatusId, 1);
         doneItem.SetDetails(
             parentId: null, epicName: null, acceptanceCriteria: null, stepsToConduct: null,
@@ -341,41 +385,44 @@ public sealed class SprintHandlerTests
             new SprintScopeFactRepositoryStub(),
             new WorkItemRepositoryStub(doneItem),
             new WorkItemStatusRepositoryStub(),
+            new ProjectAccessRepositoryStub(viewerAccount.Id),
             new CurrentPrincipalStub(authorUserId),
-            new SettingsRepositoryStub([assigneeAccount], []),
+            new SettingsRepositoryStub([assigneeAccount, viewerAccount], []),
             outbox,
             new UnitOfWorkStub(),
             TimeProvider.System);
 
-        await handler.Handle(new CompleteSprintCommand(sprint.Id, sprint.Version, null), CancellationToken.None);
+        await handler.Handle(
+            new CompleteSprintCommand(sprint.Id, sprint.Version, CreateRolloverSprint: false), CancellationToken.None);
 
         var email = Assert.Single(outbox.Messages);
-        Assert.Equal(assigneeAccount.NormalizedEmail, email.ToEmail);
+        Assert.Equal(viewerAccount.NormalizedEmail, email.ToEmail);
         Assert.Contains(sprint.Name, email.Subject);
     }
 
     [Fact]
-    public async Task CompleteSprint_WithRolloverTarget_MovesIncompleteItemsIntoTargetSprint()
+    public async Task CompleteSprint_WithCreateRolloverSprint_CreatesAndMovesIncompleteItemsIntoNextSprint()
     {
         var tenantId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
-        sprint.Start(null, null, null, DateTimeOffset.UtcNow);
-        var targetSprint = Sprint.Create(tenantId, project.Id, "Sprint 2", DateTimeOffset.UtcNow);
+        sprint.Start(null, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 14), DateTimeOffset.UtcNow);
         var doneItem = NewItem(tenantId, project.Id, DoneStatusId, 1);
         var todoItem = NewItem(tenantId, project.Id, InProgressStatusId, 2);
         var doneMembership = SprintMembership.Create(tenantId, sprint.Id, doneItem.Id, DateTimeOffset.UtcNow);
         var todoMembership = SprintMembership.Create(tenantId, sprint.Id, todoItem.Id, DateTimeOffset.UtcNow);
         var memberships = new SprintMembershipRepositoryStub(doneMembership, todoMembership);
+        var sprints = new SprintRepositoryStub(sprint);
         var handler = new CompleteSprintHandler(
             new TenantContextStub(tenantId),
             new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
-            new SprintRepositoryStub(sprint, targetSprint),
+            sprints,
             memberships,
             new SprintCompletionOperationRepositoryStub(),
             new SprintScopeFactRepositoryStub(),
             new WorkItemRepositoryStub(doneItem, todoItem),
             new WorkItemStatusRepositoryStub(),
+            new ProjectAccessRepositoryStub(),
             new CurrentPrincipalStub(null),
             new SettingsRepositoryStub([], []),
             new OutboxRepositoryStub(),
@@ -383,42 +430,17 @@ public sealed class SprintHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new CompleteSprintCommand(sprint.Id, sprint.Version, targetSprint.Id), CancellationToken.None);
+            new CompleteSprintCommand(sprint.Id, sprint.Version, CreateRolloverSprint: true), CancellationToken.None);
 
         Assert.Equal(SprintState.Closed, result.State);
         Assert.NotNull(todoMembership.RemovedAt);
-        var targetMembers = await memberships.ListCurrentBySprintAsync(tenantId, targetSprint.Id, CancellationToken.None);
+        var rolloverSprint = sprints.Added ?? throw new InvalidOperationException("Expected a rollover sprint to be created.");
+        Assert.Equal("Sprint 2", rolloverSprint.Name);
+        Assert.Equal(SprintState.Future, rolloverSprint.State);
+        Assert.Equal(new DateOnly(2026, 8, 15), rolloverSprint.StartDate);
+        Assert.Equal(new DateOnly(2026, 8, 28), rolloverSprint.EndDate);
+        var targetMembers = await memberships.ListCurrentBySprintAsync(tenantId, rolloverSprint.Id, CancellationToken.None);
         Assert.Equal([todoItem.Id], [.. targetMembers.Select(member => member.WorkItemId)]);
-    }
-
-    [Fact]
-    public async Task CompleteSprint_RejectsRolloverTargetThatIsNotFuture()
-    {
-        var tenantId = Guid.NewGuid();
-        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
-        var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
-        sprint.Start(null, null, null, DateTimeOffset.UtcNow);
-        var targetSprint = Sprint.Create(tenantId, project.Id, "Sprint 2", DateTimeOffset.UtcNow);
-        targetSprint.Start(null, null, null, DateTimeOffset.UtcNow);
-        var handler = new CompleteSprintHandler(
-            new TenantContextStub(tenantId),
-            new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
-            new SprintRepositoryStub(sprint, targetSprint),
-            new SprintMembershipRepositoryStub(),
-            new SprintCompletionOperationRepositoryStub(),
-            new SprintScopeFactRepositoryStub(),
-            new WorkItemRepositoryStub(),
-            new WorkItemStatusRepositoryStub(),
-            new CurrentPrincipalStub(null),
-            new SettingsRepositoryStub([], []),
-            new OutboxRepositoryStub(),
-            new UnitOfWorkStub(),
-            TimeProvider.System);
-
-        var action = () => handler.Handle(
-            new CompleteSprintCommand(sprint.Id, sprint.Version, targetSprint.Id), CancellationToken.None);
-
-        await Assert.ThrowsAsync<DomainException>(action);
     }
 
     [Fact]
@@ -450,6 +472,7 @@ public sealed class SprintHandlerTests
             new SprintScopeFactRepositoryStub(),
             new WorkItemRepositoryStub(doneItem, alreadyRemovedItem, stillPendingItem),
             new WorkItemStatusRepositoryStub(),
+            new ProjectAccessRepositoryStub(),
             new CurrentPrincipalStub(null),
             new SettingsRepositoryStub([], []),
             new OutboxRepositoryStub(),
@@ -457,13 +480,52 @@ public sealed class SprintHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new CompleteSprintCommand(sprint.Id, sprint.Version, null), CancellationToken.None);
+            new CompleteSprintCommand(sprint.Id, sprint.Version, CreateRolloverSprint: false), CancellationToken.None);
 
         Assert.Equal(SprintState.Closed, result.State);
         Assert.Equal([doneItem.Id], result.WorkItemIds);
         Assert.NotNull(pendingMembership.RemovedAt);
         Assert.Equal(3, operation.ProcessedCount);
         Assert.Equal(SprintCompletionOperationState.Completed, operation.State);
+    }
+
+    [Fact]
+    public async Task CompleteSprint_WithCreateRolloverSprint_ResumingDoesNotCreateASecondSprint()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
+        sprint.Start(null, null, null, DateTimeOffset.UtcNow);
+        var now = DateTimeOffset.UtcNow;
+        sprint.StartClosing(now);
+        var rolloverSprint = Sprint.Create(tenantId, project.Id, "Sprint 2", now);
+        var pendingItem = NewItem(tenantId, project.Id, InProgressStatusId, 1);
+        var pendingMembership = SprintMembership.Create(tenantId, sprint.Id, pendingItem.Id, now);
+        var memberships = new SprintMembershipRepositoryStub(pendingMembership);
+        var operation = SprintCompletionOperation.Create(tenantId, sprint.Id, rolloverSprint.Id, totalCount: 1, now);
+        var sprints = new SprintRepositoryStub(sprint, rolloverSprint);
+        var handler = new CompleteSprintHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
+            sprints,
+            memberships,
+            new SprintCompletionOperationRepositoryStub(operation),
+            new SprintScopeFactRepositoryStub(),
+            new WorkItemRepositoryStub(pendingItem),
+            new WorkItemStatusRepositoryStub(),
+            new ProjectAccessRepositoryStub(),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
+            new UnitOfWorkStub(),
+            TimeProvider.System);
+
+        await handler.Handle(
+            new CompleteSprintCommand(sprint.Id, sprint.Version, CreateRolloverSprint: true), CancellationToken.None);
+
+        Assert.Null(sprints.Added);
+        var targetMembers = await memberships.ListCurrentBySprintAsync(tenantId, rolloverSprint.Id, CancellationToken.None);
+        Assert.Equal([pendingItem.Id], [.. targetMembers.Select(member => member.WorkItemId)]);
     }
 
     [Fact]
@@ -487,6 +549,7 @@ public sealed class SprintHandlerTests
             new SprintScopeFactRepositoryStub(),
             new WorkItemRepositoryStub(),
             new WorkItemStatusRepositoryStub(),
+            new ProjectAccessRepositoryStub(),
             new CurrentPrincipalStub(null),
             new SettingsRepositoryStub([], []),
             new OutboxRepositoryStub(),
@@ -494,7 +557,7 @@ public sealed class SprintHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new CompleteSprintCommand(sprint.Id, sprint.Version + 100, null), CancellationToken.None);
+            new CompleteSprintCommand(sprint.Id, sprint.Version + 100, CreateRolloverSprint: false), CancellationToken.None);
 
         Assert.Equal(SprintState.Closed, result.State);
     }
@@ -695,6 +758,7 @@ public sealed class SprintHandlerTests
     private sealed class WorkItemRepositoryStub(params WorkItem[] items) : IWorkItemRepository
     {
         public int ListByIdsCount { get; private set; }
+        public decimal? MinBacklogRank { get; set; }
         public Task AddAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task<WorkItem?> GetAsync(
@@ -715,6 +779,8 @@ public sealed class SprintHandlerTests
 
         public Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken) =>
             Task.FromResult(false);
+        public Task<decimal?> GetMinBacklogRankAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult(MinBacklogRank);
         public Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<IReadOnlyList<WorkItem>> ListByIdsAsync(
             Guid tenantId,
@@ -938,6 +1004,13 @@ public sealed class SprintHandlerTests
 
         public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
+    }
+
+    private sealed class ProjectAccessRepositoryStub(params Guid[] userIds) : IProjectAccessRepository
+    {
+        public Task<IReadOnlyList<Guid>> ListUserIdsWithPermissionAsync(
+            Guid tenantId, Guid projectId, ProjectPermission permission, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>(userIds);
     }
 
     private sealed class OutboxRepositoryStub : IOutboxRepository

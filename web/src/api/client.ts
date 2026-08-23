@@ -565,11 +565,11 @@ export const orbitApi = {
       headers: { 'If-Match': `"${sprint.version}"` },
       body: JSON.stringify(input),
     }),
-  completeSprint: (sprint: Sprint, rolloverTargetSprintId: string | null = null) =>
+  completeSprint: (sprint: Sprint, createRolloverSprint: boolean) =>
     request<Sprint>(`/sprints/${encodeURIComponent(sprint.id)}/complete`, {
       method: 'POST',
       headers: { 'If-Match': `"${sprint.version}"` },
-      body: JSON.stringify({ rolloverTargetSprintId }),
+      body: JSON.stringify({ createRolloverSprint }),
     }),
   reopenSprint: (sprint: Sprint) =>
     request<Sprint>(`/sprints/${encodeURIComponent(sprint.id)}/reopen`, {

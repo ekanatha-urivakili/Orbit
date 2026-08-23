@@ -221,6 +221,26 @@ public sealed class SprintModelTests
         Assert.Throws<DomainException>(action);
     }
 
+    [Theory]
+    [InlineData("Sprint 5", "Sprint 6")]
+    [InlineData("Sprint 05", "Sprint 06")]
+    [InlineData("Sprint 9", "Sprint 10")]
+    [InlineData("Q3 Sprint 05", "Q3 Sprint 06")]
+    public void Sprint_NextRolloverName_IncrementsTrailingNumber(string closedName, string expected)
+    {
+        var name = Sprint.NextRolloverName(closedName, new DateOnly(2026, 1, 1));
+
+        Assert.Equal(expected, name);
+    }
+
+    [Fact]
+    public void Sprint_NextRolloverName_FallsBackToDate_WhenNoTrailingNumber()
+    {
+        var name = Sprint.NextRolloverName("Alpha Release", new DateOnly(2026, 1, 1));
+
+        Assert.Equal("Sprint 2026-01-01", name);
+    }
+
     [Fact]
     public void SprintMembership_Create_RejectsEmptyIdentifiers()
     {

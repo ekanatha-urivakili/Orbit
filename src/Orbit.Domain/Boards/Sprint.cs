@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Orbit.Domain.Choices;
 using Orbit.Domain.Common;
 
@@ -123,6 +124,25 @@ public sealed class Sprint
         State = SprintState.Reopened;
         Version++;
         UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// Names the sprint auto-created for a "yes, roll incomplete items into a new sprint" close
+    /// (§13.5): increments the closed sprint's trailing number, preserving zero-padding
+    /// (e.g. "Sprint 5" -> "Sprint 6", "Sprint 05" -> "Sprint 06"); falls back to a date-based
+    /// name when the closed sprint's name has no trailing number to increment.
+    /// </summary>
+    public static string NextRolloverName(string closedSprintName, DateOnly fallbackDate)
+    {
+        var match = Regex.Match(closedSprintName, @"(\d+)\s*$");
+        if (!match.Success)
+        {
+            return $"Sprint {fallbackDate:yyyy-MM-dd}";
+        }
+
+        var digits = match.Groups[1].Value;
+        var next = (long.Parse(digits) + 1).ToString().PadLeft(digits.Length, '0');
+        return string.Concat(closedSprintName.AsSpan(0, match.Groups[1].Index), next);
     }
 
     private static string NormalizeName(string name)

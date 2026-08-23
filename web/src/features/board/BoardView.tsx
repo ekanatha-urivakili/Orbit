@@ -70,7 +70,6 @@ export function BoardView({
   columnSizeMode = 'Flexible',
   hideDoneItemsAfter = 'Never',
   activeSprint,
-  futureSprints = [],
   onCompleteSprint,
   completeSprintPending = false,
   onToggleInsights,
@@ -102,8 +101,7 @@ export function BoardView({
   columnSizeMode?: 'Fixed' | 'Flexible'
   hideDoneItemsAfter?: 'Never' | 'OneDay' | 'OneWeek' | 'TwoWeeks' | 'OneMonth'
   activeSprint?: Sprint | null
-  futureSprints?: Sprint[]
-  onCompleteSprint?: (sprint: Sprint, rolloverTargetSprintId: string | null) => void
+  onCompleteSprint?: (sprint: Sprint, createRolloverSprint: boolean) => void
   completeSprintPending?: boolean
   onToggleInsights?: () => void
   isInsightsOpen?: boolean
@@ -482,11 +480,10 @@ export function BoardView({
           sprint={activeSprint}
           workItems={workItems}
           statuses={statuses}
-          futureSprints={futureSprints}
           pending={completeSprintPending}
           onClose={() => setCompleteSprintOpen(false)}
-          onComplete={(targetSprintId) => {
-            onCompleteSprint(activeSprint, targetSprintId)
+          onComplete={(createRolloverSprint) => {
+            onCompleteSprint(activeSprint, createRolloverSprint)
             setCompleteSprintOpen(false)
           }}
         />

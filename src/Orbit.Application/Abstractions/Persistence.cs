@@ -645,6 +645,13 @@ public interface IWorkItemRepository
     /// <summary>True when at least one work item has <paramref name="parentWorkItemId"/> as its parent.</summary>
     Task<bool> HasChildrenAsync(Guid tenantId, Guid parentWorkItemId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The lowest <see cref="WorkItem.Rank"/> among the project's backlog items - work items with
+    /// no current membership in a non-Closed sprint - or null when the backlog is empty. Used to
+    /// compute a rank above every existing backlog item (see <c>CompleteSprintHandler</c>).
+    /// </summary>
+    Task<decimal?> GetMinBacklogRankAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken);
+
     Task RemoveAsync(WorkItem workItem, CancellationToken cancellationToken);
 }
 

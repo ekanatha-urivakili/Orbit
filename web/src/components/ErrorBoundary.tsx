@@ -6,7 +6,12 @@ import { ErrorScreen } from './layout/FeedbackScreens'
 export function ErrorBoundary({ children }: { children: ReactNode }) {
   return (
     <Sentry.ErrorBoundary
-      fallback={({ error }) => <ErrorScreen message={error instanceof Error ? error.message : 'An unexpected error occurred.'} />}
+      fallback={({ error }) => (
+        <ErrorScreen
+          message={error instanceof Error ? error.message : 'An unexpected error occurred.'}
+          correlationId={error instanceof ApiError ? error.correlationId : undefined}
+        />
+      )}
       beforeCapture={(scope, error) => {
         if (error instanceof ApiError && error.correlationId) {
           scope.setTag('correlationId', error.correlationId)

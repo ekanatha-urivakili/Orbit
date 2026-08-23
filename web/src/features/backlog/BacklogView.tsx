@@ -6,6 +6,7 @@ import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { getInitials } from '../../lib/initials'
 import { SprintReportDialog } from './SprintReportDialog'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
+import { RolloverChoice } from '../board/RolloverChoice'
 import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemTypeIcon } from '../workitems/typeIcons'
 import { FilterBar } from '../../components/filters/FilterBar'
@@ -34,7 +35,7 @@ interface BacklogViewProps {
   sprintsLoading: boolean
   onCreateSprint: (name: string) => void
   onStartSprint: (sprint: Sprint) => void
-  onCompleteSprint: (sprint: Sprint, rolloverTargetSprintId: string | null) => void
+  onCompleteSprint: (sprint: Sprint, createRolloverSprint: boolean) => void
   onReopenSprint: (sprint: Sprint) => void
   onAssignToSprint: (workItemId: string, sprintId: string) => void
   onRemoveFromSprint: (workItemId: string) => void
@@ -89,7 +90,7 @@ export function BacklogView({
   const [inlineDueDate, setInlineDueDate] = useState('')
   const [inlineAssigneeOpen, setInlineAssigneeOpen] = useState(false)
   const [inlineAssigneeUserId, setInlineAssigneeUserId] = useState<string | null>(null)
-  const [rolloverTargets, setRolloverTargets] = useState<Record<string, string>>({})
+  const [rolloverChoices, setRolloverChoices] = useState<Record<string, boolean>>({})
   const [collapsedSprints, setCollapsedSprints] = useState<Record<string, boolean>>({})
   const [backlogCollapsed, setBacklogCollapsed] = useState(false)
   const [closedSectionOpen, setClosedSectionOpen] = useState(false)
@@ -101,9 +102,12 @@ export function BacklogView({
     queryFn: () => orbitApi.listWorkItemStatuses(projectId),
   })
   const statuses = statusesQuery.data ?? []
-  const statusesById = useMemo(() => new Map(statuses.map((status) => [status.id, status])), [statuses])
+  const statusesById = useMemo(
+    () => new Map((statuses ?? []).map((status) => [status.id, status])),
+    [statuses],
+  )
   const statusLabels = useMemo(
-    () => Object.fromEntries(statuses.map((status) => [status.id, status.name])),
+    () => Object.fromEntries((statuses ?? []).map((status) => [status.id, status.name])),
     [statuses],
   )
   const { searchTerm, setSearchTerm, fields, activeCount, clearAll, matches } = useWorkItemFilters(
@@ -296,27 +300,15 @@ export function BacklogView({
                   </button>
                 )}
                 {(sprint.state === 'Active' || sprint.state === 'Reopened') && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="w-48 sm:w-64">
-                      <SearchableSelect
-                        size="sm"
-                        value={rolloverTargets[sprint.id] ?? ''}
-                        onChange={(val) => setRolloverTargets((current) => ({ ...current, [sprint.id]: val }))}
-                        options={[
-                          { value: '', label: 'Return incomplete items to backlog' },
-                          ...futureSprints
-                            .filter((candidate) => candidate.id !== sprint.id)
-                            .map((candidate) => ({
-                              value: candidate.id,
-                              label: `Move incomplete items to ${candidate.name}`,
-                            })),
-                        ]}
-                        aria-label="Move incomplete items to"
-                        searchPlaceholder="Search sprints…"
-                      />
-                    </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <RolloverChoice
+                      sprintName={sprint.name}
+                      createRollover={rolloverChoices[sprint.id] ?? false}
+                      onChange={(value) => setRolloverChoices((current) => ({ ...current, [sprint.id]: value }))}
+                      idPrefix={`backlog-${sprint.id}`}
+                    />
                     <button
-                      onClick={() => onCompleteSprint(sprint, rolloverTargets[sprint.id] || null)}
+                      onClick={() => onCompleteSprint(sprint, rolloverChoices[sprint.id] ?? false)}
                       className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded shrink-0"
                     >
                       Complete sprint
@@ -325,7 +317,7 @@ export function BacklogView({
                 )}
                 {sprint.state === 'Closing' && (
                   <button
-                    onClick={() => onCompleteSprint(sprint, null)}
+                    onClick={() => onCompleteSprint(sprint, false)}
                     className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 font-medium text-sm rounded"
                   >
                     Resume closing
