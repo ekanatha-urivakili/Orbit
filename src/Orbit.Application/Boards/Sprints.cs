@@ -342,7 +342,7 @@ public sealed class CompleteSprintHandler(
         {
             var minRank = await workItems.GetMinBacklogRankAsync(tenant.TenantId, sprint.ProjectId, cancellationToken);
             var rank = minRank ?? 0m;
-            foreach (var workItem in movedToBacklog.OrderBy(item => item.Rank))
+            foreach (var workItem in movedToBacklog.OrderByDescending(item => item.Rank))
             {
                 rank -= RankGap;
                 workItem.Reorder(rank, now);

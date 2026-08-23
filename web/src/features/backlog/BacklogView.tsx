@@ -101,7 +101,7 @@ export function BacklogView({
     queryKey: ['work-item-statuses', projectId],
     queryFn: () => orbitApi.listWorkItemStatuses(projectId),
   })
-  const statuses = statusesQuery.data
+  const statuses = statusesQuery.data ?? []
   const statusesById = useMemo(
     () => new Map((statuses ?? []).map((status) => [status.id, status])),
     [statuses],

@@ -318,6 +318,47 @@ public sealed class SprintHandlerTests
     }
 
     [Fact]
+    public async Task CompleteSprint_MovesMultipleIncompleteItemsToBacklogPreservingRelativeOrder()
+    {
+        var tenantId = Guid.NewGuid();
+        var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
+        var sprint = Sprint.Create(tenantId, project.Id, "Sprint 1", DateTimeOffset.UtcNow);
+        sprint.Start(null, null, null, DateTimeOffset.UtcNow);
+        var firstItem = NewItem(tenantId, project.Id, InProgressStatusId, 1);
+        var secondItem = NewItem(tenantId, project.Id, InProgressStatusId, 2);
+        var thirdItem = NewItem(tenantId, project.Id, InProgressStatusId, 3);
+        var memberships = new SprintMembershipRepositoryStub(
+            SprintMembership.Create(tenantId, sprint.Id, firstItem.Id, DateTimeOffset.UtcNow),
+            SprintMembership.Create(tenantId, sprint.Id, secondItem.Id, DateTimeOffset.UtcNow),
+            SprintMembership.Create(tenantId, sprint.Id, thirdItem.Id, DateTimeOffset.UtcNow));
+        var facts = new SprintScopeFactRepositoryStub();
+        var unitOfWork = new UnitOfWorkStub();
+        var workItems = new WorkItemRepositoryStub(firstItem, secondItem, thirdItem) { MinBacklogRank = 500m };
+        var handler = new CompleteSprintHandler(
+            new TenantContextStub(tenantId),
+            new ProjectRepositoryStub(project, [ProjectPermission.TransitionWorkItem]),
+            new SprintRepositoryStub(sprint),
+            memberships,
+            new SprintCompletionOperationRepositoryStub(),
+            facts,
+            workItems,
+            new WorkItemStatusRepositoryStub(),
+            new ProjectAccessRepositoryStub(),
+            new CurrentPrincipalStub(null),
+            new SettingsRepositoryStub([], []),
+            new OutboxRepositoryStub(),
+            unitOfWork,
+            TimeProvider.System);
+
+        await handler.Handle(
+            new CompleteSprintCommand(sprint.Id, sprint.Version, CreateRolloverSprint: false), CancellationToken.None);
+
+        Assert.True(firstItem.Rank < secondItem.Rank);
+        Assert.True(secondItem.Rank < thirdItem.Rank);
+        Assert.True(thirdItem.Rank < 500m);
+    }
+
+    [Fact]
     public async Task CompleteSprint_NotifiesEveryProjectViewer_NotJustWorkItemOwners()
     {
         var tenantId = Guid.NewGuid();
