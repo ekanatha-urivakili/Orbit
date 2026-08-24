@@ -82,19 +82,21 @@ export function WorkItemDetailOverlay({
         <button ref={closeButtonRef} type="button" className={`${closeClass} icon-button`} aria-label="Close" onClick={onClose}>
           <X size={18} />
         </button>
-        <WorkItemDetailView
-          item={item}
-          project={project}
-          workItems={workItems}
-          profile={profile}
-          members={members}
-          priorities={priorities}
-          sprints={sprints}
-          onBack={onClose}
-          onStatusChange={onStatusChange}
-          onOpenWorkItem={onOpenWorkItem}
-          onManageWorkTypes={onManageWorkTypes}
-        />
+        <div className="work-item-modal-scroll">
+          <WorkItemDetailView
+            item={item}
+            project={project}
+            workItems={workItems}
+            profile={profile}
+            members={members}
+            priorities={priorities}
+            sprints={sprints}
+            onBack={onClose}
+            onStatusChange={onStatusChange}
+            onOpenWorkItem={onOpenWorkItem}
+            onManageWorkTypes={onManageWorkTypes}
+          />
+        </div>
       </div>
     </div>
   )

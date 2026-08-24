@@ -55,17 +55,24 @@ export function TimelineView({
               <div key={epic.id}>
                 <TimelineLeftRow
                   label={
-                    <button
-                      onClick={() => toggle(epic.id)}
-                      className="flex items-center gap-1.5 text-left w-full"
-                      aria-expanded={Boolean(expanded[epic.id])}
-                      aria-label={`Toggle ${epic.key}`}
-                    >
-                      <ChevronRight size={14} className={`text-gray-400 shrink-0 transition-transform ${expanded[epic.id] ? 'rotate-90' : ''}`} />
-                      <WorkItemTypeIcon type="Epic" size={14} />
-                      <span className="text-blue-700 font-medium shrink-0">{epic.key}</span>
+                    <span className="flex items-center gap-1.5 w-full min-w-0">
+                      <button
+                        onClick={() => toggle(epic.id)}
+                        className="flex items-center gap-1.5 text-left shrink-0"
+                        aria-expanded={Boolean(expanded[epic.id])}
+                        aria-label={`Toggle ${epic.key}`}
+                      >
+                        <ChevronRight size={14} className={`text-gray-400 shrink-0 transition-transform ${expanded[epic.id] ? 'rotate-90' : ''}`} />
+                        <WorkItemTypeIcon type="Epic" size={14} />
+                      </button>
+                      <button
+                        onClick={() => onOpenWorkItem(epic)}
+                        className="text-blue-700 font-medium shrink-0 hover:underline"
+                      >
+                        {epic.key}
+                      </button>
                       <span className="text-gray-700 truncate">{epic.summary}</span>
-                    </button>
+                    </span>
                   }
                 />
                 {expanded[epic.id] &&
@@ -78,7 +85,13 @@ export function TimelineView({
                         label={
                           <span className="flex items-center gap-1.5 min-w-0">
                             {childItem && <WorkItemTypeIcon type={childItem.type} size={13} />}
-                            <span className="text-blue-700 shrink-0">{child.key}</span>
+                            <button
+                              onClick={() => childItem && onOpenWorkItem(childItem)}
+                              disabled={!childItem}
+                              className="text-blue-700 shrink-0 hover:underline disabled:no-underline"
+                            >
+                              {child.key}
+                            </button>
                             <span className="text-gray-600 truncate">{child.summary}</span>
                           </span>
                         }

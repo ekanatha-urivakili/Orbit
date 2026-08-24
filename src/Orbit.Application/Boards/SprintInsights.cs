@@ -45,6 +45,8 @@ public sealed record SprintInsightsDto(
     decimal CompletedPoints,
     decimal AddedAfterStartPoints,
     decimal RemovedAfterStartPoints,
+    int AddedAfterStartCount,
+    int RemovedAfterStartCount,
     IReadOnlyList<SprintAttentionItemDto> ItemsForAttention,
     IReadOnlyList<EpicProgressDto> Epics);
 
@@ -121,6 +123,7 @@ public sealed class SprintInsightsHandler(
 
         var facts = await sprintScopeFacts.ListBySprintAsync(tenant.TenantId, sprint.Id, cancellationToken);
         var (committed, completed, added, removed) = SprintReportPoints.Compute(sprint, facts);
+        var (addedCount, removedCount) = SprintReportPoints.ComputeScopeChangeCounts(sprint, facts);
 
         var total = members.Count;
         return new SprintInsightsDto(
@@ -136,6 +139,8 @@ public sealed class SprintInsightsHandler(
             completed,
             added,
             removed,
+            addedCount,
+            removedCount,
             [.. attention.OrderByDescending(item => item.IsOverdue).ThenByDescending(item => item.IsBlocked)],
             epics);
     }
@@ -213,5 +218,31 @@ internal static class SprintReportPoints
                 .Sum(fact => fact.EstimateDelta ?? 0);
 
         return (committed, completed, added, removed);
+    }
+
+    public static (int AddedCount, int RemovedCount) ComputeScopeChangeCounts(Sprint sprint, IReadOnlyList<SprintScopeFact> facts)
+    {
+        DateTimeOffset? startThreshold = sprint.StartDate is { } startDate
+            ? new DateTimeOffset(startDate.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero)
+            : null;
+
+        if (startThreshold is null)
+        {
+            return (0, 0);
+        }
+
+        var addedCount = facts
+            .Where(fact => fact.FactType == AgileFactType.SprintAdded && fact.OccurredAt > startThreshold && fact.WorkItemId.HasValue)
+            .Select(fact => fact.WorkItemId!.Value)
+            .Distinct()
+            .Count();
+
+        var removedCount = facts
+            .Where(fact => fact.FactType == AgileFactType.SprintRemoved && fact.OccurredAt > startThreshold && fact.WorkItemId.HasValue)
+            .Select(fact => fact.WorkItemId!.Value)
+            .Distinct()
+            .Count();
+
+        return (addedCount, removedCount);
     }
 }

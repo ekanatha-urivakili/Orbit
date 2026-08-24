@@ -13,7 +13,7 @@ export function SubNavigation({
   setActiveTab: (tab: TabType) => void
 }) {
   return (
-    <div className="bg-white border-b border-gray-200 pt-6 px-4 sm:px-8 sticky top-12 z-10">
+    <div className="bg-white border-b border-gray-200 pt-6 px-4 sm:px-8 sticky top-0 z-10">
       <div className="text-xs text-gray-500 mb-2">Spaces</div>
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
