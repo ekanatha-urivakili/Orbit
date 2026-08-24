@@ -730,177 +730,224 @@ function App() {
           style={{
             ['--sidebar-offset' as string]: sidebarCollapsed ? '0px' : `${sidebarWidth}px`,
           }}
-          className={`region-middle flex-1 min-h-[calc(100vh-48px)] bg-white dark:bg-[#101214] relative min-w-0 overflow-x-clip ml-0 lg:ml-[var(--sidebar-offset)] transition-[margin-left] duration-150 ease-out ${
+          className={`region-middle flex-1 h-[calc(100vh-48px)] max-h-[calc(100vh-48px)] overflow-hidden bg-white dark:bg-[#101214] relative min-w-0 ml-0 lg:ml-[var(--sidebar-offset)] transition-[margin-left] duration-150 ease-out flex flex-col ${
             isResizingSidebar ? '!transition-none' : ''
           }`}
         >
-          <div className="3xl:max-w-[1800px] 3xl:mx-auto">
+          <div className="w-full h-full flex flex-col min-h-0 flex-1">
           {projects.length === 0 ? <ProjectOnboarding /> : <>
           {activeView === 'home' && (
-            <HomeView
-              profile={profileQuery.data}
-              projects={projects}
-              workItems={workItems}
-              statuses={statuses}
-              workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name ?? 'Orbit Workspace'}
-              workspaces={accountWorkspacesQuery.data}
-              currentWorkspaceId={authSession?.workspaceId}
-              onWorkspaceChange={(id) => workspaceSwitchMutation.mutate(id)}
-              onCreateWorkspace={siteCapabilitiesQuery.data?.canCreateWorkspace ? () => setCreateWorkspaceOpen(true) : undefined}
-              onCreate={() => setCreateOpen(true)}
-              onOpenProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }}
-            />
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <HomeView
+                profile={profileQuery.data}
+                projects={projects}
+                workItems={workItems}
+                statuses={statuses}
+                workspaceName={accountWorkspacesQuery.data?.find((w) => w.id === authSession?.workspaceId)?.name ?? 'Orbit Workspace'}
+                workspaces={accountWorkspacesQuery.data}
+                currentWorkspaceId={authSession?.workspaceId}
+                onWorkspaceChange={(id) => workspaceSwitchMutation.mutate(id)}
+                onCreateWorkspace={siteCapabilitiesQuery.data?.canCreateWorkspace ? () => setCreateWorkspaceOpen(true) : undefined}
+                onCreate={() => setCreateOpen(true)}
+                onOpenProject={(projectId) => { setSelectedProjectId(projectId); setActiveView('project') }}
+              />
+            </div>
           )}
           {activeView === 'settings' && selectedProject && (
-            <SettingsView key={settingsSection} project={selectedProject} initialSection={settingsSection} onClose={() => setActiveView('project')} />
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <SettingsView key={settingsSection} project={selectedProject} initialSection={settingsSection} onClose={() => setActiveView('project')} />
+            </div>
           )}
           {activeView === 'workitem' && (() => {
             const openWorkItem = workItems.find((item) => item.id === editingWorkItemId)
             return openWorkItem ? (
-              <WorkItemDetailView
-                item={openWorkItem}
-                project={selectedProject}
-                workItems={workItems}
-                profile={profileQuery.data}
-                members={members}
-                priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
-                onBack={handleBackFromWorkItem}
-                onNavigateHome={handleNavigateHome}
-                onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
-                onOpenWorkItem={handleOpenWorkItem}
-                onManageWorkTypes={() => { setSettingsSection('item-types'); setActiveView('settings') }}
-                sprints={sprints}
-              />
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <WorkItemDetailView
+                  item={openWorkItem}
+                  project={selectedProject}
+                  workItems={workItems}
+                  profile={profileQuery.data}
+                  members={members}
+                  priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
+                  onBack={handleBackFromWorkItem}
+                  onNavigateHome={handleNavigateHome}
+                  onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
+                  onOpenWorkItem={handleOpenWorkItem}
+                  onManageWorkTypes={() => { setSettingsSection('item-types'); setActiveView('settings') }}
+                  sprints={sprints}
+                />
+              </div>
             ) : null
           })()}
-          {activeView === 'project' && <>
-            <SubNavigation
-              project={selectedProject}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-            />
-            <div className="relative">
-            {workItemsTruncated && (
-              <div className="mx-8 mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Showing {workItems.length} of {workItemsQuery.data?.totalCount} work items — narrow with a filter to see the rest.
-              </div>
-            )}
-            {activeTab === 'Summary' && (
-              <SummaryView
-                workItems={workItems}
-                statuses={statuses}
-                profile={profileQuery.data}
-                members={members}
-                onOpenWorkItem={handleOpenWorkItem}
-                onSwitchTab={(tab) => setActiveTab(tab)}
-              />
-            )}
+          {activeView === 'project' && (
+            <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
+              {workItemsTruncated && (
+                <div className="mx-8 mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 shrink-0">
+                  Showing {workItems.length} of {workItemsQuery.data?.totalCount} work items — narrow with a filter to see the rest.
+                </div>
+              )}
 
-            {activeTab === 'Backlog' && (
-              <BacklogView
-                workItems={workItems}
-                projectId={selectedProjectId ?? ''}
-                members={members}
-                sprints={sprints}
-                sprintsLoading={sprintsQuery.isPending}
-                onCreateSprint={(name) => createSprintMutation.mutate(name)}
-                onStartSprint={(sprint) => startSprintMutation.mutate({ sprint, goal: null, startDate: null, endDate: null })}
-                onCompleteSprint={(sprint, createRolloverSprint) => completeSprintMutation.mutate({ sprint, createRolloverSprint })}
-                onReopenSprint={(sprint) => reopenSprintMutation.mutate(sprint)}
-                onAssignToSprint={(workItemId, sprintId) => assignToSprintMutation.mutate({ workItemId, sprintId })}
-                onRemoveFromSprint={(workItemId) => removeFromSprintMutation.mutate(workItemId)}
-                onOpenWorkItem={(workItem) => handleOpenWorkItemOverlay(workItem, 'drawer')}
-                onAssigneeChange={handleAssigneeChange}
-                assigneeChangePending={assigneeMutation.isPending}
-              />
-            )}
-
-            {activeTab === 'Board' && (
-              <div className="flex h-full min-h-[calc(100vh-140px)]">
-                <div className="flex-1 min-w-0 p-6 md:p-8 pt-8 md:pt-10 overflow-y-auto">
-                  <BoardView
-                    projectName={selectedProject?.name ?? ''}
-                    board={boardQuery.data}
-                    statuses={statuses}
-                    loading={boardQuery.isPending}
-                    mutation={boardMutation}
-                    onSave={(input) => boardMutation.mutate(input)}
+              {activeTab === 'Summary' && (
+                <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+                  <SubNavigation
+                    project={selectedProject}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                  />
+                  <SummaryView
                     workItems={workItems}
-                    workItemsLoading={workItemsQuery.isPending}
+                    statuses={statuses}
+                    profile={profileQuery.data}
                     members={members}
-                    onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
-                    onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
-                    onOpen={(workItem) => handleOpenWorkItemOverlay(workItem, 'modal')}
-                    onAssigneeChange={handleAssigneeChange}
-                    assigneeChangePending={assigneeMutation.isPending}
-                    hiddenFields={boardViewPreferenceQuery.data?.hiddenFields ?? []}
-                    columnSizeMode={boardViewPreferenceQuery.data?.columnSizeMode ?? 'Flexible'}
-                    hideDoneItemsAfter={boardViewPreferenceQuery.data?.hideDoneItemsAfter ?? 'Never'}
-                    activeSprint={activeSprint}
-                    onCompleteSprint={(sprint, createRolloverSprint) =>
-                      completeSprintMutation.mutate({ sprint, createRolloverSprint })
-                    }
-                    completeSprintPending={completeSprintMutation.isPending}
-                    onToggleInsights={() => setSprintInsightsOpen((curr) => !curr)}
-                    isInsightsOpen={sprintInsightsOpen}
-                    onToggleSettings={() => setBoardViewSettingsOpen((curr) => !curr)}
-                    isSettingsOpen={boardViewSettingsOpen}
-                    onRefresh={() => {
-                      queryClient.invalidateQueries({ queryKey: ['work-items'] })
-                      queryClient.invalidateQueries({ queryKey: ['sprints'] })
-                      queryClient.invalidateQueries({ queryKey: ['board'] })
-                      queryClient.invalidateQueries({ queryKey: ['sprint-insights'] })
-                    }}
-                    onConfigureColumns={() => setWorkflowEditorOpen(true)}
-                    onEditSprint={(sprint) => setSprintEditTarget(sprint)}
-                    onManageWorkflows={() => setWorkflowEditorOpen(true)}
-                    onCreateWorkItem={() => setCreateOpen(true)}
-                    headerMenuExtras={[
-                      ...(activeSprint ? [{ label: 'Sprint insights', onClick: () => setSprintInsightsOpen(true) }] : []),
-                      { label: 'View settings', onClick: () => setBoardViewSettingsOpen(true) },
-                      { label: 'Edit workflow', onClick: () => setWorkflowEditorOpen(true) },
-                      ...(activeSprint ? [{ label: 'Edit sprint', onClick: () => setSprintEditTarget(activeSprint) }] : []),
-                    ]}
+                    onOpenWorkItem={handleOpenWorkItem}
+                    onSwitchTab={(tab) => setActiveTab(tab)}
                   />
                 </div>
-                {sprintInsightsOpen && activeSprint && (
-                  <SprintInsightsPanel sprintId={activeSprint.id} onClose={() => setSprintInsightsOpen(false)} />
-                )}
-                {boardViewSettingsOpen && selectedProjectId && (
-                  <BoardViewSettingsPanel projectId={selectedProjectId} onClose={() => setBoardViewSettingsOpen(false)} />
-                )}
-              </div>
-            )}
-            {workflowEditorOpen && selectedProjectId && (
-              <WorkflowEditorDialog
-                projectId={selectedProjectId}
-                boardName={boardQuery.data?.name || selectedProject?.name || ''}
-                onClose={() => setWorkflowEditorOpen(false)}
-              />
-            )}
-            {sprintEditTarget && (
-              <SprintEditDialog sprint={sprintEditTarget} onClose={() => setSprintEditTarget(null)} />
-            )}
+              )}
 
-            {activeTab === 'Timeline' && (
-              <TimelineView
-                workItems={workItems}
-                sprints={sprints}
-                onOpenWorkItem={(workItem) => handleOpenWorkItemOverlay(workItem, 'drawer')}
-                onCreateEpic={() => setCreateOpen(true)}
-              />
-            )}
+              {activeTab === 'Backlog' && (
+                <div className="flex-1 min-h-0 h-full overflow-hidden">
+                  <BacklogView
+                    header={
+                      <SubNavigation
+                        project={selectedProject}
+                        activeTab={activeTab}
+                        setActiveTab={setActiveTab}
+                      />
+                    }
+                    workItems={workItems}
+                    projectId={selectedProjectId ?? ''}
+                    project={selectedProject}
+                    profile={profileQuery.data}
+                    priorities={(choicesQuery.data?.priorities ?? []).map((choice) => choice.value as Priority)}
+                    members={members}
+                    sprints={sprints}
+                    sprintsLoading={sprintsQuery.isPending}
+                    onCreateSprint={(name) => createSprintMutation.mutate(name)}
+                    onStartSprint={(sprint) => startSprintMutation.mutate({ sprint, goal: null, startDate: null, endDate: null })}
+                    onCompleteSprint={(sprint, createRolloverSprint) => completeSprintMutation.mutate({ sprint, createRolloverSprint })}
+                    onReopenSprint={(sprint) => reopenSprintMutation.mutate(sprint)}
+                    onAssignToSprint={(workItemId, sprintId) => assignToSprintMutation.mutate({ workItemId, sprintId })}
+                    onRemoveFromSprint={(workItemId) => removeFromSprintMutation.mutate(workItemId)}
+                    onOpenWorkItemModal={(workItem) => handleOpenWorkItemOverlay(workItem, 'modal')}
+                    onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
+                    onAssigneeChange={handleAssigneeChange}
+                    assigneeChangePending={assigneeMutation.isPending}
+                    onManageWorkTypes={() => {
+                      setSettingsSection('item-types')
+                      setActiveView('settings')
+                    }}
+                  />
+                </div>
+              )}
 
-            {activeTab === 'Development' && (
-              <DevelopmentView
-                projectSetting={projectSettingQuery.data}
-                loading={projectSettingQuery.isPending}
-                mutation={repositoryUrlMutation}
-                onSaveRepositoryUrl={(url) => repositoryUrlMutation.mutate(url)}
-              />
-            )}
+              {activeTab === 'Board' && (
+                <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+                  <SubNavigation
+                    project={selectedProject}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                  />
+                  <div className="flex h-full min-h-[calc(100vh-140px)]">
+                    <div className="flex-1 min-w-0 p-6 md:p-8 pt-8 md:pt-10 overflow-y-auto">
+                      <BoardView
+                        projectName={selectedProject?.name ?? ''}
+                        board={boardQuery.data}
+                        statuses={statuses}
+                        loading={boardQuery.isPending}
+                        mutation={boardMutation}
+                        onSave={(input) => boardMutation.mutate(input)}
+                        workItems={workItems}
+                        workItemsLoading={workItemsQuery.isPending}
+                        members={members}
+                        onStatusChange={(workItem, statusId) => statusMutation.mutate({ workItem, statusId })}
+                        onReorder={(workItem, neighbors) => reorderMutation.mutate({ workItem, neighbors })}
+                        onOpen={(workItem) => handleOpenWorkItemOverlay(workItem, 'modal')}
+                        onAssigneeChange={handleAssigneeChange}
+                        assigneeChangePending={assigneeMutation.isPending}
+                        hiddenFields={boardViewPreferenceQuery.data?.hiddenFields ?? []}
+                        columnSizeMode={boardViewPreferenceQuery.data?.columnSizeMode ?? 'Flexible'}
+                        hideDoneItemsAfter={boardViewPreferenceQuery.data?.hideDoneItemsAfter ?? 'Never'}
+                        activeSprint={activeSprint}
+                        onCompleteSprint={(sprint, createRolloverSprint) =>
+                          completeSprintMutation.mutate({ sprint, createRolloverSprint })
+                        }
+                        completeSprintPending={completeSprintMutation.isPending}
+                        onToggleInsights={() => setSprintInsightsOpen((curr) => !curr)}
+                        isInsightsOpen={sprintInsightsOpen}
+                        onToggleSettings={() => setBoardViewSettingsOpen((curr) => !curr)}
+                        isSettingsOpen={boardViewSettingsOpen}
+                        onRefresh={() => {
+                          queryClient.invalidateQueries({ queryKey: ['work-items'] })
+                          queryClient.invalidateQueries({ queryKey: ['sprints'] })
+                          queryClient.invalidateQueries({ queryKey: ['board'] })
+                          queryClient.invalidateQueries({ queryKey: ['sprint-insights'] })
+                        }}
+                        onConfigureColumns={() => setWorkflowEditorOpen(true)}
+                        onEditSprint={(sprint) => setSprintEditTarget(sprint)}
+                        onManageWorkflows={() => setWorkflowEditorOpen(true)}
+                        onCreateWorkItem={() => setCreateOpen(true)}
+                        headerMenuExtras={[
+                          ...(activeSprint ? [{ label: 'Sprint insights', onClick: () => setSprintInsightsOpen(true) }] : []),
+                          { label: 'View settings', onClick: () => setBoardViewSettingsOpen(true) },
+                          { label: 'Edit workflow', onClick: () => setWorkflowEditorOpen(true) },
+                          ...(activeSprint ? [{ label: 'Edit sprint', onClick: () => setSprintEditTarget(activeSprint) }] : []),
+                        ]}
+                      />
+                    </div>
+                    {sprintInsightsOpen && activeSprint && (
+                      <SprintInsightsPanel sprintId={activeSprint.id} onClose={() => setSprintInsightsOpen(false)} />
+                    )}
+                    {boardViewSettingsOpen && selectedProjectId && (
+                      <BoardViewSettingsPanel projectId={selectedProjectId} onClose={() => setBoardViewSettingsOpen(false)} />
+                    )}
+                  </div>
+                  {workflowEditorOpen && selectedProjectId && (
+                    <WorkflowEditorDialog
+                      projectId={selectedProjectId}
+                      boardName={boardQuery.data?.name || selectedProject?.name || ''}
+                      onClose={() => setWorkflowEditorOpen(false)}
+                    />
+                  )}
+                  {sprintEditTarget && (
+                    <SprintEditDialog sprint={sprintEditTarget} onClose={() => setSprintEditTarget(null)} />
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'Timeline' && (
+                <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+                  <SubNavigation
+                    project={selectedProject}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                  />
+                  <TimelineView
+                    workItems={workItems}
+                    sprints={sprints}
+                    onOpenWorkItem={(workItem) => handleOpenWorkItemOverlay(workItem, 'drawer')}
+                    onCreateEpic={() => setCreateOpen(true)}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'Development' && (
+                <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+                  <SubNavigation
+                    project={selectedProject}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                  />
+                  <DevelopmentView
+                    projectSetting={projectSettingQuery.data}
+                    loading={projectSettingQuery.isPending}
+                    mutation={repositoryUrlMutation}
+                    onSaveRepositoryUrl={(url) => repositoryUrlMutation.mutate(url)}
+                  />
+                </div>
+              )}
             </div>
-          </>}
+          )}
           </>}
           </div>
         </main>

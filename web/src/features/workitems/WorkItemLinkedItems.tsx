@@ -84,7 +84,14 @@ export function WorkItemLinkedItems({
               className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-gray-50 text-sm border border-transparent hover:border-gray-200 group"
             >
               <WorkItemTypeIcon type={link.type} size={15} />
-              <span className="font-semibold text-gray-600 text-xs">{link.key}</span>
+              <a
+                href={`/browse/${link.key}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-gray-600 text-xs hover:text-blue-600 hover:underline"
+              >
+                {link.key}
+              </a>
               <a
                 href={`/browse/${link.key}`}
                 target="_blank"

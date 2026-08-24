@@ -11,6 +11,8 @@ import {
   EyeOff,
   Link as LinkIcon,
   Share2,
+  X,
+  Maximize2,
 } from 'lucide-react'
 import { orbitApi } from '../../api/client'
 import { useUpdateWorkItem } from '../../hooks/useUpdateWorkItem'
@@ -68,7 +70,9 @@ export function WorkItemDetailView({
   onOpenWorkItem,
   onNavigateHome,
   onManageWorkTypes,
+  onExpandToModal,
   sprints = [],
+  layout = 'default',
 }: {
   item: WorkItem
   project?: Project
@@ -81,41 +85,20 @@ export function WorkItemDetailView({
   onOpenWorkItem: (workItem: WorkItem) => void
   onNavigateHome?: () => void
   onManageWorkTypes?: () => void
+  onExpandToModal?: () => void
   sprints?: Sprint[]
+  layout?: 'default' | 'panel' | 'modal'
 }) {
   const queryClient = useQueryClient()
   const [currentType, setCurrentType] = useState<WorkItemType>(item.type)
-  const [currentTypeItemId, setCurrentTypeItemId] = useState(item.id)
-  if (item.id !== currentTypeItemId) {
-    setCurrentTypeItemId(item.id)
-    setCurrentType(item.type)
-  }
   const [typeMenuOpen, setTypeMenuOpen] = useState(false)
   const [epicPopupOpen, setEpicPopupOpen] = useState(false)
   const [epicMenuOpen, setEpicMenuOpen] = useState(false)
   const [epicSearch, setEpicSearch] = useState('')
+  const [panelDetailsCollapsed, setPanelDetailsCollapsed] = useState(false)
   const typeMenuRef = useRef<HTMLDivElement>(null)
   const epicPopupRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!typeMenuOpen && !epicMenuOpen && !epicPopupOpen) return
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (typeMenuOpen && typeMenuRef.current && !typeMenuRef.current.contains(target)) {
-        setTypeMenuOpen(false)
-      }
-      if (
-        (epicMenuOpen || epicPopupOpen) &&
-        epicPopupRef.current &&
-        !epicPopupRef.current.contains(target)
-      ) {
-        setEpicMenuOpen(false)
-        setEpicPopupOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [typeMenuOpen, epicMenuOpen, epicPopupOpen])
   const [summary, setSummary] = useState(item.summary)
   const [editingSummary, setEditingSummary] = useState(false)
   const [description, setDescription] = useState(item.description ?? '')
@@ -173,6 +156,55 @@ export function WorkItemDetailView({
     return localStorage.getItem('orbit_right_sidebar_collapsed') === 'true'
   })
   const [isResizingRight, setIsResizingRight] = useState(false)
+
+  const [prevItemId, setPrevItemId] = useState(item.id)
+  if (item.id !== prevItemId) {
+    setPrevItemId(item.id)
+    setCurrentType(item.type)
+    setSummary(item.summary)
+    setDescription(item.description ?? '')
+    setPriority(item.priority)
+    setDetails({
+      parentId: item.parentId,
+      epicName: item.epicName,
+      acceptanceCriteria: item.acceptanceCriteria ?? emptyAcceptanceCriteria,
+      stepsToConduct: item.stepsToConduct,
+      assigneeUserId: item.assigneeUserId,
+      developerUserId: item.developerUserId,
+      productOwnerUserId: item.productOwnerUserId,
+      sprintName: item.sprintName,
+      identifiedOn: item.identifiedOn,
+      startDate: item.startDate,
+      dueDate: item.dueDate,
+      teamId: item.teamId,
+      storyPoints: item.storyPoints,
+      countries: item.countries,
+      attachmentNames: item.attachmentNames,
+    })
+    setLabels(item.labels)
+    const s = sprints.find((sp) => sp.name === item.sprintName)
+    setSelectedSprintId(s?.id ?? '')
+  }
+
+  useEffect(() => {
+    if (!typeMenuOpen && !epicMenuOpen && !epicPopupOpen) return
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (typeMenuOpen && typeMenuRef.current && !typeMenuRef.current.contains(target)) {
+        setTypeMenuOpen(false)
+      }
+      if (
+        (epicMenuOpen || epicPopupOpen) &&
+        epicPopupRef.current &&
+        !epicPopupRef.current.contains(target)
+      ) {
+        setEpicMenuOpen(false)
+        setEpicPopupOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [typeMenuOpen, epicMenuOpen, epicPopupOpen])
 
   const toggleRightSidebarCollapse = () => {
     setRightSidebarCollapsed((current) => {
@@ -370,456 +402,284 @@ export function WorkItemDetailView({
     sprintOptions.push({ value: '__new_sprint__', label: 'Create a new sprint...' })
   }
 
-  return (
-    <form className="work-item-detail" onSubmit={submit}>
-      <div className="work-item-detail-main">
-        {/* Breadcrumb row (Clickable navigation & Add Epic popup like Jira) */}
-        <div className="work-item-detail-breadcrumb flex items-center gap-2">
-          <button type="button" className="icon-button" onClick={onBack} aria-label="Back">
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={onNavigateHome ?? onBack}
-            className="hover:underline text-gray-600 dark:text-gray-400 font-medium cursor-pointer"
-          >
-            Spaces
-          </button>
-          <span className="work-item-detail-breadcrumb-sep">/</span>
-          <button
-            type="button"
-            onClick={onBack}
-            className="hover:underline text-gray-800 dark:text-gray-200 font-semibold flex items-center gap-1.5 cursor-pointer"
-          >
-            <span className="flex h-4 w-4 items-center justify-center rounded bg-blue-600 text-[10px] font-bold text-white">
-              {project?.key ? project.key.slice(0, 1) : 'P'}
+  // Render detail panel form fields (reusable between panel mode and sidebar mode)
+  const renderDetailFields = () => (
+    <>
+      <Field variant="panel" label="Assignee">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2.5">
+            <AssigneePicker
+              members={members}
+              value={details.assigneeUserId}
+              onChange={(assigneeUserId) => patch({ assigneeUserId })}
+              size="md"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+              {details.assigneeUserId
+                ? members.find((m) => m.userId === details.assigneeUserId)?.displayName ?? 'Unnamed member'
+                : 'Unassigned'}
             </span>
-            {project?.name ?? 'Space'}
-          </button>
-          <span className="work-item-detail-breadcrumb-sep">/</span>
+          </div>
+          {profile?.userId && details.assigneeUserId !== profile.userId && (
+            <button
+              type="button"
+              onClick={() => patch({ assigneeUserId: profile.userId })}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium text-left mt-0.5"
+            >
+              Assign to me
+            </button>
+          )}
+        </div>
+      </Field>
 
-          {/* Breadcrumb Add Epic / Epic badge (Matching Jira Screenshot 3) */}
-          {currentType !== 'Initiative' && currentType !== 'Epic' && (
-            <>
-              <div className="relative inline-flex items-center gap-0.5" ref={epicPopupRef}>
-                {parentEpic ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setEpicMenuOpen(!epicMenuOpen)}
-                      className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] transition-colors"
-                      title="Epic - Change epic"
-                    >
-                      <WorkItemTypeIcon type="Epic" size={13} />
-                      <ChevronDown size={11} className="text-gray-400" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenWorkItem(parentEpic)}
-                      className="truncate max-w-[140px] text-xs font-semibold text-purple-700 dark:text-purple-400 hover:underline"
-                      title={`${parentEpic.key}: ${parentEpic.summary}`}
-                    >
-                      {parentEpic.summary}
-                    </button>
+      <Field variant="panel" label="Reporter">
+        <span className="wid-reporter">
+          <span className="wid-reporter-avatar">
+            {(
+              membersById.get(profile?.userId ?? '')?.displayName ??
+              profile?.displayName ??
+              '?'
+            )
+              .charAt(0)
+              .toUpperCase()}
+          </span>
+          {membersById.get(profile?.userId ?? '')?.displayName ??
+            profile?.displayName ??
+            'Unknown'}
+        </span>
+      </Field>
 
-                    {epicMenuOpen && (
-                      <div className="absolute left-0 top-full mt-1.5 w-44 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl py-1.5 z-50 animate-in fade-in">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleSelectEpic(null)
-                            setEpicMenuOpen(false)
-                          }}
-                          className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
-                        >
-                          Unlink parent
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEpicMenuOpen(false)
-                            setEpicPopupOpen(true)
-                          }}
-                          className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
-                        >
-                          View all epics
-                        </button>
-                      </div>
-                    )}
-                  </>
-                ) : (
+      <Field variant="panel" label="Priority">
+        <SearchableSelect
+          size="xl"
+          value={priority}
+          onChange={(val) => setPriority(val as Priority)}
+          options={priorities.map((value) => ({ value, label: value }))}
+          searchPlaceholder="Search priority…"
+        />
+      </Field>
+
+      {currentType !== 'Initiative' && (
+        <div id="work-item-parent-field">
+          <Field variant="panel" label="Parent">
+            <SearchableSelect
+              size="xl"
+              value={details.parentId ?? ''}
+              onChange={(val) => patch({ parentId: val || null })}
+              options={[
+                { value: '', label: 'No parent' },
+                ...parentOptions.map((candidate) => ({
+                  value: candidate.id,
+                  label: `${candidate.key} — ${candidate.summary}`,
+                  badge: candidate.type,
+                })),
+              ]}
+              placeholder="No parent"
+              searchPlaceholder="Search parent work items…"
+            />
+          </Field>
+        </div>
+      )}
+
+      {currentType !== 'Initiative' && currentType !== 'Epic' && (
+        <Field variant="panel" label="Story points">
+          <input
+            type="number"
+            min="0"
+            max="10000"
+            step="0.5"
+            value={details.storyPoints ?? ''}
+            onChange={(event) =>
+              patch({
+                storyPoints: event.target.value ? Number(event.target.value) : null,
+              })
+            }
+          />
+        </Field>
+      )}
+
+      {currentType !== 'Initiative' && currentType !== 'Epic' && (
+        <Field variant="panel" label="Sprint">
+          <SearchableSelect
+            size="xl"
+            value={selectedSprintId}
+            onChange={(val) => setSelectedSprintId(val)}
+            options={sprintOptions}
+            placeholder="No Sprint"
+          />
+          {selectedSprintId === '__new_sprint__' && (
+            <div className="mt-2">
+              <input
+                type="text"
+                required
+                placeholder="New Sprint Name"
+                value={newSprintName}
+                onChange={(e) => setNewSprintName(e.target.value)}
+                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          )}
+        </Field>
+      )}
+
+      <Field variant="panel" label="Team">
+        <SearchableSelect
+          size="xl"
+          value={details.teamId ?? ''}
+          onChange={(val) => patch({ teamId: val || null })}
+          options={[
+            { value: '', label: 'No team' },
+            ...teams.map((team) => ({ value: team.id, label: team.name })),
+          ]}
+          placeholder="No team"
+          searchPlaceholder="Search teams…"
+        />
+      </Field>
+
+      <Field variant="panel" label="Start date">
+        <input
+          type="date"
+          lang="en-GB"
+          value={details.startDate ?? ''}
+          onChange={(event) => patch({ startDate: event.target.value || null })}
+        />
+      </Field>
+
+      <Field variant="panel" label="Due date">
+        <input
+          type="date"
+          lang="en-GB"
+          min={details.startDate ?? undefined}
+          value={details.dueDate ?? ''}
+          onChange={(event) => patch({ dueDate: event.target.value || null })}
+        />
+      </Field>
+
+      {currentType === 'Bug' && (
+        <>
+          <Field variant="panel" label="Developer">
+            <SearchableSelect
+              size="xl"
+              value={details.developerUserId ?? ''}
+              onChange={(val) => patch({ developerUserId: val || null })}
+              options={[
+                { value: '', label: 'Unassigned' },
+                ...(profile ? [{ value: profile.userId, label: profile.displayName }] : []),
+              ]}
+              placeholder="Unassigned"
+              searchPlaceholder="Search developers…"
+            />
+          </Field>
+          <Field variant="panel" label="Identified on">
+            <input
+              value={details.identifiedOn ?? ''}
+              onChange={(event) => patch({ identifiedOn: event.target.value || null })}
+              maxLength={255}
+              placeholder="Production, staging, device…"
+            />
+          </Field>
+        </>
+      )}
+
+      {currentType === 'Spike' && (
+        <Field variant="panel" label="Product owner">
+          <SearchableSelect
+            size="xl"
+            value={details.productOwnerUserId ?? ''}
+            onChange={(val) => patch({ productOwnerUserId: val || null })}
+            options={[
+              { value: '', label: 'Unassigned' },
+              ...(profile ? [{ value: profile.userId, label: profile.displayName }] : []),
+            ]}
+            placeholder="Unassigned"
+            searchPlaceholder="Search product owners…"
+          />
+        </Field>
+      )}
+
+      <Field variant="panel" label="Labels">
+        <LabelsInput value={labels} onChange={setLabels} />
+      </Field>
+
+      <div className="work-item-detail-meta">
+        <div>
+          <span>Created</span>
+          <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+        </div>
+        <div>
+          <span>Updated</span>
+          <span>{new Date(item.updatedAt).toLocaleDateString()}</span>
+        </div>
+      </div>
+    </>
+  )
+
+  const isPanelLayout = layout === 'panel'
+
+  return (
+    <form className={`work-item-detail ${isPanelLayout ? 'work-item-detail--panel' : ''}`} onSubmit={submit}>
+      <div className="work-item-detail-main">
+        {/* Panel Mode Header with quick action controls and close button */}
+        {isPanelLayout ? (
+          <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-gray-200 dark:border-[#394047] flex-wrap">
+            <div className="flex items-center gap-1.5 min-w-0 flex-wrap text-xs text-gray-500 dark:text-gray-400 font-medium">
+              <button
+                type="button"
+                onClick={onNavigateHome ?? onBack}
+                className="hover:underline text-gray-600 dark:text-gray-300 font-semibold"
+              >
+                {project?.name ?? 'Space'}
+              </button>
+              <span>/</span>
+              {parentEpic && (
+                <>
                   <button
                     type="button"
-                    onClick={() => setEpicPopupOpen(!epicPopupOpen)}
-                    className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors"
-                    title="Add epic"
+                    onClick={() => onOpenWorkItem(parentEpic)}
+                    className="hover:underline text-purple-700 dark:text-purple-400 font-semibold truncate max-w-[120px]"
                   >
-                    <Edit size={12} className="text-gray-400" />
-                    <span>Add epic</span>
+                    {parentEpic.key}
                   </button>
-                )}
-
-                {/* Epic Search / Selection floating popup ("View all epics") */}
-                {epicPopupOpen && (
-                  <div className="absolute left-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl p-2.5 z-50 animate-in fade-in">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Select Epic
-                      </span>
-                      {parentEpic && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleSelectEpic(null)
-                            setEpicPopupOpen(false)
-                          }}
-                          className="text-[11px] text-red-600 hover:underline font-medium"
-                        >
-                          Remove epic
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="Search epics..."
-                      value={epicSearch}
-                      onChange={(e) => setEpicSearch(e.target.value)}
-                      className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 mb-2 focus:outline-none focus:border-blue-500 dark:bg-[#22272b] dark:text-white"
-                    />
-                    <div className="max-h-48 overflow-y-auto space-y-1">
-                      {filteredEpics.slice(0, 5).map((epic) => (
-                        <button
-                          key={epic.id}
-                          type="button"
-                          onClick={() => {
-                            handleSelectEpic(epic.id)
-                            setEpicPopupOpen(false)
-                          }}
-                          className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors ${
-                            details.parentId === epic.id
-                              ? 'bg-purple-100 dark:bg-purple-900/40 font-semibold text-purple-900 dark:text-purple-300'
-                              : 'text-gray-800 dark:text-gray-200'
-                          }`}
-                        >
-                          <WorkItemTypeIcon type="Epic" size={13} />
-                          <span className="font-semibold text-gray-600 dark:text-gray-400">{epic.key}</span>
-                          <span className="truncate flex-1">{epic.summary}</span>
-                          {details.parentId === epic.id && <Check size={13} className="text-purple-600 ml-auto" />}
-                        </button>
-                      ))}
-                      {filteredEpics.length === 0 && (
-                        <p className="text-xs text-gray-400 text-center py-2">No epics found</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <span className="work-item-detail-breadcrumb-sep">/</span>
-            </>
-          )}
-
-          {/* Breadcrumb Interactive Type Icon */}
-          <div className="relative inline-flex items-center" ref={typeMenuRef}>
-            <button
-              type="button"
-              onClick={() => setTypeMenuOpen(!typeMenuOpen)}
-              className="flex items-center gap-1.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] font-semibold text-gray-700 dark:text-gray-200 text-xs transition-colors"
-              title={`${currentType} - Click to change work type`}
-            >
-              <WorkItemTypeIcon type={currentType} size={16} />
-              <span>{item.key}</span>
-              <ChevronDown size={12} className="text-gray-400" />
-            </button>
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="relative flex items-center p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-400 transition-colors"
-              title={`${window.location.origin}/browse/${item.key}`}
-              aria-label="Copy link to this ticket"
-            >
-              {linkCopied ? <Check size={13} className="text-green-600" /> : <LinkIcon size={13} />}
-              {linkCopied && (
-                <span className="absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-[11px] font-medium text-white shadow-lg animate-in fade-in">
-                  Copied!
-                </span>
+                  <span>/</span>
+                </>
               )}
-            </button>
-
-            {/* Type switcher floating menu (Matching Screenshot 2) */}
-            {typeMenuOpen && (
-              <div className="absolute left-0 top-full mt-1.5 w-52 bg-white border border-[#dfe1e6] shadow-2xl rounded-xl py-2 z-50 animate-in fade-in">
-                <div className="px-3.5 py-1 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                  Change work type
-                </div>
-                <div className="my-1">
-                  {availableWorkTypes.map(({ type: t, label }) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => handleChangeType(t)}
-                      className={`w-full text-left px-3.5 py-2 text-sm flex items-center gap-2.5 transition-colors ${
-                        currentType === t
-                          ? 'bg-[#deebff] text-[#0052cc] font-semibold'
-                          : 'hover:bg-[#f4f5f7] text-[#172b4d]'
-                      }`}
-                    >
-                      <WorkItemTypeIcon type={t} size={16} />
-                      <span>{label}</span>
-                      {currentType === t && <Check size={14} className="ml-auto text-[#0052cc]" />}
-                    </button>
-                  ))}
-                </div>
-                {onManageWorkTypes && (
-                  <>
-                    <div className="my-1 border-t border-gray-100" />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTypeMenuOpen(false)
-                        onManageWorkTypes()
-                      }}
-                      className="w-full text-left px-3.5 py-1.5 text-xs text-gray-600 hover:bg-[#f4f5f7] flex items-center gap-2"
-                    >
-                      <Settings size={13} className="text-gray-400" /> Manage work types
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Title Row with Type Switcher */}
-        <div className="work-item-detail-title-row relative flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setTypeMenuOpen(!typeMenuOpen)}
-              className="p-1 rounded hover:bg-gray-100 transition-colors"
-              title="Click to change work type"
-            >
-              <WorkItemTypeIcon type={currentType} size={22} />
-            </button>
-            <span className="text-sm font-semibold text-gray-500">{item.key}</span>
-          </div>
-
-          {editingSummary ? (
-            <input
-              autoFocus
-              required
-              minLength={3}
-              maxLength={255}
-              className="work-item-detail-title-input"
-              value={summary}
-              onChange={(event) => setSummary(event.target.value)}
-              onBlur={() => setEditingSummary(false)}
-            />
-          ) : (
-            <h1 className="work-item-detail-title" onClick={() => setEditingSummary(true)}>
-              {summary}
-            </h1>
-          )}
-
-          {currentType === 'Epic' && (
-            <Field label="Epic name *">
-              <input
-                required
-                maxLength={255}
-                value={details.epicName ?? ''}
-                onChange={(event) => patch({ epicName: event.target.value || null })}
-              />
-            </Field>
-          )}
-
-          {/* Description Section */}
-          <section className="work-item-detail-section">
-            <h2>Description</h2>
-            <RichTextEditor
-              value={description}
-              onChange={setDescription}
-              placeholder="Describe the outcome, context, and expected behaviour."
-              workItemId={item.id}
-              attachments={attachments}
-              members={members}
-              workItems={workItems}
-              onAttachmentUploaded={() =>
-                queryClient.invalidateQueries({
-                  queryKey: ['work-item-attachments', item.id],
-                })
-              }
-            />
-          </section>
-
-          {/* Acceptance Criteria Section */}
-          <section className="work-item-detail-section">
-            <h2>Acceptance criteria</h2>
-            <RichTextEditor
-              value={details.acceptanceCriteria ?? ''}
-              onChange={(html) => patch({ acceptanceCriteria: html || null })}
-              placeholder="Define the acceptance criteria, scenarios and expected outcomes. Use the table button (⊞) in the toolbar to insert a table."
-              workItemId={item.id}
-              attachments={attachments}
-              members={members}
-              workItems={workItems}
-              onAttachmentUploaded={() =>
-                queryClient.invalidateQueries({
-                  queryKey: ['work-item-attachments', item.id],
-                })
-              }
-            />
-          </section>
-
-          {currentType === 'Bug' && (
-            <section className="work-item-detail-section">
-              <h2>Steps to conduct action</h2>
-              <textarea
-                value={details.stepsToConduct ?? ''}
-                onChange={(event) =>
-                  patch({ stepsToConduct: event.target.value || null })
-                }
-                maxLength={32000}
-                rows={4}
-              />
-            </section>
-          )}
-
-          {currentType === 'Bug' && (
-            <fieldset className="rounded-lg border border-gray-200 p-3 mt-4">
-              <legend className="px-1 text-xs font-semibold text-gray-600">Countries</legend>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {countries.map((country) => (
-                  <label key={country} className="country-option">
-                    <input
-                      type="checkbox"
-                      checked={details.countries.includes(country)}
-                      onChange={(event) =>
-                        patch({
-                          countries: event.target.checked
-                            ? [...details.countries, country]
-                            : details.countries.filter((value) => value !== country),
-                        })
-                      }
-                    />{' '}
-                    {country}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
-
-          {mutation.isError && <p className="form-error">{mutation.error.message}</p>}
-          <div className="work-item-detail-save-row">
-            {saveSuccess && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm font-semibold animate-in fade-in duration-200">
-                <Check size={16} className="text-green-600 shrink-0" />
-                Saved successfully!
-              </span>
-            )}
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={mutation.isPending}
-            >
-              {mutation.isPending ? 'Saving…' : 'Save changes'}
-            </button>
-          </div>
-
-          <WorkItemAttachments workItemId={item.id} members={members} />
-          <WorkItemCustomFields workItemId={item.id} projectId={item.projectId} workItemType={currentType} />
-          {project && (
-            <WorkItemSubtasks
-              parent={item}
-              workItems={workItems}
-              project={project}
-              members={members}
-              onStatusChange={onStatusChange}
-              onOpenWorkItem={onOpenWorkItem}
-            />
-          )}
-          <WorkItemLinkedItems workItemId={item.id} workItems={workItems} />
-          <WorkItemWorklogSection
-            workItemId={item.id}
-            members={members}
-            currentMembershipId={members.find((member) => member.userId === profile?.userId)?.id}
-          />
-          <WorkItemComments workItemId={item.id} profile={profile} members={members} workItems={workItems} />
-        </div>
-
-        {/* Separation Resizer Bar (Between middle form and details panel, going all the way to the top header) */}
-        <div
-          className={`work-item-resizer hidden lg:flex ${isResizingRight ? 'is-resizing' : ''}`}
-          onPointerDown={handleStartResizeRight}
-          onDoubleClick={toggleRightSidebarCollapse}
-          title="Double click to collapse / expand details"
-        >
-          <div className="work-item-resizer-line" />
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              toggleRightSidebarCollapse()
-            }}
-            className="work-item-resizer-btn"
-            aria-label={rightSidebarCollapsed ? 'Expand details sidebar' : 'Collapse details sidebar'}
-            title={rightSidebarCollapsed ? 'Expand details sidebar' : 'Collapse details sidebar'}
-          >
-            {rightSidebarCollapsed ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
-          </button>
-        </div>
-
-        {/* Sidebar Details Panel */}
-        <aside
-          style={{
-            width: rightSidebarCollapsed ? '0px' : `${rightSidebarWidth}px`,
-          }}
-          className={`work-item-detail-sidebar flex-shrink-0 transition-[width] duration-150 ease-out ${
-            isResizingRight ? '!transition-none' : ''
-          } ${rightSidebarCollapsed ? '!hidden' : ''}`}
-        >
-          {/* Top Status & Actions row (matching Jira Screenshot 1) */}
-          <div className="flex items-center justify-between gap-2 mb-4">
-            <label className={`work-item-detail-status work-item-detail-status--${currentStatus ? statusMeta(currentStatus).tone : 'slate'} !mb-0 flex-1`}>
-              <span className="sr-only">Status</span>
-              <select
-                value={item.statusId}
-                onChange={(event) =>
-                  onStatusChange(item, event.target.value)
-                }
+              <span className="font-bold text-gray-800 dark:text-gray-200">{item.key}</span>
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="relative p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-400 transition-colors"
+                title="Copy link"
+                aria-label="Copy link"
               >
-                {statuses.map((status) => (
-                  <option key={status.id} value={status.id}>
-                    {statusMeta(status).label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} aria-hidden="true" />
-            </label>
+                {linkCopied ? <Check size={12} className="text-green-600" /> : <LinkIcon size={12} />}
+              </button>
+            </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => watchMutation.mutate()}
                 disabled={watchMutation.isPending}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors ${
                   watchers.isWatching
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-100'
-                    : 'bg-white dark:bg-[#1d2125] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#22272b]'
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
+                    : 'bg-white dark:bg-[#1d2125] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50'
                 }`}
-                title={watchers.isWatching ? 'Stop watching this work item' : 'Watch this work item for updates'}
+                title={watchers.isWatching ? 'Stop watching' : 'Watch'}
               >
                 {watchers.isWatching ? <EyeOff size={13} /> : <Eye size={13} />}
-                <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300">{watchers.count}</span>
+                <span className="text-[11px] font-bold">{watchers.count}</span>
               </button>
 
               <div className="relative inline-flex items-center">
                 <button
                   type="button"
                   onClick={() => setShareOpen((open) => !open)}
-                  className="flex items-center justify-center p-1.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#22272b] transition-colors"
+                  className="p-1.5 rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#22272b] transition-colors"
                   title="Share"
                   aria-label="Share"
                 >
-                  <Share2 size={15} />
+                  <Share2 size={14} />
                 </button>
                 {shareOpen && <WorkItemShareMenu item={item} onClose={() => setShareOpen(false)} />}
               </div>
@@ -834,210 +694,560 @@ export function WorkItemDetailView({
                 }}
                 onDeleted={onBack}
               />
+
+              {onExpandToModal && (
+                <button
+                  type="button"
+                  onClick={onExpandToModal}
+                  className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-500 transition-colors"
+                  title="Expand to popup"
+                  aria-label="Expand to popup"
+                >
+                  <Maximize2 size={14} />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={onBack}
+                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-500 transition-colors"
+                title="Close"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
             </div>
           </div>
-
-          <div className="work-item-detail-panel">
-            <h3>Details</h3>
-
-            <Field variant="panel" label="Assignee">
-              <div className="flex items-center gap-2.5">
-                <AssigneePicker
-                  members={members}
-                  value={details.assigneeUserId}
-                  onChange={(assigneeUserId) => patch({ assigneeUserId })}
-                  size="md"
-                />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  {details.assigneeUserId
-                    ? members.find((m) => m.userId === details.assigneeUserId)?.displayName ?? 'Unnamed member'
-                    : 'Unassigned'}
-                </span>
-              </div>
-            </Field>
-
-            <Field variant="panel" label="Reporter">
-              <span className="wid-reporter">
-                <span className="wid-reporter-avatar">
-                  {(
-                    membersById.get(profile?.userId ?? '')?.displayName ??
-                    profile?.displayName ??
-                    '?'
-                  )
-                    .charAt(0)
-                    .toUpperCase()}
-                </span>
-                {membersById.get(profile?.userId ?? '')?.displayName ??
-                  profile?.displayName ??
-                  'Unknown'}
+        ) : (
+          /* Modal / Default Breadcrumb row */
+          <div className="work-item-detail-breadcrumb flex items-center gap-2">
+            <button type="button" className="icon-button" onClick={onBack} aria-label="Back">
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={onNavigateHome ?? onBack}
+              className="hover:underline text-gray-600 dark:text-gray-400 font-medium cursor-pointer"
+            >
+              Spaces
+            </button>
+            <span className="work-item-detail-breadcrumb-sep">/</span>
+            <button
+              type="button"
+              onClick={onBack}
+              className="hover:underline text-gray-800 dark:text-gray-200 font-semibold flex items-center gap-1.5 cursor-pointer"
+            >
+              <span className="flex h-4 w-4 items-center justify-center rounded bg-blue-600 text-[10px] font-bold text-white">
+                {project?.key ? project.key.slice(0, 1) : 'P'}
               </span>
-            </Field>
+              {project?.name ?? 'Space'}
+            </button>
+            <span className="work-item-detail-breadcrumb-sep">/</span>
 
-            <Field variant="panel" label="Priority">
-              <SearchableSelect
-                size="xl"
-                value={priority}
-                onChange={(val) => setPriority(val as Priority)}
-                options={priorities.map((value) => ({ value, label: value }))}
-                searchPlaceholder="Search priority…"
-              />
-            </Field>
-
-            {currentType !== 'Initiative' && (
-              <div id="work-item-parent-field">
-              <Field variant="panel" label="Parent">
-                <SearchableSelect
-                  size="xl"
-                  value={details.parentId ?? ''}
-                  onChange={(val) => patch({ parentId: val || null })}
-                  options={[
-                    { value: '', label: 'No parent' },
-                    ...parentOptions.map((candidate) => ({
-                      value: candidate.id,
-                      label: `${candidate.key} — ${candidate.summary}`,
-                      badge: candidate.type,
-                    })),
-                  ]}
-                  placeholder="No parent"
-                  searchPlaceholder="Search parent work items…"
-                />
-              </Field>
-              </div>
-            )}
-
+            {/* Breadcrumb Add Epic / Epic badge */}
             {currentType !== 'Initiative' && currentType !== 'Epic' && (
-              <Field variant="panel" label="Story points">
-                <input
-                  type="number"
-                  min="0"
-                  max="10000"
-                  step="0.5"
-                  value={details.storyPoints ?? ''}
-                  onChange={(event) =>
-                    patch({
-                      storyPoints: event.target.value ? Number(event.target.value) : null,
-                    })
-                  }
-                />
-              </Field>
-            )}
-
-            {currentType !== 'Initiative' && currentType !== 'Epic' && (
-              <Field variant="panel" label="Sprint">
-                <SearchableSelect
-                  size="xl"
-                  value={selectedSprintId}
-                  onChange={(val) => setSelectedSprintId(val)}
-                  options={sprintOptions}
-                  placeholder="No Sprint"
-                />
-                {selectedSprintId === '__new_sprint__' && (
-                  <div className="mt-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="New Sprint Name"
-                      value={newSprintName}
-                      onChange={(e) => setNewSprintName(e.target.value)}
-                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                )}
-              </Field>
-            )}
-
-            <Field variant="panel" label="Team">
-              <SearchableSelect
-                size="xl"
-                value={details.teamId ?? ''}
-                onChange={(val) => patch({ teamId: val || null })}
-                options={[
-                  { value: '', label: 'No team' },
-                  ...teams.map((team) => ({ value: team.id, label: team.name })),
-                ]}
-                placeholder="No team"
-                searchPlaceholder="Search teams…"
-              />
-            </Field>
-
-            <Field variant="panel" label="Start date">
-              <input
-                type="date"
-                lang="en-GB"
-                value={details.startDate ?? ''}
-                onChange={(event) => patch({ startDate: event.target.value || null })}
-              />
-            </Field>
-
-            <Field variant="panel" label="Due date">
-              <input
-                type="date"
-                lang="en-GB"
-                min={details.startDate ?? undefined}
-                value={details.dueDate ?? ''}
-                onChange={(event) => patch({ dueDate: event.target.value || null })}
-              />
-            </Field>
-
-            {currentType === 'Bug' && (
               <>
-                <Field variant="panel" label="Developer">
-                  <SearchableSelect
-                    size="xl"
-                    value={details.developerUserId ?? ''}
-                    onChange={(val) => patch({ developerUserId: val || null })}
-                    options={[
-                      { value: '', label: 'Unassigned' },
-                      ...(profile ? [{ value: profile.userId, label: profile.displayName }] : []),
-                    ]}
-                    placeholder="Unassigned"
-                    searchPlaceholder="Search developers…"
-                  />
-                </Field>
-                <Field variant="panel" label="Identified on">
-                  <input
-                    value={details.identifiedOn ?? ''}
-                    onChange={(event) => patch({ identifiedOn: event.target.value || null })}
-                    maxLength={255}
-                    placeholder="Production, staging, device…"
-                  />
-                </Field>
+                <div className="relative inline-flex items-center gap-0.5" ref={epicPopupRef}>
+                  {parentEpic ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEpicMenuOpen(!epicMenuOpen)}
+                        className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] transition-colors"
+                        title="Epic - Change epic"
+                      >
+                        <WorkItemTypeIcon type="Epic" size={13} />
+                        <ChevronDown size={11} className="text-gray-400" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onOpenWorkItem(parentEpic)}
+                        className="truncate max-w-[140px] text-xs font-semibold text-purple-700 dark:text-purple-400 hover:underline"
+                        title={`${parentEpic.key}: ${parentEpic.summary}`}
+                      >
+                        {parentEpic.summary}
+                      </button>
+
+                      {epicMenuOpen && (
+                        <div className="absolute left-0 top-full mt-1.5 w-44 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl py-1.5 z-50 animate-in fade-in">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectEpic(null)
+                              setEpicMenuOpen(false)
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
+                          >
+                            Unlink parent
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEpicMenuOpen(false)
+                              setEpicPopupOpen(true)
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a]"
+                          >
+                            View all epics
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEpicPopupOpen(!epicPopupOpen)}
+                      className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors"
+                      title="Add epic"
+                    >
+                      <Edit size={12} className="text-gray-400" />
+                      <span>Add epic</span>
+                    </button>
+                  )}
+
+                  {epicPopupOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl p-2.5 z-50 animate-in fade-in">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Select Epic
+                        </span>
+                        {parentEpic && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectEpic(null)
+                              setEpicPopupOpen(false)
+                            }}
+                            className="text-[11px] text-red-600 hover:underline font-medium"
+                          >
+                            Remove epic
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Search epics..."
+                        value={epicSearch}
+                        onChange={(e) => setEpicSearch(e.target.value)}
+                        className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 mb-2 focus:outline-none focus:border-blue-500 dark:bg-[#22272b] dark:text-white"
+                      />
+                      <div className="max-h-48 overflow-y-auto space-y-1">
+                        {filteredEpics.slice(0, 5).map((epic) => (
+                          <button
+                            key={epic.id}
+                            type="button"
+                            onClick={() => {
+                              handleSelectEpic(epic.id)
+                              setEpicPopupOpen(false)
+                            }}
+                            className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors ${
+                              details.parentId === epic.id
+                                ? 'bg-purple-100 dark:bg-purple-900/40 font-semibold text-purple-900 dark:text-purple-300'
+                                : 'text-gray-800 dark:text-gray-200'
+                            }`}
+                          >
+                            <WorkItemTypeIcon type="Epic" size={13} />
+                            <span className="font-semibold text-gray-600 dark:text-gray-400">{epic.key}</span>
+                            <span className="truncate flex-1">{epic.summary}</span>
+                            {details.parentId === epic.id && <Check size={13} className="text-purple-600 ml-auto" />}
+                          </button>
+                        ))}
+                        {filteredEpics.length === 0 && (
+                          <p className="text-xs text-gray-400 text-center py-2">No epics found</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <span className="work-item-detail-breadcrumb-sep">/</span>
               </>
             )}
 
-            {currentType === 'Spike' && (
-              <Field variant="panel" label="Product owner">
-                <SearchableSelect
-                  size="xl"
-                  value={details.productOwnerUserId ?? ''}
-                  onChange={(val) => patch({ productOwnerUserId: val || null })}
-                  options={[
-                    { value: '', label: 'Unassigned' },
-                    ...(profile ? [{ value: profile.userId, label: profile.displayName }] : []),
-                  ]}
-                  placeholder="Unassigned"
-                  searchPlaceholder="Search product owners…"
-                />
-              </Field>
+            {/* Breadcrumb Interactive Type Icon */}
+            <div className="relative inline-flex items-center" ref={typeMenuRef}>
+              <button
+                type="button"
+                onClick={() => setTypeMenuOpen(!typeMenuOpen)}
+                className="flex items-center gap-1.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] font-semibold text-gray-700 dark:text-gray-200 text-xs transition-colors"
+                title={`${currentType} - Click to change work type`}
+              >
+                <WorkItemTypeIcon type={currentType} size={16} />
+                <span>{item.key}</span>
+                <ChevronDown size={12} className="text-gray-400" />
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="relative flex items-center p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-400 transition-colors"
+                title={`${window.location.origin}/browse/${item.key}`}
+                aria-label="Copy link to this ticket"
+              >
+                {linkCopied ? <Check size={13} className="text-green-600" /> : <LinkIcon size={13} />}
+                {linkCopied && (
+                  <span className="absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-[11px] font-medium text-white shadow-lg animate-in fade-in">
+                    Copied!
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Type switcher floating menu */}
+        {typeMenuOpen && (
+          <div className="absolute left-6 top-16 w-52 bg-white dark:bg-[#1d2125] border border-[#dfe1e6] dark:border-[#394047] shadow-2xl rounded-xl py-2 z-50 animate-in fade-in">
+            <div className="px-3.5 py-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Change work type
+            </div>
+            <div className="my-1">
+              {availableWorkTypes.map(({ type: t, label }) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => handleChangeType(t)}
+                  className={`w-full text-left px-3.5 py-2 text-sm flex items-center gap-2.5 transition-colors ${
+                    currentType === t
+                      ? 'bg-[#deebff] text-[#0052cc] dark:bg-blue-900/40 dark:text-blue-300 font-semibold'
+                      : 'hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a] text-[#172b4d] dark:text-gray-200'
+                  }`}
+                >
+                  <WorkItemTypeIcon type={t} size={16} />
+                  <span>{label}</span>
+                  {currentType === t && <Check size={14} className="ml-auto text-[#0052cc] dark:text-blue-400" />}
+                </button>
+              ))}
+            </div>
+            {onManageWorkTypes && (
+              <>
+                <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTypeMenuOpen(false)
+                    onManageWorkTypes()
+                  }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-[#f4f5f7] dark:hover:bg-[#2c333a] flex items-center gap-2"
+                >
+                  <Settings size={13} className="text-gray-400" /> Manage work types
+                </button>
+              </>
             )}
+          </div>
+        )}
 
-            <Field variant="panel" label="Labels">
-              <LabelsInput value={labels} onChange={setLabels} />
-            </Field>
+        {/* 1. Title Row with Type Switcher */}
+        <div className="work-item-detail-title-row relative flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTypeMenuOpen(!typeMenuOpen)}
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2c333a] transition-colors"
+            title="Click to change work type"
+          >
+            <WorkItemTypeIcon type={currentType} size={22} />
+          </button>
+          <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">{item.key}</span>
+        </div>
 
-            <div className="work-item-detail-meta">
-              <div>
-                <span>Created</span>
-                <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+        {editingSummary ? (
+          <input
+            autoFocus
+            required
+            minLength={3}
+            maxLength={255}
+            className="work-item-detail-title-input"
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+            onBlur={() => setEditingSummary(false)}
+          />
+        ) : (
+          <h1 className="work-item-detail-title" onClick={() => setEditingSummary(true)}>
+            {summary}
+          </h1>
+        )}
+
+        {/* In Panel Layout: Status Selector directly below title */}
+        {isPanelLayout && (
+          <div className="flex items-center gap-3 mb-5 flex-wrap">
+            <label className={`work-item-detail-status work-item-detail-status--${currentStatus ? statusMeta(currentStatus).tone : 'slate'} !mb-0 min-w-[140px]`}>
+              <span className="sr-only">Status</span>
+              <select
+                value={item.statusId}
+                onChange={(event) => onStatusChange(item, event.target.value)}
+              >
+                {statuses.map((status) => (
+                  <option key={status.id} value={status.id}>
+                    {statusMeta(status).label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+          </div>
+        )}
+
+        {currentType === 'Epic' && (
+          <Field label="Epic name *">
+            <input
+              required
+              maxLength={255}
+              value={details.epicName ?? ''}
+              onChange={(event) => patch({ epicName: event.target.value || null })}
+            />
+          </Field>
+        )}
+
+        {/* 2. Description Section */}
+        <section className="work-item-detail-section">
+          <h2>Description</h2>
+          <RichTextEditor
+            value={description}
+            onChange={setDescription}
+            placeholder="Describe the outcome, context, and expected behaviour."
+            workItemId={item.id}
+            attachments={attachments}
+            members={members}
+            workItems={workItems}
+            onAttachmentUploaded={() =>
+              queryClient.invalidateQueries({
+                queryKey: ['work-item-attachments', item.id],
+              })
+            }
+          />
+        </section>
+
+        {/* 3. Acceptance Criteria Section */}
+        <section className="work-item-detail-section">
+          <h2>Acceptance criteria</h2>
+          <RichTextEditor
+            value={details.acceptanceCriteria ?? ''}
+            onChange={(html) => patch({ acceptanceCriteria: html || null })}
+            placeholder="Define the acceptance criteria, scenarios and expected outcomes. Use the table button (⊞) in the toolbar to insert a table."
+            workItemId={item.id}
+            attachments={attachments}
+            members={members}
+            workItems={workItems}
+            onAttachmentUploaded={() =>
+              queryClient.invalidateQueries({
+                queryKey: ['work-item-attachments', item.id],
+              })
+            }
+          />
+        </section>
+
+        {currentType === 'Bug' && (
+          <section className="work-item-detail-section">
+            <h2>Steps to conduct action</h2>
+            <textarea
+              value={details.stepsToConduct ?? ''}
+              onChange={(event) =>
+                patch({ stepsToConduct: event.target.value || null })
+              }
+              maxLength={32000}
+              rows={4}
+            />
+          </section>
+        )}
+
+        {currentType === 'Bug' && (
+          <fieldset className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 mt-4">
+            <legend className="px-1 text-xs font-semibold text-gray-600 dark:text-gray-300">Countries</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {countries.map((country) => (
+                <label key={country} className="country-option">
+                  <input
+                    type="checkbox"
+                    checked={details.countries.includes(country)}
+                    onChange={(event) =>
+                      patch({
+                        countries: event.target.checked
+                          ? [...details.countries, country]
+                          : details.countries.filter((value) => value !== country),
+                      })
+                    }
+                  />{' '}
+                  {country}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        {mutation.isError && <p className="form-error">{mutation.error.message}</p>}
+        <div className="work-item-detail-save-row">
+          {saveSuccess && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm font-semibold animate-in fade-in duration-200 dark:bg-green-950/40 dark:border-green-800 dark:text-green-300">
+              <Check size={16} className="text-green-600 dark:text-green-400 shrink-0" />
+              Saved successfully!
+            </span>
+          )}
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+
+        {/* 4. Attachments */}
+        <WorkItemAttachments workItemId={item.id} members={members} />
+
+        {/* 5. Subtasks */}
+        {project && (
+          <WorkItemSubtasks
+            parent={item}
+            workItems={workItems}
+            project={project}
+            members={members}
+            onStatusChange={onStatusChange}
+            onOpenWorkItem={onOpenWorkItem}
+          />
+        )}
+
+        {/* 6. Linked Items */}
+        <WorkItemLinkedItems workItemId={item.id} workItems={workItems} />
+
+        {/* 7. In Panel Mode: Render Details Section after Linked items */}
+        {isPanelLayout && (
+          <div className="work-item-detail-panel-collapsible mt-6 mb-6">
+            <button
+              type="button"
+              onClick={() => setPanelDetailsCollapsed(!panelDetailsCollapsed)}
+              className="w-full flex items-center justify-between p-3.5 bg-gray-50 dark:bg-[#22272b] hover:bg-gray-100 dark:hover:bg-[#2c333a] rounded-lg text-left transition-colors cursor-pointer border border-gray-200 dark:border-[#394047]"
+              aria-label="Toggle Details section"
+            >
+              <div className="flex items-center gap-2">
+                <ChevronDown size={16} className={`text-gray-500 transition-transform ${panelDetailsCollapsed ? '-rotate-90' : ''}`} />
+                <span className="font-bold text-sm text-gray-900 dark:text-gray-100">Details</span>
               </div>
-              <div>
-                <span>Updated</span>
-                <span>{new Date(item.updatedAt).toLocaleDateString()}</span>
+            </button>
+            {!panelDetailsCollapsed && (
+              <div className="p-4 border border-t-0 border-gray-200 dark:border-[#394047] rounded-b-lg space-y-4 bg-white dark:bg-[#1d2125]">
+                {renderDetailFields()}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Custom fields */}
+        <WorkItemCustomFields workItemId={item.id} projectId={item.projectId} workItemType={currentType} />
+
+        {/* In non-panel layout: Work log section can be rendered before comments */}
+        {!isPanelLayout && (
+          <WorkItemWorklogSection
+            workItemId={item.id}
+            members={members}
+            currentMembershipId={members.find((member) => member.userId === profile?.userId)?.id}
+          />
+        )}
+
+        {/* 8. Actions / Activity Section (All, Comments, History, Log) */}
+        <WorkItemComments workItemId={item.id} profile={profile} members={members} workItems={workItems} />
+      </div>
+
+      {/* Non-panel mode: Resizer bar & Right Sidebar */}
+      {!isPanelLayout && (
+        <>
+          <div
+            className={`work-item-resizer hidden lg:flex ${isResizingRight ? 'is-resizing' : ''}`}
+            onPointerDown={handleStartResizeRight}
+            onDoubleClick={toggleRightSidebarCollapse}
+            title="Double click to collapse / expand details"
+          >
+            <div className="work-item-resizer-line" />
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                toggleRightSidebarCollapse()
+              }}
+              className="work-item-resizer-btn"
+              aria-label={rightSidebarCollapsed ? 'Expand details sidebar' : 'Collapse details sidebar'}
+              title={rightSidebarCollapsed ? 'Expand details sidebar' : 'Collapse details sidebar'}
+            >
+              {rightSidebarCollapsed ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            </button>
+          </div>
+
+          <aside
+            style={{
+              width: rightSidebarCollapsed ? '0px' : `${rightSidebarWidth}px`,
+            }}
+            className={`work-item-detail-sidebar flex-shrink-0 transition-[width] duration-150 ease-out ${
+              isResizingRight ? '!transition-none' : ''
+            } ${rightSidebarCollapsed ? '!hidden' : ''}`}
+          >
+            {/* Top Status & Actions row */}
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <label className={`work-item-detail-status work-item-detail-status--${currentStatus ? statusMeta(currentStatus).tone : 'slate'} !mb-0 flex-1`}>
+                <span className="sr-only">Status</span>
+                <select
+                  value={item.statusId}
+                  onChange={(event) =>
+                    onStatusChange(item, event.target.value)
+                  }
+                >
+                  {statuses.map((status) => (
+                    <option key={status.id} value={status.id}>
+                      {statusMeta(status).label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} aria-hidden="true" />
+              </label>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => watchMutation.mutate()}
+                  disabled={watchMutation.isPending}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                    watchers.isWatching
+                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-100'
+                      : 'bg-white dark:bg-[#1d2125] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#22272b]'
+                  }`}
+                  title={watchers.isWatching ? 'Stop watching this work item' : 'Watch this work item for updates'}
+                >
+                  {watchers.isWatching ? <EyeOff size={13} /> : <Eye size={13} />}
+                  <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300">{watchers.count}</span>
+                </button>
+
+                <div className="relative inline-flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => setShareOpen((open) => !open)}
+                    className="flex items-center justify-center p-1.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#22272b] transition-colors"
+                    title="Share"
+                    aria-label="Share"
+                  >
+                    <Share2 size={15} />
+                  </button>
+                  {shareOpen && <WorkItemShareMenu item={item} onClose={() => setShareOpen(false)} />}
+                </div>
+
+                <WorkItemActionsMenu
+                  item={item}
+                  onOpenWorkItem={onOpenWorkItem}
+                  onFocusParentField={() => {
+                    const field = document.getElementById('work-item-parent-field')
+                    field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    field?.querySelector<HTMLElement>('input, button')?.focus()
+                  }}
+                  onDeleted={onBack}
+                />
               </div>
             </div>
-            <Hint variant="panel">Changes to details are saved with the Save changes button above.</Hint>
-          </div>
-        </aside>
-      </form>
+
+            <div className="work-item-detail-panel">
+              <h3>Details</h3>
+              {renderDetailFields()}
+              <Hint variant="panel">Changes to details are saved with the Save changes button above.</Hint>
+            </div>
+          </aside>
+        </>
+      )}
+    </form>
   )
 }
+

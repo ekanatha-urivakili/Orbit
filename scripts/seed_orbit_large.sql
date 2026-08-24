@@ -40,6 +40,15 @@ DECLARE
     v_story_ids UUID[] := '{}';
     v_bug_ids UUID[] := '{}';
 
+    -- Status IDs
+    v_status_backlog_id UUID;
+    v_status_selected_id UUID;
+    v_status_in_progress_id UUID;
+    v_status_in_review_id UUID;
+    v_status_done_id UUID;
+    v_status_blocked_id UUID;
+    v_status_id UUID;
+
     -- Loop indices and temporary variables
     i INT;
     j INT;
@@ -53,7 +62,6 @@ DECLARE
     v_story_pts NUMERIC(10,2);
     v_assignee_id UUID;
     v_developer_id UUID;
-    v_status VARCHAR(32);
     v_sprint_name VARCHAR(255);
     v_sprint_id UUID;
     v_fact_time TIMESTAMP WITH TIME ZONE;
@@ -90,6 +98,51 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM projects WHERE tenant_id = c_tenant_id AND id = c_project_id) THEN
         SELECT id, key INTO c_project_id, c_project_key FROM projects WHERE tenant_id = c_tenant_id ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    ----------------------------------------------------------------------------
+    -- 0b. Resolve Project Workflow Statuses (or create software defaults)
+    ----------------------------------------------------------------------------
+    SELECT id INTO v_status_backlog_id FROM work_item_status_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'backlog';
+    IF v_status_backlog_id IS NULL THEN
+        v_status_backlog_id := gen_random_uuid();
+        INSERT INTO work_item_status_definitions(id, tenant_id, project_id, key, name, category, "order", color_token, is_system, is_default, version, created_at, updated_at)
+        VALUES (v_status_backlog_id, c_tenant_id, c_project_id, 'backlog', 'Backlog', 'ToDo', 10, 'gray', true, true, 1, NOW(), NOW());
+    END IF;
+
+    SELECT id INTO v_status_selected_id FROM work_item_status_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'selected';
+    IF v_status_selected_id IS NULL THEN
+        v_status_selected_id := gen_random_uuid();
+        INSERT INTO work_item_status_definitions(id, tenant_id, project_id, key, name, category, "order", color_token, is_system, is_default, version, created_at, updated_at)
+        VALUES (v_status_selected_id, c_tenant_id, c_project_id, 'selected', 'Selected', 'ToDo', 20, 'blue', true, false, 1, NOW(), NOW());
+    END IF;
+
+    SELECT id INTO v_status_in_progress_id FROM work_item_status_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'in-progress';
+    IF v_status_in_progress_id IS NULL THEN
+        v_status_in_progress_id := gen_random_uuid();
+        INSERT INTO work_item_status_definitions(id, tenant_id, project_id, key, name, category, "order", color_token, is_system, is_default, version, created_at, updated_at)
+        VALUES (v_status_in_progress_id, c_tenant_id, c_project_id, 'in-progress', 'In progress', 'InProgress', 30, 'blue', true, false, 1, NOW(), NOW());
+    END IF;
+
+    SELECT id INTO v_status_in_review_id FROM work_item_status_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'in-review';
+    IF v_status_in_review_id IS NULL THEN
+        v_status_in_review_id := gen_random_uuid();
+        INSERT INTO work_item_status_definitions(id, tenant_id, project_id, key, name, category, "order", color_token, is_system, is_default, version, created_at, updated_at)
+        VALUES (v_status_in_review_id, c_tenant_id, c_project_id, 'in-review', 'In review', 'InProgress', 40, 'yellow', true, false, 1, NOW(), NOW());
+    END IF;
+
+    SELECT id INTO v_status_done_id FROM work_item_status_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'done';
+    IF v_status_done_id IS NULL THEN
+        v_status_done_id := gen_random_uuid();
+        INSERT INTO work_item_status_definitions(id, tenant_id, project_id, key, name, category, "order", color_token, is_system, is_default, version, created_at, updated_at)
+        VALUES (v_status_done_id, c_tenant_id, c_project_id, 'done', 'Done', 'Done', 50, 'green', true, false, 1, NOW(), NOW());
+    END IF;
+
+    SELECT id INTO v_status_blocked_id FROM work_item_status_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'blocked';
+    IF v_status_blocked_id IS NULL THEN
+        v_status_blocked_id := gen_random_uuid();
+        INSERT INTO work_item_status_definitions(id, tenant_id, project_id, key, name, category, "order", color_token, is_system, is_default, version, created_at, updated_at)
+        VALUES (v_status_blocked_id, c_tenant_id, c_project_id, 'blocked', 'Blocked', 'InProgress', 60, 'red', true, false, 1, NOW(), NOW());
     END IF;
 
     -- Ensure admin@orbit.com account exists with matching Argon2id hash
@@ -162,7 +215,7 @@ BEGIN
     END LOOP;
 
     ----------------------------------------------------------------------------
-    -- 2. Create Teams & Memberships
+    -- 2. Create Teams: Alpha Team & Beta Team
     ----------------------------------------------------------------------------
     -- Team Alpha
     SELECT id INTO v_team_alpha_id FROM teams WHERE tenant_id = c_tenant_id AND name = 'Alpha Team';
@@ -180,23 +233,19 @@ BEGIN
         VALUES (v_team_beta_id, c_tenant_id, 'Beta Team', c_admin_membership_id, NOW(), NOW());
     END IF;
 
-    -- Add members to Team Alpha (Dev 1, 2, 3 and QA 1)
-    DELETE FROM team_memberships WHERE tenant_id = c_tenant_id AND team_id = v_team_alpha_id;
-    INSERT INTO team_memberships(id, tenant_id, team_id, membership_id, created_at) VALUES
-    (gen_random_uuid(), c_tenant_id, v_team_alpha_id, v_membership_ids[1], NOW()),
-    (gen_random_uuid(), c_tenant_id, v_team_alpha_id, v_membership_ids[2], NOW()),
-    (gen_random_uuid(), c_tenant_id, v_team_alpha_id, v_membership_ids[3], NOW()),
-    (gen_random_uuid(), c_tenant_id, v_team_alpha_id, v_membership_ids[6], NOW());
-
-    -- Add members to Team Beta (Dev 4, 5 and QA 2)
-    DELETE FROM team_memberships WHERE tenant_id = c_tenant_id AND team_id = v_team_beta_id;
-    INSERT INTO team_memberships(id, tenant_id, team_id, membership_id, created_at) VALUES
-    (gen_random_uuid(), c_tenant_id, v_team_beta_id, v_membership_ids[4], NOW()),
-    (gen_random_uuid(), c_tenant_id, v_team_beta_id, v_membership_ids[5], NOW()),
-    (gen_random_uuid(), c_tenant_id, v_team_beta_id, v_membership_ids[7], NOW());
+    -- Assign Team Members (Dev 1-3 to Alpha, Dev 4-5 + QA 1-2 to Beta)
+    DELETE FROM team_memberships WHERE tenant_id = c_tenant_id AND team_id IN (v_team_alpha_id, v_team_beta_id);
+    FOR i IN 1..3 LOOP
+        INSERT INTO team_memberships(id, tenant_id, team_id, membership_id, created_at)
+        VALUES (gen_random_uuid(), c_tenant_id, v_team_alpha_id, v_membership_ids[i], NOW());
+    END LOOP;
+    FOR i IN 4..7 LOOP
+        INSERT INTO team_memberships(id, tenant_id, team_id, membership_id, created_at)
+        VALUES (gen_random_uuid(), c_tenant_id, v_team_beta_id, v_membership_ids[i], NOW());
+    END LOOP;
 
     ----------------------------------------------------------------------------
-    -- 3. Create Sprints
+    -- 3. Create Sprints: Sprint 1 (Closed), Sprint 2 (Active), Sprint 3 (Future)
     ----------------------------------------------------------------------------
     -- Sprint 1 (Past, Closed)
     SELECT id INTO v_sprint1_id FROM sprints WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND name = 'Sprint 1';
@@ -236,6 +285,7 @@ BEGIN
     DELETE FROM work_item_comments WHERE tenant_id = c_tenant_id AND work_item_id IN (SELECT id FROM work_items WHERE tenant_id = c_tenant_id AND project_id = c_project_id);
     DELETE FROM work_item_links WHERE tenant_id = c_tenant_id AND (source_work_item_id IN (SELECT id FROM work_items WHERE tenant_id = c_tenant_id AND project_id = c_project_id) OR target_work_item_id IN (SELECT id FROM work_items WHERE tenant_id = c_tenant_id AND project_id = c_project_id));
     DELETE FROM attachments WHERE tenant_id = c_tenant_id AND work_item_id IN (SELECT id FROM work_items WHERE tenant_id = c_tenant_id AND project_id = c_project_id);
+    UPDATE work_items SET parent_id = NULL WHERE tenant_id = c_tenant_id AND project_id = c_project_id;
     DELETE FROM work_items WHERE tenant_id = c_tenant_id AND project_id = c_project_id;
 
     ----------------------------------------------------------------------------
@@ -254,8 +304,8 @@ BEGIN
 
         v_desc := '<p>High-level strategic initiative focused on ' || v_summary || '. Drives key organizational outcomes.</p>';
 
-        INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status, priority, rank, version, created_at, updated_at)
-        VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Initiative', 'InProgress', 'High', v_seq * 1024.0, 1, NOW() - INTERVAL '30 days', NOW());
+        INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status_id, priority, rank, version, created_at, updated_at)
+        VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Initiative', v_status_in_progress_id, 'High', v_seq * 1024.0, 1, NOW() - INTERVAL '30 days', NOW());
 
         v_initiative_ids := array_append(v_initiative_ids, v_new_item_id);
         v_seq := v_seq + 1;
@@ -279,8 +329,8 @@ BEGIN
         v_desc := '<p>Feature Epic to support ' || v_summary || '. Enables core functional enhancements.</p>';
         v_parent_id := v_initiative_ids[((i - 1) / 2) + 1];
 
-        INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status, priority, rank, version, created_at, updated_at, parent_id, epic_name)
-        VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Epic', 'InProgress', 'High', v_seq * 1024.0, 1, NOW() - INTERVAL '25 days', NOW(), v_parent_id, v_epic_names[i]);
+        INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status_id, priority, rank, version, created_at, updated_at, parent_id, epic_name)
+        VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Epic', v_status_in_progress_id, 'High', v_seq * 1024.0, 1, NOW() - INTERVAL '25 days', NOW(), v_parent_id, v_epic_names[i]);
 
         v_epic_ids := array_append(v_epic_ids, v_new_item_id);
         v_seq := v_seq + 1;
@@ -311,7 +361,7 @@ BEGIN
             -- Sprint 1 (Completed / Done)
             v_sprint_name := 'Sprint 1';
             v_sprint_id := v_sprint1_id;
-            v_status := 'Done';
+            v_status_id := v_status_done_id;
         ELSIF i <= 70 THEN
             -- Sprint 2 (Active Sprint)
             v_sprint_name := 'Sprint 2';
@@ -319,20 +369,20 @@ BEGIN
             -- 5 Completed (Done) stories to simulate burndown progress
             -- 15 InProgress, 10 Selected
             IF i <= 45 THEN
-                v_status := 'Done';
+                v_status_id := v_status_done_id;
             ELSIF i <= 60 THEN
-                v_status := 'InProgress';
+                v_status_id := v_status_in_progress_id;
             ELSE
-                v_status := 'Selected';
+                v_status_id := v_status_selected_id;
             END IF;
         ELSIF i <= 90 THEN
             -- Sprint 3 (Future Sprint)
             v_sprint_name := 'Sprint 3';
             v_sprint_id := v_sprint3_id;
-            v_status := 'Backlog';
+            v_status_id := v_status_backlog_id;
         ELSE
             -- Backlog, no Sprint
-            v_status := 'Backlog';
+            v_status_id := v_status_backlog_id;
         END IF;
 
         -- Story points: 1, 2, 3, 5, 8
@@ -351,8 +401,8 @@ BEGIN
         v_summary := 'Story ' || i || ': Technical implementation of ' || v_epic_names[((i - 1) / 10) + 1] || ' module component part ' || ((i - 1) % 10 + 1);
         v_desc := '<p>Complete user story for component detail verification. Follow criteria and testing table below.</p>';
 
-        INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status, priority, rank, version, created_at, updated_at, parent_id, epic_name, acceptance_criteria, assignee_user_id, developer_user_id, product_owner_user_id, sprint_name, story_points, identified_on, start_date)
-        VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Story', v_status, 'Medium', v_seq * 1024.0, 1, NOW() - INTERVAL '20 days', NOW(), v_parent_id, v_epic_names[((i - 1) / 10) + 1], v_ac, v_assignee_id, v_developer_id, c_admin_membership_id, v_sprint_name, v_story_pts, 'QA Iteration', CURRENT_DATE);
+        INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status_id, priority, rank, version, created_at, updated_at, parent_id, epic_name, acceptance_criteria, assignee_user_id, developer_user_id, product_owner_user_id, sprint_name, story_points, identified_on, start_date)
+        VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Story', v_status_id, 'Medium', v_seq * 1024.0, 1, NOW() - INTERVAL '20 days', NOW(), v_parent_id, v_epic_names[((i - 1) / 10) + 1], v_ac, v_assignee_id, v_developer_id, c_admin_membership_id, v_sprint_name, v_story_pts, 'QA Iteration', CURRENT_DATE);
 
         v_story_ids := array_append(v_story_ids, v_new_item_id);
 
@@ -381,7 +431,7 @@ BEGIN
             END IF;
 
             -- If Sprint 2 (Active), complete stories 41-45
-            IF v_sprint_name = 'Sprint 2' AND v_status = 'Done' THEN
+            IF v_sprint_name = 'Sprint 2' AND v_status_id = v_status_done_id THEN
                 v_fact_time := TIMESTAMP WITH TIME ZONE '2026-08-15 17:00:00+00' + ((i % 5) || ' days')::interval;
                 INSERT INTO sprint_scope_facts(id, tenant_id, sprint_id, work_item_id, fact_type, estimate_delta, occurred_at, recorded_at)
                 VALUES (gen_random_uuid(), c_tenant_id, v_sprint_id, v_new_item_id, 'StatusChanged', -v_story_pts, v_fact_time, NOW());
@@ -396,28 +446,28 @@ BEGIN
     VALUES (gen_random_uuid(), c_tenant_id, v_sprint1_id, NULL, 'SprintCompleted', NULL, TIMESTAMP WITH TIME ZONE '2026-08-14 18:00:00+00', NOW());
 
     ----------------------------------------------------------------------------
-    -- 7. Seed 5 Subtasks for EACH Story (500 Subtasks total)
+    -- 7. Seed 500 Subtasks (5 per Story)
     ----------------------------------------------------------------------------
     RAISE NOTICE 'Seeding 500 Subtasks...';
     FOR i IN 1..100 LOOP
         v_parent_id := v_story_ids[i];
         -- Parent story parameters
-        SELECT status, epic_name, assignee_user_id, developer_user_id, sprint_name INTO v_status, v_sprint_name, v_assignee_id, v_developer_id FROM work_items WHERE id = v_parent_id;
+        SELECT status_id, epic_name, assignee_user_id, developer_user_id, sprint_name INTO v_status_id, v_sprint_name, v_assignee_id, v_developer_id FROM work_items WHERE id = v_parent_id;
 
         FOR k IN 1..5 LOOP
             v_new_item_id := gen_random_uuid();
             v_summary := 'Sub-task ' || k || ' for Story ORB-' || (i + 15) || ': Verify detail implementation ' || k;
             v_desc := '<p>Verification subtask ' || k || ' detailing unit and integration tests setup for parent story ORB-' || (i + 15) || '.</p>';
 
-            INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status, priority, rank, version, created_at, updated_at, parent_id, epic_name, assignee_user_id, developer_user_id, product_owner_user_id, sprint_name)
-            VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Subtask', v_status, 'Low', v_seq * 1024.0, 1, NOW() - INTERVAL '18 days', NOW(), v_parent_id, v_sprint_name, v_assignee_id, v_developer_id, c_admin_membership_id, v_sprint_name);
+            INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status_id, priority, rank, version, created_at, updated_at, parent_id, epic_name, assignee_user_id, developer_user_id, product_owner_user_id, sprint_name)
+            VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Subtask', v_status_id, 'Low', v_seq * 1024.0, 1, NOW() - INTERVAL '18 days', NOW(), v_parent_id, v_sprint_name, v_assignee_id, v_developer_id, c_admin_membership_id, v_sprint_name);
 
             v_seq := v_seq + 1;
         END LOOP;
     END LOOP;
 
     ----------------------------------------------------------------------------
-    -- 8. Seed 10 Bugs (assigned to team members, related to stories)
+    -- 8. Seed 10 Bugs
     ----------------------------------------------------------------------------
     RAISE NOTICE 'Seeding 10 Bugs...';
     FOR i IN 1..10 LOOP
@@ -431,8 +481,8 @@ BEGIN
         v_desc := '<p><strong>Steps to conduct:</strong><br/>1. Log in as standard user.<br/>2. Open board view.<br/>3. Verify layout behavior.<br/></p>
 <p><strong>Actual result:</strong> UI breaks due to missing check constraint error.<br/><strong>Expected result:</strong> Smooth page resizing.</p>';
 
-        INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status, priority, rank, version, created_at, updated_at, assignee_user_id, developer_user_id, product_owner_user_id, story_points, identified_on, steps_to_conduct)
-        VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Bug', 'InProgress', 'High', v_seq * 1024.0, 1, NOW(), NOW(), v_assignee_id, v_developer_id, c_admin_membership_id, 2.0, 'Chrome/macOS', 'Open browser and check board size');
+        INSERT INTO work_items(id, tenant_id, project_id, sequence_number, key, summary, description, type, status_id, priority, rank, version, created_at, updated_at, assignee_user_id, developer_user_id, product_owner_user_id, story_points, identified_on, steps_to_conduct)
+        VALUES (v_new_item_id, c_tenant_id, c_project_id, v_seq, c_project_key || '-' || v_seq, v_summary, v_desc, 'Bug', v_status_in_progress_id, 'High', v_seq * 1024.0, 1, NOW(), NOW(), v_assignee_id, v_developer_id, c_admin_membership_id, 2.0, 'Chrome/macOS', 'Open browser and check board size');
 
         -- Link bug to a corresponding story (e.g. Story 1 to 10)
         v_bug_target_id := v_story_ids[i];
@@ -452,12 +502,6 @@ BEGIN
     -- 9. Seed Dependency Links (Blocks dependencies)
     ----------------------------------------------------------------------------
     RAISE NOTICE 'Adding Dependency Links...';
-    -- Establish blockages
-    -- Story 11 blocks Story 12
-    -- Story 13 blocks Story 14
-    -- Story 15 blocks Story 16
-    -- Story 17 blocks Story 18
-    -- Story 19 blocks Story 20
     FOR i IN 1..5 LOOP
         INSERT INTO work_item_links(id, tenant_id, source_work_item_id, target_work_item_id, kind, created_at)
         VALUES (gen_random_uuid(), c_tenant_id, v_story_ids[i * 2 + 9], v_story_ids[i * 2 + 10], 'Blocks', NOW());
@@ -497,11 +541,6 @@ BEGIN
     ----------------------------------------------------------------------------
     -- 12. Grant every seeded dev/QA member the "Member" project role
     ----------------------------------------------------------------------------
-    -- Without this, dev1-5/qa1-2 (TenantRole 'Member', no tenant-wide access shortcut)
-    -- would have zero visibility into the seeded project under the query-level permission
-    -- model (Domain.Access.ProjectAccessQuery) - only c_admin_membership_id (Owner) could
-    -- see it. Every tenant is seeded with three system roles (Administrator/Member/Viewer,
-    -- see Role.SeedSystemRoles) at provisioning time, so "Member" always exists here.
     RAISE NOTICE 'Assigning project roles to seeded members...';
     SELECT id INTO v_member_role_id FROM roles WHERE tenant_id = c_tenant_id AND name = 'Member';
     IF v_member_role_id IS NOT NULL THEN
@@ -516,7 +555,6 @@ BEGIN
     -- 13. Seed project-scoped custom fields and their values
     ----------------------------------------------------------------------------
     RAISE NOTICE 'Seeding custom field definitions...';
-
     SELECT id INTO v_cf_release_phase_id FROM custom_field_definitions WHERE tenant_id = c_tenant_id AND project_id = c_project_id AND key = 'release_phase';
     IF v_cf_release_phase_id IS NULL THEN
         v_cf_release_phase_id := gen_random_uuid();
@@ -576,7 +614,7 @@ BEGIN
         VALUES (c_tenant_id, v_cf_target_release_id, c_project_id, 'target_release', 'Target Release', 'Date', false, 4, true, '{}', 1, NOW(), NOW());
     END IF;
 
-    RAISE NOTICE 'Seeding custom field values for stories and bugs...';
+    RAISE NOTICE 'Seeding custom field values...';
     FOR i IN 1..10 LOOP
         INSERT INTO work_item_custom_field_values(id, tenant_id, work_item_id, custom_field_definition_id, "values", created_at, updated_at) VALUES
         (gen_random_uuid(), c_tenant_id, v_story_ids[i], v_cf_release_phase_id, ARRAY[(CASE WHEN i <= 4 THEN v_choice_ga_id WHEN i <= 7 THEN v_choice_beta_id ELSE v_choice_alpha_id END)::text], NOW(), NOW()),
@@ -593,7 +631,7 @@ BEGIN
     END LOOP;
 
     ----------------------------------------------------------------------------
-    -- 14. Populate modern work_items columns: due_date, team_id, flag, cover, archive
+    -- 14. Populate modern columns: due_date, team_id, flag, cover, archive
     ----------------------------------------------------------------------------
     RAISE NOTICE 'Populating due dates, team assignment, flags, cover, archive...';
     FOR i IN 1..100 LOOP
@@ -603,34 +641,31 @@ BEGIN
         WHERE id = v_story_ids[i];
     END LOOP;
 
-    -- Flag the two highest-priority initiatives for follow-up
     UPDATE work_items SET "IsFlagged" = true WHERE id IN (v_initiative_ids[1], v_initiative_ids[2]);
 
-    -- Give the first story a cover image (from the attachments seeded in step 11)
     IF array_length(v_attachment_ids, 1) > 0 THEN
         UPDATE work_items SET "CoverAttachmentId" = v_attachment_ids[1] WHERE id = v_story_ids[1];
     END IF;
 
-    -- Archive the last bug as a resolved/closed-out example
     UPDATE work_items SET "IsArchived" = true, "ArchivedAt" = NOW() WHERE id = v_bug_ids[10];
 
     ----------------------------------------------------------------------------
-    -- 15. Seed worklogs (developer time spent)
+    -- 15. Seed worklogs
     ----------------------------------------------------------------------------
     RAISE NOTICE 'Seeding work item worklogs...';
     FOR i IN 1..20 LOOP
         v_user_idx := ((i - 1) % 5) + 1;
         INSERT INTO work_item_worklogs(id, tenant_id, work_item_id, author_membership_id, minutes_spent, work_date, description, created_at)
-        VALUES (gen_random_uuid(), c_tenant_id, v_story_ids[i], v_membership_ids[v_user_idx], 30 * ((i % 8) + 1), CURRENT_DATE - (i || ' days')::interval, 'Implementation and code review time for ' || (SELECT summary FROM work_items WHERE id = v_story_ids[i]), NOW());
+        VALUES (gen_random_uuid(), c_tenant_id, v_story_ids[i], v_membership_ids[v_user_idx], 30 * ((i % 8) + 1), CURRENT_DATE - (i || ' days')::interval, 'Implementation and code review time', NOW());
     END LOOP;
 
     ----------------------------------------------------------------------------
-    -- 16. Seed work item history entries (audit trail)
+    -- 16. Seed work item history
     ----------------------------------------------------------------------------
     RAISE NOTICE 'Seeding work item history entries...';
     FOR i IN 1..15 LOOP
         INSERT INTO work_item_history_entries(id, tenant_id, work_item_id, changed_by_membership_id, field_name, old_value, new_value, changed_at)
-        VALUES (gen_random_uuid(), c_tenant_id, v_story_ids[i], c_admin_membership_id, 'Status', 'Selected', 'InProgress', NOW() - (i || ' hours')::interval);
+        VALUES (gen_random_uuid(), c_tenant_id, v_story_ids[i], c_admin_membership_id, 'Status', 'selected', 'in-progress', NOW() - (i || ' hours')::interval);
     END LOOP;
     FOR i IN 1..10 LOOP
         INSERT INTO work_item_history_entries(id, tenant_id, work_item_id, changed_by_membership_id, field_name, old_value, new_value, changed_at)

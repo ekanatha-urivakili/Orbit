@@ -64,4 +64,22 @@ describe('WorkItemDetailOverlay', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()
   })
+
+  it('renders modal container with work-item-modal-scroll wrapper for rounded corners', () => {
+    const { container } = render(
+      <WorkItemDetailOverlay
+        variant="modal"
+        item={item}
+        workItems={[item]}
+        members={[]}
+        priorities={['Medium']}
+        onClose={vi.fn()}
+        onStatusChange={vi.fn()}
+        onOpenWorkItem={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('.work-item-modal')).toBeInTheDocument()
+    expect(container.querySelector('.work-item-modal-scroll')).toBeInTheDocument()
+  })
 })

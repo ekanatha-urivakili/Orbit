@@ -1,18 +1,26 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, LineChart, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, LineChart, Plus, Calendar, User, CornerDownLeft, ArrowLeftRight, SlidersHorizontal } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { orbitApi } from '../../api/client'
 import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { getInitials } from '../../lib/initials'
 import { SprintReportDialog } from './SprintReportDialog'
+import { BacklogInsightsPanel } from './BacklogInsightsPanel'
+import { BacklogViewSettingsPanel, DEFAULT_BACKLOG_VIEW_SETTINGS, type BacklogViewSettings } from './BacklogViewSettingsPanel'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import { RolloverChoice } from '../board/RolloverChoice'
 import { AssigneePicker } from '../../components/AssigneePicker'
 import { WorkItemTypeIcon } from '../workitems/typeIcons'
+import { WorkItemDetailView } from '../workitems/WorkItemDetailView'
 import { FilterBar } from '../../components/filters/FilterBar'
 import { AssigneeAvatarFilter } from '../../components/filters/AssigneeAvatarFilter'
 import { useWorkItemFilters } from '../../hooks/useWorkItemFilters'
-import type { Sprint, StatusCategory, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
+import type { Priority, Profile, Project, Sprint, StatusCategory, TenantMembership, WorkItem, WorkItemStatusDefinition } from '../../api/types'
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
 
 function countByCategory(
   items: readonly WorkItem[],
@@ -28,8 +36,12 @@ function countByCategory(
 }
 
 interface BacklogViewProps {
+  header?: React.ReactNode
   workItems: WorkItem[]
   projectId: string
+  project?: Project
+  profile?: Profile
+  priorities?: Priority[]
   members: TenantMembership[]
   sprints: Sprint[]
   sprintsLoading: boolean
@@ -39,14 +51,23 @@ interface BacklogViewProps {
   onReopenSprint: (sprint: Sprint) => void
   onAssignToSprint: (workItemId: string, sprintId: string) => void
   onRemoveFromSprint: (workItemId: string) => void
-  onOpenWorkItem: (workItem: WorkItem) => void
+  onOpenWorkItem?: (workItem: WorkItem) => void
+  onOpenWorkItemModal?: (workItem: WorkItem) => void
+  onStatusChange?: (workItem: WorkItem, statusId: string) => void
   onAssigneeChange?: (workItem: WorkItem, assigneeUserId: string | null) => void
   assigneeChangePending?: boolean
+  onManageWorkTypes?: () => void
+  selectedWorkItemId?: string | null
+  onSelectWorkItem?: (workItem: WorkItem | null) => void
 }
 
 export function BacklogView({
+  header,
   workItems,
   projectId,
+  project,
+  profile,
+  priorities = [],
   members,
   sprints,
   sprintsLoading,
@@ -57,8 +78,13 @@ export function BacklogView({
   onAssignToSprint,
   onRemoveFromSprint,
   onOpenWorkItem,
+  onOpenWorkItemModal,
+  onStatusChange,
   onAssigneeChange,
   assigneeChangePending = false,
+  onManageWorkTypes,
+  selectedWorkItemId: selectedWorkItemIdProp,
+  onSelectWorkItem,
 }: BacklogViewProps) {
   const activeSprint = sprints.find((sprint) => sprint.state === 'Active')
   const futureSprints = sprints.filter((sprint) => sprint.state === 'Future')
@@ -84,6 +110,51 @@ export function BacklogView({
     members.filter((member): member is TenantMembership & { userId: string } => Boolean(member.userId)).map((member) => [member.userId, member]),
   )
 
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null)
+  const activeSelectedId = selectedWorkItemIdProp !== undefined ? selectedWorkItemIdProp : internalSelectedId
+  const selectedWorkItem = activeSelectedId ? workItemsById.get(activeSelectedId) ?? null : null
+
+  const setSelectedWorkItemId = (id: string | null) => {
+    setInternalSelectedId(id)
+    if (onSelectWorkItem) {
+      const item = id ? workItemsById.get(id) ?? null : null
+      onSelectWorkItem(item)
+    }
+  }
+
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('orbit_backlog_panel_width')
+    return saved ? Math.max(380, Math.min(900, Number(saved))) : 540
+  })
+  const [isResizingPanel, setIsResizingPanel] = useState(false)
+
+  const handleStartResizePanel = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = panelWidth
+    setIsResizingPanel(true)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = startX - moveEvent.clientX
+      const newWidth = Math.max(380, Math.min(900, startWidth + delta))
+      setPanelWidth(newWidth)
+      localStorage.setItem('orbit_backlog_panel_width', String(newWidth))
+    }
+
+    const handlePointerUp = () => {
+      setIsResizingPanel(false)
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp)
+  }
+
   const [inlineCreateOpen, setInlineCreateOpen] = useState(false)
   const [inlineSummary, setInlineSummary] = useState('')
   const [inlineDueDateOpen, setInlineDueDateOpen] = useState(false)
@@ -97,6 +168,10 @@ export function BacklogView({
   const [reportSprint, setReportSprint] = useState<Sprint | null>(null)
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
+  const [insightsOpen, setInsightsOpen] = useState(false)
+  const [viewSettingsOpen, setViewSettingsOpen] = useState(false)
+  const [viewSettings, setViewSettings] = useState<BacklogViewSettings>(DEFAULT_BACKLOG_VIEW_SETTINGS)
+  const rowPaddingClass = viewSettings.density === 'Compact' ? 'py-1' : 'py-2'
   const statusesQuery = useQuery({
     queryKey: ['work-item-statuses', projectId],
     queryFn: () => orbitApi.listWorkItemStatuses(projectId),
@@ -222,6 +297,39 @@ export function BacklogView({
     )
   }
 
+  const renderEpicChip = (item: WorkItem) => {
+    if (!viewSettings.showEpic || !item.parentId) return null
+    const epic = workItemsById.get(item.parentId)
+    if (!epic) return null
+    return (
+      <a
+        {...openLink(epic)}
+        className="hidden md:inline-flex px-1.5 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-medium rounded whitespace-nowrap max-w-[120px] truncate hover:underline dark:bg-purple-950/40 dark:text-purple-300"
+        title={epic.summary}
+      >
+        {epic.key}
+      </a>
+    )
+  }
+
+  const renderDueDate = (item: WorkItem) => {
+    if (!viewSettings.showDueDate || !item.dueDate) return null
+    return (
+      <span className="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-300 whitespace-nowrap">
+        <Calendar size={10} /> {formatShortDate(item.dueDate)}
+      </span>
+    )
+  }
+
+  const renderEstimate = (item: WorkItem) => {
+    if (!viewSettings.showEstimate || item.storyPoints == null) return null
+    return (
+      <span className="hidden sm:inline-flex px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-[10px] font-semibold rounded" title="Story point estimate">
+        {item.storyPoints}
+      </span>
+    )
+  }
+
   const renderLabels = (item: WorkItem) => {
     if (item.labels.length === 0) return null
     return (
@@ -239,359 +347,485 @@ export function BacklogView({
     href: `/browse/${item.key}`,
     onClick: (event: React.MouseEvent) => {
       event.preventDefault()
-      onOpenWorkItem(item)
+      setSelectedWorkItemId(item.id)
+      if (onOpenWorkItem) onOpenWorkItem(item)
     },
   })
 
+  const visibleOpenSprints = viewSettings.showEmptySprints
+    ? openSprints
+    : openSprints.filter((sprint) => sprint.workItemIds.some((id) => workItemsById.has(id) && matchesFilters(workItemsById.get(id)!)))
+
   return (
-    <div className="p-6 md:p-8 pt-8 md:pt-10 w-full">
-      <div className="mb-6">
-        <FilterBar
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          searchPlaceholder="Search backlog"
-          fields={fields}
-          activeCount={activeCount}
-          onClearAll={clearAll}
-          betweenSearchAndFilter={
-            <AssigneeAvatarFilter field={fields.find((field) => field.key === 'assignee')!} />
-          }
-        />
-      </div>
+    <div className="flex h-full w-full overflow-hidden">
+      <div className="flex-1 min-w-[340px] h-full overflow-y-auto overflow-x-hidden flex flex-col custom-scrollbar bg-white dark:bg-[#101214]">
+        {header}
+        <div className="p-4 sm:p-6 md:p-8 pt-4 flex-1 min-w-0">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <FilterBar
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search backlog"
+              fields={fields}
+              activeCount={activeCount}
+              onClearAll={clearAll}
+              betweenSearchAndFilter={
+                <AssigneeAvatarFilter field={fields.find((field) => field.key === 'assignee')!} />
+              }
+            />
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setInsightsOpen((curr) => !curr)}
+              className={`p-1.5 rounded-md border text-gray-600 dark:text-gray-300 transition-colors ${
+                insightsOpen
+                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:border-blue-500 dark:text-blue-400'
+                  : 'border-gray-200 dark:border-[#394047] hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+              title="Backlog insights"
+              aria-label="Backlog insights"
+            >
+              <LineChart size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewSettingsOpen((curr) => !curr)}
+              className={`p-1.5 rounded-md border text-gray-600 dark:text-gray-300 transition-colors ${
+                viewSettingsOpen
+                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:border-blue-500 dark:text-blue-400'
+                  : 'border-gray-200 dark:border-[#394047] hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+              title="View settings"
+              aria-label="View settings"
+            >
+              <SlidersHorizontal size={16} />
+            </button>
+          </div>
+        </div>
 
-      {!sprintsLoading && openSprints.map((sprint) => {
-        const sprintItems = sprint.workItemIds
-          .map((id) => workItemsById.get(id))
-          .filter((item): item is WorkItem => Boolean(item))
-          .filter(matchesFilters)
-        const sprintStatusCounts = countByCategory(sprintItems, statuses)
-        const isCollapsed = Boolean(collapsedSprints[sprint.id])
+        {!sprintsLoading && visibleOpenSprints.map((sprint) => {
+          const sprintItems = sprint.workItemIds
+            .map((id) => workItemsById.get(id))
+            .filter((item): item is WorkItem => Boolean(item))
+            .filter(matchesFilters)
+          const sprintStatusCounts = countByCategory(sprintItems, statuses)
+          const isCollapsed = Boolean(collapsedSprints[sprint.id])
 
-        const isDropTarget = dragOverTarget === sprint.id
+          const isDropTarget = dragOverTarget === sprint.id
 
-        return (
-          <div
-            key={sprint.id}
-            onDragOver={(e) => handleSprintDragOver(e, sprint)}
-            onDragLeave={() => setDragOverTarget((curr) => (curr === sprint.id ? null : curr))}
-            onDrop={(e) => handleSprintDrop(e, sprint)}
-            className={`bg-gray-50 rounded-lg border mb-8 overflow-hidden transition-colors ${isDropTarget ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
-          >
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
-              <div className="flex items-center gap-2">
-                <button onClick={() => toggleSprintCollapse(sprint.id)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle sprint section">
-                  <ChevronDown size={18} className={`text-gray-600 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
-                </button>
-                <h2 className="font-bold text-gray-900 text-sm">{sprint.name}</h2>
-                <span className="text-sm text-gray-500 ml-2">({sprintItems.length} work items)</span>
-              </div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex items-center text-xs font-semibold gap-1">
-                  <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sprintStatusCounts.ToDo}</span>
-                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.InProgress}</span>
-                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.Done}</span>
+          return (
+            <div
+              key={sprint.id}
+              onDragOver={(e) => handleSprintDragOver(e, sprint)}
+              onDragLeave={() => setDragOverTarget((curr) => (curr === sprint.id ? null : curr))}
+              onDrop={(e) => handleSprintDrop(e, sprint)}
+              className={`bg-gray-50 rounded-lg border mb-8 overflow-hidden transition-colors ${isDropTarget ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
+            >
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => toggleSprintCollapse(sprint.id)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle sprint section">
+                    <ChevronDown size={18} className={`text-gray-600 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+                  </button>
+                  <h2 className="font-bold text-gray-900 text-sm">{sprint.name}</h2>
+                  <span className="text-sm text-gray-500 ml-2">({sprintItems.length} work items)</span>
                 </div>
-                {sprint.state === 'Future' && (
-                  <button
-                    onClick={() => onStartSprint(sprint)}
-                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
-                  >
-                    Start sprint
-                  </button>
-                )}
-                {(sprint.state === 'Active' || sprint.state === 'Reopened') && (
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <RolloverChoice
-                      sprintName={sprint.name}
-                      createRollover={rolloverChoices[sprint.id] ?? false}
-                      onChange={(value) => setRolloverChoices((current) => ({ ...current, [sprint.id]: value }))}
-                      idPrefix={`backlog-${sprint.id}`}
-                    />
-                    <button
-                      onClick={() => onCompleteSprint(sprint, rolloverChoices[sprint.id] ?? false)}
-                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded shrink-0"
-                    >
-                      Complete sprint
-                    </button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center text-xs font-semibold gap-1">
+                    <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sprintStatusCounts.ToDo}</span>
+                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.InProgress}</span>
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{sprintStatusCounts.Done}</span>
                   </div>
-                )}
-                {sprint.state === 'Closing' && (
-                  <button
-                    onClick={() => onCompleteSprint(sprint, false)}
-                    className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 font-medium text-sm rounded"
-                  >
-                    Resume closing
-                  </button>
-                )}
-                {sprint.state !== 'Future' && (
-                  <button
-                    onClick={() => setReportSprint(sprint)}
-                    className="flex items-center gap-1 px-3 py-1 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
-                    title="View sprint report"
-                  >
-                    <LineChart size={14} /> Report
-                  </button>
-                )}
+                  {sprint.state === 'Future' && (
+                    <button
+                      onClick={() => onStartSprint(sprint)}
+                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+                    >
+                      Start sprint
+                    </button>
+                  )}
+                  {(sprint.state === 'Active' || sprint.state === 'Reopened') && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <RolloverChoice
+                        sprintName={sprint.name}
+                        createRollover={rolloverChoices[sprint.id] ?? false}
+                        onChange={(value) => setRolloverChoices((current) => ({ ...current, [sprint.id]: value }))}
+                        idPrefix={`backlog-${sprint.id}`}
+                      />
+                      <button
+                        onClick={() => onCompleteSprint(sprint, rolloverChoices[sprint.id] ?? false)}
+                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded shrink-0"
+                      >
+                        Complete sprint
+                      </button>
+                    </div>
+                  )}
+                  {sprint.state === 'Closing' && (
+                    <button
+                      onClick={() => onCompleteSprint(sprint, false)}
+                      className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 font-medium text-sm rounded"
+                    >
+                      Resume closing
+                    </button>
+                  )}
+                  {sprint.state !== 'Future' && (
+                    <button
+                      onClick={() => setReportSprint(sprint)}
+                      className="flex items-center gap-1 px-3 py-1 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+                      title="View sprint report"
+                    >
+                      <LineChart size={14} /> Report
+                    </button>
+                  )}
+                </div>
               </div>
+              {!isCollapsed && (
+                <div className="bg-white">
+                  {sprintItems.map((item) => {
+                    const isSelected = activeSelectedId === item.id
+                    return (
+                      <div
+                        key={item.id}
+                        draggable
+                        onDragStart={(e) => handleItemDragStart(e, item.id)}
+                        onDragEnd={handleItemDragEnd}
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('button, select, input, a')) return
+                          setSelectedWorkItemId(item.id)
+                        }}
+                        className={`flex items-center gap-3 px-4 ${rowPaddingClass} border-b transition-colors cursor-grab active:cursor-grabbing ${
+                          isSelected
+                            ? 'bg-blue-50/90 border-l-4 border-l-blue-600 dark:bg-blue-950/40 dark:border-l-blue-400 border-b-blue-100 dark:border-b-blue-900/50'
+                            : 'border-gray-100 hover:bg-blue-50/60 dark:border-gray-800 dark:hover:bg-blue-950/20'
+                        } ${draggedItemId === item.id ? 'opacity-40' : ''}`}
+                      >
+                        <WorkItemTypeIcon type={item.type} size={18} />
+                        <a {...openLink(item)} className="text-sm text-blue-700 font-semibold w-16 hover:underline shrink-0 dark:text-blue-400">
+                          {item.key}
+                        </a>
+                        <a {...openLink(item)} className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate hover:underline">
+                          {item.summary}
+                        </a>
+
+                        {renderEpicChip(item)}
+                        {renderDueDate(item)}
+                        {renderLabels(item)}
+
+                        <div className="hidden sm:flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => onRemoveFromSprint(item.id)}
+                            className="p-1 hover:bg-gray-200 rounded text-gray-600"
+                            aria-label="Move to backlog"
+                            title="Move to backlog"
+                          >
+                            <ArrowLeftRight size={16} />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
+                          {renderEstimate(item)}
+                          {viewSettings.showStatus && (
+                            <div className="hidden sm:flex px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase items-center gap-1">
+                              {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
+                            </div>
+                          )}
+                          {renderAssigneeAvatar(item)}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {sprintItems.length === 0 && (
+                    <div className={`px-4 py-6 text-center text-sm border-b border-gray-100 ${isDropTarget ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
+                      Drag or move backlog items in to plan this sprint.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            {!isCollapsed && (
-              <div className="bg-white">
-                {sprintItems.map((item) => (
+          )
+        })}
+
+        {closedSprints.length > 0 && (
+          <div className="bg-gray-50 rounded-lg border border-gray-200 mb-8 overflow-hidden">
+            <button
+              onClick={() => setClosedSectionOpen(!closedSectionOpen)}
+              className="w-full flex items-center gap-2 px-4 py-3 text-left"
+            >
+              <ChevronDown size={18} className={`text-gray-600 transition-transform ${closedSectionOpen ? '' : '-rotate-90'}`} />
+              <h2 className="font-bold text-gray-900 text-sm">Closed sprints</h2>
+              <span className="text-sm text-gray-500 ml-2">({closedSprints.length})</span>
+            </button>
+            {closedSectionOpen && (
+              <div className="bg-white border-t border-gray-200">
+                {closedSprints.map((sprint) => (
+                  <div key={sprint.id} className="flex items-center justify-between px-4 py-2 border-b border-gray-100 last:border-b-0">
+                    <span className="text-sm text-gray-700">{sprint.name}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setReportSprint(sprint)}
+                        className="flex items-center gap-1 px-3 py-1 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+                      >
+                        <LineChart size={14} /> Report
+                      </button>
+                      <button
+                        onClick={() => onReopenSprint(sprint)}
+                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+                      >
+                        Reopen
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div
+          onDragOver={handleBacklogDragOver}
+          onDragLeave={() => setDragOverTarget((curr) => (curr === 'backlog' ? null : curr))}
+          onDrop={handleBacklogDrop}
+          className={`bg-gray-50 rounded-lg border overflow-hidden transition-colors ${dragOverTarget === 'backlog' ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
+        >
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setBacklogCollapsed(!backlogCollapsed)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle backlog section">
+                <ChevronDown size={18} className={`text-gray-600 transition-transform ${backlogCollapsed ? '-rotate-90' : ''}`} />
+              </button>
+              <h2 className="font-bold text-gray-900 text-sm">Backlog</h2>
+              <span className="text-sm text-gray-500 ml-2">({backlogItems.length} work items)</span>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+               <div className="flex items-center text-xs font-semibold gap-1">
+                <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{backlogStatusCounts.ToDo}</span>
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.InProgress}</span>
+                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.Done}</span>
+              </div>
+              <button
+                onClick={() => onCreateSprint(`Sprint ${sprints.length + 1}`)}
+                className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
+              >
+                Create sprint
+              </button>
+            </div>
+          </div>
+          {!backlogCollapsed && (
+            <div className="bg-white">
+              {backlogItems.map((item) => {
+                const isSelected = activeSelectedId === item.id
+                return (
                   <div
                     key={item.id}
                     draggable
                     onDragStart={(e) => handleItemDragStart(e, item.id)}
                     onDragEnd={handleItemDragEnd}
-                    className={`flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group transition-colors cursor-grab active:cursor-grabbing ${draggedItemId === item.id ? 'opacity-40' : ''}`}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('button, select, input, a')) return
+                      setSelectedWorkItemId(item.id)
+                    }}
+                    className={`flex items-center gap-3 px-4 ${rowPaddingClass} border-b transition-colors cursor-grab active:cursor-grabbing ${
+                      isSelected
+                        ? 'bg-blue-50/90 border-l-4 border-l-blue-600 dark:bg-blue-950/40 dark:border-l-blue-400 border-b-blue-100 dark:border-b-blue-900/50'
+                        : 'border-gray-100 hover:bg-blue-50/60 dark:border-gray-800 dark:hover:bg-blue-950/20'
+                    } ${draggedItemId === item.id ? 'opacity-40' : ''}`}
                   >
                     <WorkItemTypeIcon type={item.type} size={18} />
-                    <a {...openLink(item)} className="text-sm text-blue-700 w-16 hover:underline shrink-0">
+                    <a {...openLink(item)} className="text-sm text-blue-700 font-semibold w-16 hover:underline shrink-0 dark:text-blue-400">
                       {item.key}
                     </a>
-                    <a {...openLink(item)} className="text-sm text-gray-900 flex-1 truncate hover:underline">
+                    <a {...openLink(item)} className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate hover:underline">
                       {item.summary}
                     </a>
 
+                    {renderEpicChip(item)}
+                    {renderDueDate(item)}
                     {renderLabels(item)}
 
-                    <div className="hidden sm:flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => onRemoveFromSprint(item.id)}
-                        className="p-1 hover:bg-gray-200 rounded text-gray-600"
-                        aria-label="Move to backlog"
-                        title="Move to backlog"
-                      >
-                        <ArrowLeftRight size={16} />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
-                      <div className="hidden sm:flex px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase items-center gap-1">
-                        {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
-                      </div>
-                      {renderAssigneeAvatar(item)}
-                    </div>
-                  </div>
-                ))}
-                {sprintItems.length === 0 && (
-                  <div className={`px-4 py-6 text-center text-sm border-b border-gray-100 ${isDropTarget ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
-                    Drag or move backlog items in to plan this sprint.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      })}
-
-      {closedSprints.length > 0 && (
-        <div className="bg-gray-50 rounded-lg border border-gray-200 mb-8 overflow-hidden">
-          <button
-            onClick={() => setClosedSectionOpen(!closedSectionOpen)}
-            className="w-full flex items-center gap-2 px-4 py-3 text-left"
-          >
-            <ChevronDown size={18} className={`text-gray-600 transition-transform ${closedSectionOpen ? '' : '-rotate-90'}`} />
-            <h2 className="font-bold text-gray-900 text-sm">Closed sprints</h2>
-            <span className="text-sm text-gray-500 ml-2">({closedSprints.length})</span>
-          </button>
-          {closedSectionOpen && (
-            <div className="bg-white border-t border-gray-200">
-              {closedSprints.map((sprint) => (
-                <div key={sprint.id} className="flex items-center justify-between px-4 py-2 border-b border-gray-100 last:border-b-0">
-                  <span className="text-sm text-gray-700">{sprint.name}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setReportSprint(sprint)}
-                      className="flex items-center gap-1 px-3 py-1 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
-                    >
-                      <LineChart size={14} /> Report
-                    </button>
-                    <button
-                      onClick={() => onReopenSprint(sprint)}
-                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
-                    >
-                      Reopen
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div
-        onDragOver={handleBacklogDragOver}
-        onDragLeave={() => setDragOverTarget((curr) => (curr === 'backlog' ? null : curr))}
-        onDrop={handleBacklogDrop}
-        className={`bg-gray-50 rounded-lg border overflow-hidden transition-colors ${dragOverTarget === 'backlog' ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}
-      >
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
-          <div className="flex items-center gap-2">
-            <button onClick={() => setBacklogCollapsed(!backlogCollapsed)} className="p-1 hover:bg-gray-200 rounded" aria-label="Toggle backlog section">
-              <ChevronDown size={18} className={`text-gray-600 transition-transform ${backlogCollapsed ? '-rotate-90' : ''}`} />
-            </button>
-            <h2 className="font-bold text-gray-900 text-sm">Backlog</h2>
-            <span className="text-sm text-gray-500 ml-2">({backlogItems.length} work items)</span>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-             <div className="flex items-center text-xs font-semibold gap-1">
-              <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{backlogStatusCounts.ToDo}</span>
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.InProgress}</span>
-              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{backlogStatusCounts.Done}</span>
-            </div>
-            <button
-              onClick={() => onCreateSprint(`Sprint ${sprints.length + 1}`)}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded"
-            >
-              Create sprint
-            </button>
-          </div>
-        </div>
-        {!backlogCollapsed && (
-          <div className="bg-white">
-            {backlogItems.map((item) => (
-              <div
-                key={item.id}
-                draggable
-                onDragStart={(e) => handleItemDragStart(e, item.id)}
-                onDragEnd={handleItemDragEnd}
-                className={`flex items-center gap-3 px-4 py-2 border-b border-gray-100 hover:bg-blue-50 group transition-colors cursor-grab active:cursor-grabbing ${draggedItemId === item.id ? 'opacity-40' : ''}`}
-              >
-                <WorkItemTypeIcon type={item.type} size={18} />
-                <a {...openLink(item)} className="text-sm text-blue-700 w-16 hover:underline shrink-0">
-                  {item.key}
-                </a>
-                <a {...openLink(item)} className="text-sm text-gray-900 flex-1 truncate hover:underline">
-                  {item.summary}
-                </a>
-
-                {renderLabels(item)}
-
-                {assignableSprints.length > 0 && (
-                  <div className="hidden sm:block opacity-0 group-hover:opacity-100 transition-opacity w-36">
-                    <SearchableSelect
-                      size="sm"
-                      value=""
-                      onChange={(val) => {
-                        if (val) onAssignToSprint(item.id, val)
-                      }}
-                      options={assignableSprints.map((sprint) => ({
-                        value: sprint.id,
-                        label: sprint.name,
-                      }))}
-                      placeholder="Move to sprint"
-                      searchPlaceholder="Search sprints…"
-                      aria-label="Move to sprint"
-                    />
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
-                  <div className="hidden sm:flex px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase items-center gap-1">
-                    {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
-                  </div>
-                  {renderAssigneeAvatar(item)}
-                </div>
-              </div>
-            ))}
-            {backlogItems.length === 0 && (
-               <div className="px-4 py-8 text-center text-gray-500 text-sm border-b border-gray-100">
-                 Your backlog is empty.
-               </div>
-            )}
-            {inlineCreateOpen ? (
-              <div className="px-4 py-2 border-2 border-blue-500 m-[-1px] relative z-10 bg-white flex items-center gap-3">
-                <form onSubmit={handleInlineCreate} className="flex-1 flex items-center gap-2">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={inlineSummary}
-                    onChange={(e) => setInlineSummary(e.target.value)}
-                    placeholder="Describe what needs to be done."
-                    className="w-full text-sm text-gray-900 focus:outline-none placeholder-gray-400"
-                  />
-                </form>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <button
-                      onClick={() => { setInlineDueDateOpen(!inlineDueDateOpen); setInlineAssigneeOpen(false) }}
-                      className={`p-1 rounded text-gray-500 hover:bg-gray-100 ${inlineDueDate ? 'text-blue-600 font-semibold' : ''}`}
-                      title={inlineDueDate ? `Due: ${inlineDueDate}` : 'Set due date'}
-                    >
-                      <Calendar size={18} />
-                    </button>
-                    {inlineDueDateOpen && (
-                      <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 shadow-xl rounded-lg p-3 z-50">
-                        <div className="text-xs font-semibold text-gray-700 mb-2">Due date</div>
-                        <input
-                          type="date"
-                          value={inlineDueDate}
-                          onChange={(e) => { setInlineDueDate(e.target.value); setInlineDueDateOpen(false) }}
-                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm mb-2 focus:outline-none focus:border-blue-500"
+                    {assignableSprints.length > 0 && (
+                      <div className="hidden sm:block opacity-0 group-hover:opacity-100 transition-opacity w-36">
+                        <SearchableSelect
+                          size="sm"
+                          value=""
+                          onChange={(val) => {
+                            if (val) onAssignToSprint(item.id, val)
+                          }}
+                          options={assignableSprints.map((sprint) => ({
+                            value: sprint.id,
+                            label: sprint.name,
+                          }))}
+                          placeholder="Move to sprint"
+                          searchPlaceholder="Search sprints…"
+                          aria-label="Move to sprint"
                         />
                       </div>
                     )}
-                  </div>
 
-                  <div className="relative">
-                    <button
-                      onClick={() => { setInlineAssigneeOpen(!inlineAssigneeOpen); setInlineDueDateOpen(false) }}
-                      className="p-1 hover:bg-gray-100 rounded text-gray-500"
-                    >
-                      <User size={18} />
-                    </button>
-                    {inlineAssigneeOpen && (
-                      <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 shadow-xl rounded-lg py-1 z-50">
-                        <button
-                          onClick={() => { setInlineAssigneeUserId(null); setInlineAssigneeOpen(false) }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${inlineAssigneeUserId === null ? 'bg-blue-50 text-blue-700' : ''}`}
-                        >
-                          <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs"><User size={12} /></div> Unassigned
-                        </button>
-                        {members.filter((member) => member.userId).map((member) => (
-                          <button
-                            key={member.id}
-                            onClick={() => { setInlineAssigneeUserId(member.userId); setInlineAssigneeOpen(false) }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${inlineAssigneeUserId === member.userId ? 'bg-blue-50 text-blue-700' : ''}`}
-                          >
-                            <div className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold">
-                              {getInitials(member.displayName ?? undefined)}
-                            </div>
-                            {member.displayName ?? 'Unnamed member'}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
+                      {renderEstimate(item)}
+                      {viewSettings.showStatus && (
+                        <div className="hidden sm:flex px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase items-center gap-1">
+                          {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
+                        </div>
+                      )}
+                      {renderAssigneeAvatar(item)}
+                    </div>
                   </div>
-                  <button
-                    onClick={handleInlineCreate}
-                    disabled={!inlineSummary.trim()}
-                    className="px-3 py-1 flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-500 font-medium text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Create <CornerDownLeft size={14} />
-                  </button>
+                )
+              })}
+              {backlogItems.length === 0 && (
+                 <div className="px-4 py-8 text-center text-gray-500 text-sm border-b border-gray-100">
+                   Your backlog is empty.
+                 </div>
+              )}
+              {inlineCreateOpen ? (
+                <div className="px-4 py-2 border-2 border-blue-500 m-[-1px] relative z-10 bg-white flex items-center gap-3">
+                  <form onSubmit={handleInlineCreate} className="flex-1 flex items-center gap-2">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={inlineSummary}
+                      onChange={(e) => setInlineSummary(e.target.value)}
+                      placeholder="Describe what needs to be done."
+                      className="w-full text-sm text-gray-900 focus:outline-none placeholder-gray-400"
+                    />
+                  </form>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <button
+                        onClick={() => { setInlineDueDateOpen(!inlineDueDateOpen); setInlineAssigneeOpen(false) }}
+                        className={`p-1 rounded text-gray-500 hover:bg-gray-100 ${inlineDueDate ? 'text-blue-600 font-semibold' : ''}`}
+                        title={inlineDueDate ? `Due: ${inlineDueDate}` : 'Set due date'}
+                      >
+                        <Calendar size={18} />
+                      </button>
+                      {inlineDueDateOpen && (
+                        <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 shadow-xl rounded-lg p-3 z-50">
+                          <div className="text-xs font-semibold text-gray-700 mb-2">Due date</div>
+                          <input
+                            type="date"
+                            value={inlineDueDate}
+                            onChange={(e) => { setInlineDueDate(e.target.value); setInlineDueDateOpen(false) }}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm mb-2 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <button
+                        onClick={() => { setInlineAssigneeOpen(!inlineAssigneeOpen); setInlineDueDateOpen(false) }}
+                        className="p-1 hover:bg-gray-100 rounded text-gray-500"
+                      >
+                        <User size={18} />
+                      </button>
+                      {inlineAssigneeOpen && (
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 shadow-xl rounded-lg py-1 z-50">
+                          <button
+                            onClick={() => { setInlineAssigneeUserId(null); setInlineAssigneeOpen(false) }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${inlineAssigneeUserId === null ? 'bg-blue-50 text-blue-700' : ''}`}
+                          >
+                            <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs"><User size={12} /></div> Unassigned
+                          </button>
+                          {members.filter((member) => member.userId).map((member) => (
+                            <button
+                              key={member.id}
+                              onClick={() => { setInlineAssigneeUserId(member.userId); setInlineAssigneeOpen(false) }}
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 ${inlineAssigneeUserId === member.userId ? 'bg-blue-50 text-blue-700' : ''}`}
+                            >
+                              <div className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold">
+                                {getInitials(member.displayName ?? undefined)}
+                              </div>
+                              {member.displayName ?? 'Unnamed member'}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleInlineCreate}
+                      disabled={!inlineSummary.trim()}
+                      className="px-3 py-1 flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-500 font-medium text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Create <CornerDownLeft size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setInlineCreateOpen(true)}
-                className="w-full px-4 py-2 hover:bg-gray-50 text-left text-sm font-medium text-gray-600 flex items-center gap-2"
-              >
-                <Plus size={16} /> Create
-              </button>
-            )}
-          </div>
+              ) : (
+                <button
+                  onClick={() => setInlineCreateOpen(true)}
+                  className="w-full px-4 py-2 hover:bg-gray-50 text-left text-sm font-medium text-gray-600 flex items-center gap-2"
+                >
+                  <Plus size={16} /> Create
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {reportSprint && (
+          <SprintReportDialog
+            sprintId={reportSprint.id}
+            sprintName={reportSprint.name}
+            onClose={() => setReportSprint(null)}
+          />
         )}
+        </div>
       </div>
 
-      {reportSprint && (
-        <SprintReportDialog
-          sprintId={reportSprint.id}
-          sprintName={reportSprint.name}
-          onClose={() => setReportSprint(null)}
-        />
+      {/* In-page Backlog Ticket Split Pane */}
+      {selectedWorkItem && (
+        <>
+          <div
+            className={`backlog-split-resizer hidden md:flex ${isResizingPanel ? 'is-resizing' : ''}`}
+            onPointerDown={handleStartResizePanel}
+            title="Drag to resize panel"
+          >
+            <div className="backlog-split-resizer-line" />
+            <button
+              type="button"
+              onClick={() => setSelectedWorkItemId(null)}
+              className="backlog-split-resizer-btn"
+              title="Close details"
+              aria-label="Close details"
+            >
+              <ChevronRight size={13} />
+            </button>
+          </div>
+
+          <div
+            style={{ width: `${panelWidth}px` }}
+            className={`backlog-detail-pane flex-shrink-0 border-l border-gray-200 dark:border-[#394047] bg-white dark:bg-[#1d2125] overflow-y-auto h-full ${
+              isResizingPanel ? '!transition-none select-none' : ''
+            }`}
+          >
+            <WorkItemDetailView
+              key={selectedWorkItem.id}
+              layout="panel"
+              item={selectedWorkItem}
+              project={project}
+              workItems={workItems}
+              profile={profile}
+              members={members}
+              priorities={priorities}
+              sprints={sprints}
+              onBack={() => setSelectedWorkItemId(null)}
+              onStatusChange={onStatusChange ?? (() => {})}
+              onOpenWorkItem={(item) => setSelectedWorkItemId(item.id)}
+              onManageWorkTypes={onManageWorkTypes}
+              onExpandToModal={onOpenWorkItemModal ? () => onOpenWorkItemModal(selectedWorkItem) : undefined}
+            />
+          </div>
+        </>
+      )}
+
+      {insightsOpen && (
+        <BacklogInsightsPanel workItems={workItems} sprints={sprints} onClose={() => setInsightsOpen(false)} />
+      )}
+      {viewSettingsOpen && (
+        <BacklogViewSettingsPanel settings={viewSettings} onChange={setViewSettings} onClose={() => setViewSettingsOpen(false)} />
       )}
     </div>
   )
 }
+

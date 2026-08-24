@@ -627,6 +627,8 @@ export interface SprintInsights {
   completedPoints: number
   addedAfterStartPoints: number
   removedAfterStartPoints: number
+  addedAfterStartCount: number
+  removedAfterStartCount: number
   itemsForAttention: SprintAttentionItem[]
   epics: EpicProgress[]
 }
