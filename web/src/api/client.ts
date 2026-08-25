@@ -51,6 +51,7 @@ import type {
   WorkItemCustomFieldValue,
   UpdateSprintInput,
   BoardViewPreference,
+  BacklogViewPreference,
   SprintInsights,
 } from './types'
 import { tenantStorageKey, withAuthHeader } from './auth'
@@ -543,6 +544,18 @@ export const orbitApi = {
       body: JSON.stringify({
         hideDoneItemsAfter: preference.hideDoneItemsAfter,
         columnSizeMode: preference.columnSizeMode,
+        hiddenFields: preference.hiddenFields,
+      }),
+    }),
+  getBacklogViewPreference: (projectId: string) =>
+    request<BacklogViewPreference>(`/projects/${encodeURIComponent(projectId)}/backlog-view-preference`),
+  updateBacklogViewPreference: (projectId: string, preference: BacklogViewPreference) =>
+    request<BacklogViewPreference>(`/projects/${encodeURIComponent(projectId)}/backlog-view-preference`, {
+      method: 'PATCH',
+      headers: { 'If-Match': `"${preference.version}"` },
+      body: JSON.stringify({
+        showEmptySprints: preference.showEmptySprints,
+        density: preference.density,
         hiddenFields: preference.hiddenFields,
       }),
     }),

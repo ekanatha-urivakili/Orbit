@@ -340,6 +340,7 @@ api.MapSlackEndpoints();
 api.MapBoardEndpoints();
 api.MapSprintEndpoints();
 api.MapBoardViewPreferenceEndpoints();
+api.MapBacklogViewPreferenceEndpoints();
 
 app.Run();
 

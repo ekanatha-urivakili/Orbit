@@ -6,7 +6,7 @@ import { useCreateWorkItem } from '../../hooks/useCreateWorkItem'
 import { getInitials } from '../../lib/initials'
 import { SprintReportDialog } from './SprintReportDialog'
 import { BacklogInsightsPanel } from './BacklogInsightsPanel'
-import { BacklogViewSettingsPanel, DEFAULT_BACKLOG_VIEW_SETTINGS, type BacklogViewSettings } from './BacklogViewSettingsPanel'
+import { BacklogViewSettingsPanel } from './BacklogViewSettingsPanel'
 import { SearchableSelect } from '../../components/form/SearchableSelect'
 import { RolloverChoice } from '../board/RolloverChoice'
 import { AssigneePicker } from '../../components/AssigneePicker'
@@ -170,8 +170,14 @@ export function BacklogView({
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
   const [insightsOpen, setInsightsOpen] = useState(false)
   const [viewSettingsOpen, setViewSettingsOpen] = useState(false)
-  const [viewSettings, setViewSettings] = useState<BacklogViewSettings>(DEFAULT_BACKLOG_VIEW_SETTINGS)
-  const rowPaddingClass = viewSettings.density === 'Compact' ? 'py-1' : 'py-2'
+  const backlogViewPreferenceQuery = useQuery({
+    queryKey: ['backlog-view-preference', projectId],
+    queryFn: () => orbitApi.getBacklogViewPreference(projectId),
+  })
+  const showEmptySprints = backlogViewPreferenceQuery.data?.showEmptySprints ?? true
+  const density = backlogViewPreferenceQuery.data?.density ?? 'Default'
+  const hiddenFields = backlogViewPreferenceQuery.data?.hiddenFields ?? []
+  const rowPaddingClass = density === 'Compact' ? 'py-1' : 'py-2'
   const statusesQuery = useQuery({
     queryKey: ['work-item-statuses', projectId],
     queryFn: () => orbitApi.listWorkItemStatuses(projectId),
@@ -298,7 +304,7 @@ export function BacklogView({
   }
 
   const renderEpicChip = (item: WorkItem) => {
-    if (!viewSettings.showEpic || !item.parentId) return null
+    if (hiddenFields.includes('epic') || !item.parentId) return null
     const epic = workItemsById.get(item.parentId)
     if (!epic) return null
     return (
@@ -313,7 +319,7 @@ export function BacklogView({
   }
 
   const renderDueDate = (item: WorkItem) => {
-    if (!viewSettings.showDueDate || !item.dueDate) return null
+    if (hiddenFields.includes('duedate') || !item.dueDate) return null
     return (
       <span className="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-300 whitespace-nowrap">
         <Calendar size={10} /> {formatShortDate(item.dueDate)}
@@ -322,7 +328,7 @@ export function BacklogView({
   }
 
   const renderEstimate = (item: WorkItem) => {
-    if (!viewSettings.showEstimate || item.storyPoints == null) return null
+    if (hiddenFields.includes('estimate') || item.storyPoints == null) return null
     return (
       <span className="hidden sm:inline-flex px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-[10px] font-semibold rounded" title="Story point estimate">
         {item.storyPoints}
@@ -352,7 +358,7 @@ export function BacklogView({
     },
   })
 
-  const visibleOpenSprints = viewSettings.showEmptySprints
+  const visibleOpenSprints = showEmptySprints
     ? openSprints
     : openSprints.filter((sprint) => sprint.workItemIds.some((id) => workItemsById.has(id) && matchesFilters(workItemsById.get(id)!)))
 
@@ -525,7 +531,7 @@ export function BacklogView({
 
                         <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
                           {renderEstimate(item)}
-                          {viewSettings.showStatus && (
+                          {!hiddenFields.includes('status') && (
                             <div className="hidden sm:flex px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600 uppercase items-center gap-1">
                               {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
                             </div>
@@ -663,7 +669,7 @@ export function BacklogView({
 
                     <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
                       {renderEstimate(item)}
-                      {viewSettings.showStatus && (
+                      {!hiddenFields.includes('status') && (
                         <div className="hidden sm:flex px-2 py-1 bg-blue-100 rounded text-xs font-medium text-blue-800 uppercase items-center gap-1">
                           {statusesById.get(item.statusId)?.category === 'ToDo' ? 'To Do' : statusesById.get(item.statusId)?.name ?? 'Unknown'}
                         </div>
@@ -823,7 +829,7 @@ export function BacklogView({
         <BacklogInsightsPanel workItems={workItems} sprints={sprints} onClose={() => setInsightsOpen(false)} />
       )}
       {viewSettingsOpen && (
-        <BacklogViewSettingsPanel settings={viewSettings} onChange={setViewSettings} onClose={() => setViewSettingsOpen(false)} />
+        <BacklogViewSettingsPanel projectId={projectId} onClose={() => setViewSettingsOpen(false)} />
       )}
     </div>
   )
