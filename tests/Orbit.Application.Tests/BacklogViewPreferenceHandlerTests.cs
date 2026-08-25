@@ -10,35 +10,36 @@ using Orbit.Domain.Workspaces;
 
 namespace Orbit.Application.Tests;
 
-public sealed class BoardViewPreferenceHandlerTests
+public sealed class BacklogViewPreferenceHandlerTests
 {
     [Fact]
-    public async Task GetBoardViewPreference_ReturnsZeroVersionSentinel_WhenNoneExists()
+    public async Task GetBacklogViewPreference_ReturnsZeroVersionSentinel_WhenNoneExists()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
-        var handler = new GetBoardViewPreferenceHandler(
+        var handler = new GetBacklogViewPreferenceHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(userId),
             new ProjectRepositoryStub(project),
             new SettingsRepositoryStub());
 
-        var result = await handler.Handle(new GetBoardViewPreferenceQuery(project.Id), CancellationToken.None);
+        var result = await handler.Handle(new GetBacklogViewPreferenceQuery(project.Id), CancellationToken.None);
 
         Assert.Equal(0, result.Version);
-        Assert.Equal(HideDoneItemsAfter.Never, result.HideDoneItemsAfter);
+        Assert.True(result.ShowEmptySprints);
+        Assert.Equal(BacklogRowDensity.Default, result.Density);
         Assert.Empty(result.HiddenFields);
     }
 
     [Fact]
-    public async Task UpdateBoardViewPreference_CreatesOnFirstSave()
+    public async Task UpdateBacklogViewPreference_CreatesOnFirstSave()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
         var settings = new SettingsRepositoryStub();
-        var handler = new UpdateBoardViewPreferenceHandler(
+        var handler = new UpdateBacklogViewPreferenceHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(userId),
             new ProjectRepositoryStub(project),
@@ -47,23 +48,23 @@ public sealed class BoardViewPreferenceHandlerTests
             TimeProvider.System);
 
         var result = await handler.Handle(
-            new UpdateBoardViewPreferenceCommand(project.Id, HideDoneItemsAfter.OneWeek, BoardColumnSizeMode.Fixed, ["priority"], 0),
+            new UpdateBacklogViewPreferenceCommand(project.Id, false, BacklogRowDensity.Compact, ["estimate"], 0),
             CancellationToken.None);
 
-        Assert.Equal(HideDoneItemsAfter.OneWeek, result.HideDoneItemsAfter);
-        Assert.Equal(BoardColumnSizeMode.Fixed, result.ColumnSizeMode);
-        Assert.Equal(["priority"], result.HiddenFields);
+        Assert.False(result.ShowEmptySprints);
+        Assert.Equal(BacklogRowDensity.Compact, result.Density);
+        Assert.Equal(["estimate"], result.HiddenFields);
         Assert.NotNull(settings.Added);
     }
 
     [Fact]
-    public async Task UpdateBoardViewPreference_RejectsStaleVersion()
+    public async Task UpdateBacklogViewPreference_RejectsStaleVersion()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var project = Project.Create(tenantId, "ORB", "Orbit", DateTimeOffset.UtcNow);
-        var existing = BoardViewPreference.Create(tenantId, userId, project.Id, DateTimeOffset.UtcNow);
-        var handler = new UpdateBoardViewPreferenceHandler(
+        var existing = BacklogViewPreference.Create(tenantId, userId, project.Id, DateTimeOffset.UtcNow);
+        var handler = new UpdateBacklogViewPreferenceHandler(
             new TenantContextStub(tenantId),
             new CurrentPrincipalStub(userId),
             new ProjectRepositoryStub(project),
@@ -72,7 +73,7 @@ public sealed class BoardViewPreferenceHandlerTests
             TimeProvider.System);
 
         var action = () => handler.Handle(
-            new UpdateBoardViewPreferenceCommand(project.Id, HideDoneItemsAfter.Never, BoardColumnSizeMode.Flexible, [], 5),
+            new UpdateBacklogViewPreferenceCommand(project.Id, true, BacklogRowDensity.Default, [], 5),
             CancellationToken.None);
 
         await Assert.ThrowsAsync<ConcurrencyException>(action);
@@ -109,9 +110,9 @@ public sealed class BoardViewPreferenceHandlerTests
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken) => Task.FromResult(1);
     }
 
-    private sealed class SettingsRepositoryStub(BoardViewPreference? existing = null) : ISettingsRepository
+    private sealed class SettingsRepositoryStub(BacklogViewPreference? existing = null) : ISettingsRepository
     {
-        public BoardViewPreference? Added { get; private set; }
+        public BacklogViewPreference? Added { get; private set; }
 
         public Task<UserAccount?> GetUserAccountAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<UserAccount?>(null);
@@ -151,11 +152,11 @@ public sealed class BoardViewPreferenceHandlerTests
 
         public Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
             Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
-            Task.FromResult(existing);
+            Task.FromResult<BoardViewPreference?>(null);
 
         public Task<BacklogViewPreference?> GetBacklogViewPreferenceAsync(
             Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
-            Task.FromResult<BacklogViewPreference?>(null);
+            Task.FromResult(existing);
 
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
@@ -174,13 +175,13 @@ public sealed class BoardViewPreferenceHandlerTests
         public Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
-        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken)
+        public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBacklogViewPreferenceAsync(BacklogViewPreference preference, CancellationToken cancellationToken)
         {
             Added = preference;
             return Task.CompletedTask;
         }
-
-        public Task AddBacklogViewPreferenceAsync(BacklogViewPreference preference, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
     }
 }

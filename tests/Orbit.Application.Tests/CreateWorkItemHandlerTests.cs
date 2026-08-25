@@ -366,6 +366,10 @@ public sealed class CreateWorkItemHandlerTests
             Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
             Task.FromResult<BoardViewPreference?>(null);
 
+        public Task<BacklogViewPreference?> GetBacklogViewPreferenceAsync(
+            Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken) =>
+            Task.FromResult<BacklogViewPreference?>(null);
+
         public Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
@@ -384,6 +388,9 @@ public sealed class CreateWorkItemHandlerTests
             Task.CompletedTask;
 
         public Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddBacklogViewPreferenceAsync(BacklogViewPreference preference, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

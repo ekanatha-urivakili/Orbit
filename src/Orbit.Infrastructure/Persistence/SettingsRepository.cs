@@ -116,4 +116,18 @@ internal sealed class SettingsRepository(OrbitDbContext dbContext) : ISettingsRe
 
     public async Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken) =>
         await dbContext.BoardViewPreferences.AddAsync(preference, cancellationToken);
+
+    public Task<BacklogViewPreference?> GetBacklogViewPreferenceAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid projectId,
+        CancellationToken cancellationToken) =>
+        dbContext.BacklogViewPreferences.SingleOrDefaultAsync(
+            preference => preference.TenantId == tenantId
+                && preference.UserId == userId
+                && preference.ProjectId == projectId,
+            cancellationToken);
+
+    public async Task AddBacklogViewPreferenceAsync(BacklogViewPreference preference, CancellationToken cancellationToken) =>
+        await dbContext.BacklogViewPreferences.AddAsync(preference, cancellationToken);
 }

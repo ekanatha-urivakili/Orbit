@@ -480,3 +480,71 @@ public sealed class BoardViewPreference
         UpdatedAt = now;
     }
 }
+
+public enum BacklogRowDensity
+{
+    Default,
+    Compact
+}
+
+/// <summary>
+/// A single user's per-project overrides for the backlog "View settings" panel (empty-sprint
+/// visibility, row density, field visibility) - the backlog counterpart of
+/// <see cref="BoardViewPreference"/>, §13.5.6's "Not yet done: persisting backlog view settings" gap.
+/// </summary>
+public sealed class BacklogViewPreference
+{
+    private BacklogViewPreference()
+    {
+    }
+
+    private BacklogViewPreference(Guid tenantId, Guid userId, Guid projectId, DateTimeOffset now)
+    {
+        TenantId = tenantId;
+        UserId = userId;
+        ProjectId = projectId;
+        ShowEmptySprints = true;
+        Density = BacklogRowDensity.Default;
+        HiddenFields = [];
+        Version = 1;
+        UpdatedAt = now;
+    }
+
+    public Guid TenantId { get; private set; }
+    public Guid UserId { get; private set; }
+    public Guid ProjectId { get; private set; }
+    public bool ShowEmptySprints { get; private set; }
+    public BacklogRowDensity Density { get; private set; }
+    public string[] HiddenFields { get; private set; } = [];
+    public long Version { get; private set; }
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    public static BacklogViewPreference Create(Guid tenantId, Guid userId, Guid projectId, DateTimeOffset now) =>
+        tenantId == Guid.Empty || userId == Guid.Empty || projectId == Guid.Empty
+            ? throw new DomainException("Tenant, user, and project ids are required.")
+            : new BacklogViewPreference(tenantId, userId, projectId, now);
+
+    public void Update(
+        bool showEmptySprints,
+        BacklogRowDensity density,
+        IEnumerable<string> hiddenFields,
+        DateTimeOffset now)
+    {
+        var normalized = hiddenFields
+            .Where(field => !string.IsNullOrWhiteSpace(field))
+            .Select(field => field.Trim().ToLowerInvariant())
+            .Distinct()
+            .OrderBy(field => field, StringComparer.Ordinal)
+            .ToArray();
+        if (normalized.Length > 50)
+        {
+            throw new DomainException("Too many hidden fields.");
+        }
+
+        ShowEmptySprints = showEmptySprints;
+        Density = density;
+        HiddenFields = normalized;
+        Version++;
+        UpdatedAt = now;
+    }
+}

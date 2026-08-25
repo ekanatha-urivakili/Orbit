@@ -1,22 +1,8 @@
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
-
-export interface BacklogViewSettings {
-  showEmptySprints: boolean
-  density: 'Default' | 'Compact'
-  showEpic: boolean
-  showDueDate: boolean
-  showStatus: boolean
-  showEstimate: boolean
-}
-
-export const DEFAULT_BACKLOG_VIEW_SETTINGS: BacklogViewSettings = {
-  showEmptySprints: true,
-  density: 'Default',
-  showEpic: true,
-  showDueDate: true,
-  showStatus: true,
-  showEstimate: true,
-}
+import { orbitApi } from '../../api/client'
+import type { BacklogRowDensity } from '../../api/types'
 
 function Toggle({ checked, disabled, onChange }: { checked: boolean; disabled?: boolean; onChange?: () => void }) {
   return (
@@ -40,22 +26,57 @@ function Toggle({ checked, disabled, onChange }: { checked: boolean; disabled?: 
   )
 }
 
-const FIELD_ROWS: { key: keyof BacklogViewSettings; label: string }[] = [
-  { key: 'showEpic', label: 'Epic' },
-  { key: 'showDueDate', label: 'Due date' },
-  { key: 'showStatus', label: 'Status' },
-  { key: 'showEstimate', label: 'Estimate' },
+const FIELD_ROWS: { key: string; label: string }[] = [
+  { key: 'epic', label: 'Epic' },
+  { key: 'dueDate', label: 'Due date' },
+  { key: 'status', label: 'Status' },
+  { key: 'estimate', label: 'Estimate' },
 ]
 
-export function BacklogViewSettingsPanel({
-  settings,
-  onChange,
-  onClose,
-}: {
-  settings: BacklogViewSettings
-  onChange: (settings: BacklogViewSettings) => void
-  onClose: () => void
-}) {
+export function BacklogViewSettingsPanel({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    queryKey: ['backlog-view-preference', projectId],
+    queryFn: () => orbitApi.getBacklogViewPreference(projectId),
+  })
+  const preference = query.data
+  const [pendingError, setPendingError] = useState<string | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: (input: { showEmptySprints: boolean; density: BacklogRowDensity; hiddenFields: string[] }) =>
+      orbitApi.updateBacklogViewPreference(projectId, {
+        projectId,
+        version: preference?.version ?? 0,
+        ...input,
+      }),
+    onSuccess: () => {
+      setPendingError(null)
+      queryClient.invalidateQueries({ queryKey: ['backlog-view-preference', projectId] })
+    },
+    onError: (error: Error) => setPendingError(error.message),
+  })
+
+  if (!preference) {
+    return (
+      <aside className="w-[360px] shrink-0 border-l border-gray-200 dark:border-[#394047] bg-white dark:bg-[#1d2125] h-full overflow-y-auto z-20">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-[#394047]">
+          <h2 className="text-base font-bold text-[#172b4d] dark:text-gray-100">View settings</h2>
+          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <p className="px-5 py-6 text-sm text-gray-500">{query.isError ? query.error.message : 'Loading…'}</p>
+      </aside>
+    )
+  }
+
+  const toggleField = (key: string) => {
+    const hiddenFields = preference.hiddenFields.includes(key)
+      ? preference.hiddenFields.filter((field) => field !== key)
+      : [...preference.hiddenFields, key]
+    mutation.mutate({ showEmptySprints: preference.showEmptySprints, density: preference.density, hiddenFields })
+  }
+
   return (
     <aside className="w-[360px] shrink-0 border-l border-gray-200 dark:border-[#394047] bg-white dark:bg-[#1d2125] h-full overflow-y-auto z-20">
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-[#394047]">
@@ -66,6 +87,8 @@ export function BacklogViewSettingsPanel({
       </div>
 
       <div className="p-5 space-y-6">
+        {pendingError && <p className="form-error text-xs">{pendingError}</p>}
+
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Epic panel</span>
           <Toggle checked={false} disabled />
@@ -74,8 +97,14 @@ export function BacklogViewSettingsPanel({
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Empty sprints</span>
           <Toggle
-            checked={settings.showEmptySprints}
-            onChange={() => onChange({ ...settings, showEmptySprints: !settings.showEmptySprints })}
+            checked={preference.showEmptySprints}
+            onChange={() =>
+              mutation.mutate({
+                showEmptySprints: !preference.showEmptySprints,
+                density: preference.density,
+                hiddenFields: preference.hiddenFields,
+              })
+            }
           />
         </div>
 
@@ -87,8 +116,14 @@ export function BacklogViewSettingsPanel({
                 <input
                   type="radio"
                   name="backlog-density"
-                  checked={settings.density === option}
-                  onChange={() => onChange({ ...settings, density: option })}
+                  checked={preference.density === option}
+                  onChange={() =>
+                    mutation.mutate({
+                      showEmptySprints: preference.showEmptySprints,
+                      density: option,
+                      hiddenFields: preference.hiddenFields,
+                    })
+                  }
                   className="accent-blue-600"
                 />
                 {option}
@@ -111,7 +146,10 @@ export function BacklogViewSettingsPanel({
             {FIELD_ROWS.map((field) => (
               <div key={field.key} className="flex items-center justify-between py-2 text-xs">
                 <span className="text-gray-700 dark:text-gray-200 font-medium">{field.label}</span>
-                <Toggle checked={settings[field.key] as boolean} onChange={() => onChange({ ...settings, [field.key]: !settings[field.key] })} />
+                <Toggle
+                  checked={!preference.hiddenFields.includes(field.key.toLowerCase())}
+                  onChange={() => toggleField(field.key.toLowerCase())}
+                />
               </div>
             ))}
           </div>

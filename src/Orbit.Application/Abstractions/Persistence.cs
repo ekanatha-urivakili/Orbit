@@ -102,12 +102,15 @@ public interface ISettingsRepository
     Task<ProjectSetting?> GetProjectSettingAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken);
     Task<BoardViewPreference?> GetBoardViewPreferenceAsync(
         Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken);
+    Task<BacklogViewPreference?> GetBacklogViewPreferenceAsync(
+        Guid tenantId, Guid userId, Guid projectId, CancellationToken cancellationToken);
     Task AddUserPreferenceAsync(UserPreference preference, CancellationToken cancellationToken);
     Task AddNotificationPreferenceAsync(NotificationPreference preference, CancellationToken cancellationToken);
     Task AddWorkspaceSettingAsync(WorkspaceSetting setting, CancellationToken cancellationToken);
     Task AddWorkspaceTypographySettingAsync(WorkspaceTypographySetting setting, CancellationToken cancellationToken);
     Task AddProjectSettingAsync(ProjectSetting setting, CancellationToken cancellationToken);
     Task AddBoardViewPreferenceAsync(BoardViewPreference preference, CancellationToken cancellationToken);
+    Task AddBacklogViewPreferenceAsync(BacklogViewPreference preference, CancellationToken cancellationToken);
 }
 
 public interface IWorkItemTypeRepository

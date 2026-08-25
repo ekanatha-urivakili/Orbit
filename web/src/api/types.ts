@@ -592,6 +592,16 @@ export interface BoardViewPreference {
   version: number
 }
 
+export type BacklogRowDensity = 'Default' | 'Compact'
+
+export interface BacklogViewPreference {
+  projectId: string
+  showEmptySprints: boolean
+  density: BacklogRowDensity
+  hiddenFields: string[]
+  version: number
+}
+
 export interface SprintAttentionItem {
   workItemId: string
   key: string
