@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -51,7 +52,7 @@ builder.Host.UseSerilog((context, loggerConfiguration) =>
     {
         loggerConfiguration.WriteTo.Console(new CompactJsonFormatter());
     }
-});
+}, writeToProviders: true);
 
 const string bearerScheme = "OrbitBearer";
 const string localBearerScheme = "OrbitLocalBearer";
@@ -225,6 +226,8 @@ builder.Services.AddCors(options =>
 // or not Redis is configured for this environment.
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("orbit-api"))
+    .WithLogging(logging => logging
+        .AddOtlpExporter())
     .WithTracing(tracing => tracing
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()

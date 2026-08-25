@@ -462,6 +462,18 @@ public sealed class BoardViewPreference
         IEnumerable<string> hiddenFields,
         DateTimeOffset now)
     {
+        HideDoneItemsAfter = hideDoneItemsAfter;
+        ColumnSizeMode = columnSizeMode;
+        HiddenFields = ViewPreferenceFields.NormalizeHiddenFields(hiddenFields);
+        Version++;
+        UpdatedAt = now;
+    }
+}
+
+internal static class ViewPreferenceFields
+{
+    public static string[] NormalizeHiddenFields(IEnumerable<string> hiddenFields)
+    {
         var normalized = hiddenFields
             .Where(field => !string.IsNullOrWhiteSpace(field))
             .Select(field => field.Trim().ToLowerInvariant())
@@ -473,11 +485,7 @@ public sealed class BoardViewPreference
             throw new DomainException("Too many hidden fields.");
         }
 
-        HideDoneItemsAfter = hideDoneItemsAfter;
-        ColumnSizeMode = columnSizeMode;
-        HiddenFields = normalized;
-        Version++;
-        UpdatedAt = now;
+        return normalized;
     }
 }
 
@@ -530,20 +538,9 @@ public sealed class BacklogViewPreference
         IEnumerable<string> hiddenFields,
         DateTimeOffset now)
     {
-        var normalized = hiddenFields
-            .Where(field => !string.IsNullOrWhiteSpace(field))
-            .Select(field => field.Trim().ToLowerInvariant())
-            .Distinct()
-            .OrderBy(field => field, StringComparer.Ordinal)
-            .ToArray();
-        if (normalized.Length > 50)
-        {
-            throw new DomainException("Too many hidden fields.");
-        }
-
         ShowEmptySprints = showEmptySprints;
         Density = density;
-        HiddenFields = normalized;
+        HiddenFields = ViewPreferenceFields.NormalizeHiddenFields(hiddenFields);
         Version++;
         UpdatedAt = now;
     }

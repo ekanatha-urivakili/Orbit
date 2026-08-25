@@ -100,8 +100,7 @@ drop, or add a `NOT NULL` column without a default in the same deploy).
 - No workflow builds or pushes `Dockerfile.api` / `Dockerfile.worker` / `Dockerfile.web` — the
   Railway deploy relies on Railway's own build (`railway up` uploads source and builds remotely),
   so the Dockerfiles are validated only by Railway itself, never by CI.
-- No CI job runs Playwright / `test:e2e` (the script doesn't exist yet in `web/package.json`
-  despite being documented as a project command in `CLAUDE.md`).
+- CI currently runs unit, integration, architecture, and smoke tests, but full end-to-end browser regression testing across all user flows remains an ongoing expansion beyond the initial Playwright smoke test.
 - No CodeQL / static-analysis security scanning, no secret scanning workflow (GitHub's native
   secret scanning may be on at the repo-settings level, but nothing in-workflow).
 - No automatic deploy path — `deploy-railway.yml` is 100% manual, dispatched by a human.
