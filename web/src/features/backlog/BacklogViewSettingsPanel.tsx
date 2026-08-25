@@ -49,9 +49,9 @@ export function BacklogViewSettingsPanel({ projectId, onClose }: { projectId: st
         version: preference?.version ?? 0,
         ...input,
       }),
-    onSuccess: (data) => {
+    onSuccess: () => {
       setPendingError(null)
-      queryClient.setQueryData(['backlog-view-preference', projectId], data)
+      queryClient.invalidateQueries({ queryKey: ['backlog-view-preference', projectId] })
     },
     onError: (error: Error) => setPendingError(error.message),
   })
