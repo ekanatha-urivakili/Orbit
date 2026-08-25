@@ -21,6 +21,13 @@ vi.mock('../../api/client', () => ({
     listWorkItemLinks: vi.fn().mockResolvedValue([]),
     listWorkItemComments: vi.fn().mockResolvedValue([]),
     listTeams: vi.fn().mockResolvedValue([]),
+    getBacklogViewPreference: vi.fn().mockResolvedValue({
+      projectId: 'project-1',
+      showEmptySprints: true,
+      density: 'Default',
+      hiddenFields: [],
+      version: 0,
+    }),
   },
 }))
 

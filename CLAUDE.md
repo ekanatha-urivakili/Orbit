@@ -15,7 +15,7 @@ Orbit is an open-source, headless sprint/Kanban work-management platform: a .NET
 ./scripts/start-local-services.sh  # Postgres 18 + Valkey 9.1 only (podman compose)
 ./scripts/migrate.sh            # applies EF migrations
 dotnet run --project src/Orbit.Api      # API only, http://localhost:5014
-cd web && npm run dev           # PWA only, http://localhost:5173
+cd web && npm run dev           # PWA only, http://localhost:5800
 ```
 
 `dotnet tool restore` once after cloning (pins `dotnet-ef` per `.config/dotnet-tools.json`).
@@ -45,18 +45,18 @@ npm run lint        # oxlint
 npm test            # vitest run
 npx vitest run path/to/file.test.ts   # single file
 npm run test:e2e    # Playwright (see README)
-npm run lint:docs   # markdownlint over the two root .md files
+npm run lint:docs   # markdownlint over the four root .md files
 ```
 
 ## Architecture
 
 ### Backend layering
 
-`src/Orbit.Domain` → `src/Orbit.Application` → `src/Orbit.Infrastructure` → `src/Orbit.Api` (+ `src/Orbit.Worker`, currently a bare `IHostedService` stub not yet wired to Infrastructure — background job processing is a tracked future increment, not existing code to extend casually).
+`src/Orbit.Domain` → `src/Orbit.Application` → `src/Orbit.Infrastructure` → `src/Orbit.Api` (+ `src/Orbit.Worker`, processing transactional outbox email delivery and ClamAV attachment scanning via `OutboxDispatchWorker` and `AttachmentScanDispatchWorker`).
 
 `tests/Orbit.ArchitectureTests/LayerDependencyTests.cs` enforces this with NetArchTest: Domain must not depend on Application/Infrastructure/Api; Application must not depend on Infrastructure/Api; Infrastructure must not depend on Api. A change that violates this fails the test, not just a review comment.
 
-Each bounded-context folder (`Choices`, `Directory`, `Identity`, `Projects`, `Settings`, `WorkItems`, `Workspaces`, `Access`, `Boards`, …) is mirrored across Domain → Application → Infrastructure, e.g. `Domain/Directory/DirectoryModels.cs` (aggregates) → `Application/Directory/Teams.cs` (commands/queries/handlers) → `Infrastructure/Persistence/TeamConfiguration.cs` + `TeamRepository.cs`. New features should follow whichever existing folder is the closest structural match (see `ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md` §2.1 for the bounded-context map) rather than inventing a new layout.
+Each bounded-context folder (`Choices`, `Directory`, `Identity`, `Projects`, `Settings`, `WorkItems`, `Workspaces`, `Access`, `Boards`, `Integrations`, `Organizations`, …) is mirrored across Domain → Application → Infrastructure, e.g. `Domain/Directory/DirectoryModels.cs` (aggregates) → `Application/Directory/Teams.cs` (commands/queries/handlers) → `Infrastructure/Persistence/TeamConfiguration.cs` + `TeamRepository.cs`. New features should follow whichever existing folder is the closest structural match (see `ORBIT-WORK-MANAGEMENT-ARCHITECTURE.md` §2.1 for the bounded-context map) rather than inventing a new layout.
 
 Application-layer convention: one file per feature holds the DTO record(s), `ICommand<T>`/`IQuery<T>` records, `AbstractValidator<T>` (FluentValidation), and the MediatR `IRequestHandler<TRequest, TResponse>` together — see `Application/Directory/Teams.cs` or `Application/Settings/ManageSettings.cs`. Repositories are interfaces in the single `Application/Abstractions/Persistence.cs` file, implemented as `internal sealed` classes in `Infrastructure/Persistence/`.
 
@@ -68,8 +68,8 @@ Permission checks are query-level predicates, not post-hoc filters: `IProjectRep
 
 ### Versioned/settings-style resources
 
-Any aggregate that's a per-project or per-workspace singleton (`ProjectSetting`, `WorkspaceSetting`, `Board`, …) follows the same shape: a `Version` concurrency token, a GET endpoint that returns a zero-version sentinel DTO when the row doesn't exist yet, and a single PATCH endpoint that both creates (when `If-Match` is `0`) and updates (otherwise) — see `Application/Settings/ManageSettings.cs` + `Api/Endpoints/SettingsEndpoints.cs`, and its `SettingsConcurrency.EnsureVersion` helper (reused across bounded contexts, not just Settings). `SettingsEndpoints.TryParseVersion`/`PreconditionRequired` are the shared `If-Match` parsing helpers other endpoint files call into.
+Any aggregate that's a per-project or per-workspace singleton (`ProjectSetting`, `WorkspaceSetting`, `Board`, `BoardViewPreference`, `BacklogViewPreference`, …) follows the same shape: a `Version` concurrency token, a GET endpoint that returns a zero-version sentinel DTO when the row doesn't exist yet, and a single PATCH endpoint that both creates (when `If-Match` is `0`) and updates (otherwise) — see `Application/Settings/ManageSettings.cs` + `Api/Endpoints/SettingsEndpoints.cs`, and its `SettingsConcurrency.EnsureVersion` helper (reused across bounded contexts, not just Settings). `SettingsEndpoints.TryParseVersion`/`PreconditionRequired` are the shared `If-Match` parsing helpers other endpoint files call into.
 
 ### Frontend (`web/src`)
 
-No per-feature hooks/API modules convention beyond one exception (`hooks/useCreateWorkItem.ts`, extracted because it's reused in two places). Everything else — every query and mutation — lives inline in `App.tsx` via `@tanstack/react-query`, with `queryClient.setQueryData` used for optimistic cache updates rather than `invalidateQueries` in most cases. `api/client.ts` is a single flat `orbitApi` object of request functions; `api/types.ts` is flat `type`/`interface` declarations mirroring the C# enums/DTOs as string unions. Feature components under `features/*` are mostly presentational, receiving data and mutation callbacks as props from `App.tsx` rather than fetching themselves. Styling mixes a custom BEM-ish stylesheet (`App.css` — `.dialog`, `.onboarding`, `.board-header`, `.primary-button`, etc.) with inline Tailwind utility classes; check `App.css` for an existing class before adding new bespoke CSS.
+Shared hooks under `hooks/` cover cross-cutting UI logic (`useCreateWorkItem.ts`, `useDraft.ts` for encrypted IndexedDB autosave, `useWorkItemFilters.ts`, `useInstallPrompt.ts`). Everything else — query and mutation coordination — lives in `App.tsx` via `@tanstack/react-query`, with `queryClient.setQueryData` used for optimistic cache updates where appropriate. `api/client.ts` is a single flat `orbitApi` object of request functions; `api/types.ts` is flat `type`/`interface` declarations mirroring the C# enums/DTOs as string unions. Feature components under `features/*` are organized by domain (board, backlog, workitems, settings, summary, timeline, home) and receive data and mutation callbacks as props. Styling mixes a custom BEM-ish stylesheet (`App.css` — `.dialog`, `.onboarding`, `.board-header`, `.primary-button`, etc.) with Tailwind utility classes; check `App.css` for an existing class before adding new bespoke CSS.

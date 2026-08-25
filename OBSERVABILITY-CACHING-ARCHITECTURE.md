@@ -14,25 +14,36 @@ Established by direct inspection of the codebase, not aspiration.
 
 ### 1.1 Observability — implemented
 
+Rollout steps 1-5 and 8 (§7) are complete — this section previously described these as gaps/targets; it has been corrected against the current code and `deploy/` tree, not left as aspiration.
+
 | Concern | Status | Where |
 |---|---|---|
-| Tracing (OpenTelemetry) | Wired for API and Worker | `src/Orbit.Api/Program.cs:198-211`, `src/Orbit.Worker/Program.cs:20-31` |
+| Correlation id middleware | Implemented exactly per §4.1's decision: after `UseForwardedHeaders`, before `UseExceptionHandler`, GUID-validated, sets `TraceIdentifier`, adds `X-Correlation-Id` response header via `OnStarting` (survives exception-handler rewrites), opens `ILogger` scope with `CorrelationId`+`TraceId` | `src/Orbit.Api/Observability/CorrelationIdMiddleware.cs`, wired at `Program.cs:267` |
+| `TenantTransactionMiddleware` failure-path logging + `TenantId` scope | Implemented — nested log scope at entry, `LogWarning` on both rollback paths | `src/Orbit.Api/Tenancy/TenantTransactionMiddleware.cs:88,103,201` |
+| Structured logging (Serilog) | Implemented — compact JSON to stdout outside `Development`, human-readable console in `Development`, `Enrich.FromLogContext()` picks up the correlation/tenant scopes for free | `src/Orbit.Api/Program.cs:34-39` |
+| Tracing (OpenTelemetry) | Wired for API and Worker; `ConfigureResource(...AddService("orbit-api"))`, ASP.NET Core + HttpClient + Npgsql + Redis instrumentation | `src/Orbit.Api/Program.cs:226-233`, `src/Orbit.Worker/Program.cs` |
 | Trace propagation across outbox hop | Implemented via stored `trace_parent` column, not in-process `Activity` | `OutboxEmailProcessor.ActivitySourceName` |
-| Metrics (OpenTelemetry) | Wired; ASP.NET Core, HttpClient, Npgsql, Redis instrumentation + custom meter | `src/Orbit.Api/Program.cs:198-211`, `src/Orbit.Infrastructure/RateLimiting/RateLimitTelemetry.cs` |
-| OTLP export | Configured, defaults to `localhost:4317` | `src/Orbit.Api/Program.cs`, `src/Orbit.Worker/Program.cs` |
-| Health endpoints | Hand-rolled minimal API, not the `Microsoft.Extensions.Diagnostics.HealthChecks` package | `src/Orbit.Api/Program.cs:274-277`, `src/Orbit.Api/Endpoints/HealthEndpoints.cs:11-39` |
+| Metrics (OpenTelemetry) | Wired; ASP.NET Core, HttpClient, runtime instrumentation + custom meters (`RateLimitTelemetry`, `CacheTelemetry`, `Microsoft.Extensions.Caching.Hybrid`) | `src/Orbit.Api/Program.cs:234-241` |
+| OTLP export | Configured, defaults to `localhost:4317` (standard `OTEL_EXPORTER_OTLP_*` env vars) | `src/Orbit.Api/Program.cs`, `src/Orbit.Worker/Program.cs` |
+| **OTel Collector deployed** | `otel-collector` service (`otel/opentelemetry-collector-contrib:0.159.0`) receives OTLP on 4317 (gRPC) / 4318 (HTTP) and fans out to Prometheus (scrape endpoint `:8889`), Loki (`otlphttp` push), Tempo (`otlp` push), plus a `debug` exporter for `podman logs` visibility | `deploy/podman/compose.yaml:84-101`, `deploy/otel/otel-collector-config.yaml` |
+| **Metrics store deployed** | Prometheus, scrapes `otel-collector:8889` every 15 s | `deploy/podman/compose.yaml:103-115`, `deploy/prometheus/prometheus.yml` |
+| **Log store deployed** | Loki, filesystem storage, receives pushes over its native OTLP endpoint | `deploy/podman/compose.yaml:117-130`, `deploy/loki/loki-config.yaml` |
+| **Trace store deployed** | Tempo, local filesystem backend | `deploy/podman/compose.yaml:132-142`, `deploy/tempo/tempo.yaml` |
+| **Dashboards deployed** | Grafana, all three datasources pre-provisioned (zero manual setup) | `deploy/podman/compose.yaml:144-166`, `deploy/grafana/provisioning/datasources/datasources.yaml` |
+| Health endpoints | Hand-rolled minimal API (not the `HealthChecks` package); `/health/ready` runs DB `CanConnectAsync` and a cache set+get round-trip concurrently, each bounded by a 2 s linked-token timeout | `src/Orbit.Api/Endpoints/HealthEndpoints.cs` |
+| `/health/ready` wired into Railway | `api.railway.json`'s `healthcheckPath` is `/health/ready`; `web.railway.json` correctly left on `/health/live` (static nginx build, nothing to check) | `deploy/railway/api.railway.json` |
+| Frontend error capture | `@sentry/react` wired via `web/src/lib/sentry.ts`, hooked into the shared `QueryClient`'s `onError` (§5.4) rather than hardcoded into `queryClient.ts` | `web/package.json`, `web/src/lib/sentry.ts`, `web/src/lib/queryClient.ts` |
+| `HybridCache` + `TenantCacheKey` + fail-open wrapper | Implemented (§5.1 principles 2, 5, 6), consumed by board and work-item-status config caching | `src/Orbit.Application/Caching/TenantCacheKey.cs`, `CacheFailOpen.cs`, `CacheTelemetry.cs`, `src/Orbit.Application/Boards/ManageBoard.cs`, `src/Orbit.Application/Configuration/ManageWorkItemStatuses.cs` |
+| React Query global defaults | Implemented in `createQueryClient` (`retry: 1, refetchOnWindowFocus: false, staleTime: 0, gcTime: 5 min`); per-query overrides for reference data / board views live at call sites in `App.tsx` per §5.4's policy table | `web/src/lib/queryClient.ts` |
 
-### 1.2 Observability — gaps
+### 1.2 Observability — remaining gaps
 
 | Gap | Why it matters |
 |---|---|
-| No structured logging framework (plain `ILogger` → console) | No sinks, no structured JSON output, nothing to ship to a log store |
-| No correlation/request ID middleware | A trace has an id; a log line does not carry it, so logs cannot be joined to traces |
-| `TenantTransactionMiddleware` logs nothing | The one middleware that touches every tenant-scoped request emits no signal on failure paths |
-| No OTel Collector deployed | `orbit-otel` is referenced in the main architecture doc as a target (§3.3) but no compose/Railway service exists; OTLP export currently has nowhere to land outside local dev |
-| No dashboards/alerts | The §8.2 signal table in the main doc is a target schema, not a deployed Grafana/equivalent instance |
-| No frontend error tracking | No Sentry or equivalent in `web/`; client exceptions are invisible |
-| `/health/ready` not wired into Railway | `deploy/railway/*.railway.json` only check `/health/live`, so a broken DB/cache connection does not fail a deploy health check |
+| No authored Grafana dashboards/alert rules | The datasources are provisioned and queryable ad hoc, but no `deploy/grafana/provisioning/dashboards/*.json` exists yet and the §8.2 signal table in the main doc (most of those metrics come from features — WQL, agile projections, automations — not yet built) has no Prometheus alerting rules wired to it |
+| No production/staging log or trace forwarding decision made | The local-dev stack (Collector → Prometheus/Loki/Tempo/Grafana) has no Railway equivalent; `deploy/railway/` has no `otel-collector`/`prometheus`/`loki`/`tempo`/`grafana` service definitions, so OTLP export from a deployed API/Worker currently has nowhere to land outside local dev |
+| WQL result caching (§5.2 row 3) | Blocked on WQL itself shipping — parser/handler/`/api/v1/search` endpoint do not exist yet, not a caching-scope decision |
+| Board read-model caching is partial | `Board.Epoch` invalidation covers the board's own columns/config only; work items on a board are still fetched via uncached `ListWorkItemsQuery`, so `ChangeWorkItemStatusHandler`/`ReorderWorkItemHandler` do not bump `Board.Epoch` (see §5.2's implementation-status note) |
 
 ### 1.3 Caching — implemented
 
@@ -297,3 +308,114 @@ Matches the "smallest safe increment" pattern the main doc's §13.5 backlog alre
 6. React Query `staleTime`/`gcTime` policy (§5.4), including assigning each existing query key to a class — frontend-only, no backend dependency, can land any time after step 1 if correlation-id-tagged client errors aren't a blocker.
 7. Board read-model caching (§5.2 row 1) and WQL result caching (§5.2 row 3) — deferred last: highest invalidation complexity, directly targets §8.3 performance budgets once the cheaper wins are in and the shared primitives from step 5 are proven.
 8. Frontend error capture wired to correlation id (§4.5) and dashboards/alerts (§8.2 of the main doc) — vendor/tooling decision, sequenced last since it depends on the Collector (step 4) existing to receive anything and on a chosen production trace/log backend (§4.2, §4.3) to forward into.
+
+## 8. Deployed local observability stack — HLD, LLD, and usage
+
+Steps 1-5 and 8 of §7 are done (§1.1). This section documents the stack as it actually runs via `deploy/podman/compose.yaml`, not as a future target.
+
+### 8.1 What each component is and why it's in this stack
+
+| Component | What it is | Role here |
+|---|---|---|
+| **OpenTelemetry (OTel)** | A vendor-neutral instrumentation standard + SDK for traces, metrics, and logs, plus a wire protocol (OTLP) | `Orbit.Api`/`Orbit.Worker` use the OTel .NET SDK to *emit* all three signal types; nothing in this codebase talks to Prometheus/Loki/Tempo directly (§4.3) |
+| **OTel Collector** | A standalone process that receives OTLP and routes it to one or more backends | The single fan-out point (`otel-collector` service): one thing the app exports to, three things it forwards to — swapping a backend later means editing `deploy/otel/otel-collector-config.yaml`, not app code |
+| **Prometheus** | A metrics database that *scrapes* (pulls) numeric time series from an HTTP endpoint on an interval | Scrapes the Collector's `prometheus` exporter at `otel-collector:8889` every 15 s (`deploy/prometheus/prometheus.yml`) — this is a pull model, the reverse direction of the other two backends |
+| **Loki** | A log aggregation system, indexed by label (tenant, service, level) rather than full-text, built to be cheap at high volume | Receives *pushed* structured JSON logs from the Collector over Loki's native OTLP endpoint (`http://loki:3100/otlp`) |
+| **Tempo** | A trace storage backend, indexed by trace ID | Receives *pushed* spans from the Collector over OTLP gRPC (`tempo:4317`) |
+| **Grafana** | The shared query/visualization UI for all three backends | Pre-provisioned with all three as datasources (`deploy/grafana/provisioning/datasources/datasources.yaml`) — no manual "add datasource" step |
+
+### 8.2 HLD — component and data-flow view
+
+```mermaid
+flowchart LR
+    subgraph App["Orbit.Api / Orbit.Worker"]
+        SDK["OpenTelemetry .NET SDK<br/>(traces + metrics + logs)"]
+    end
+
+    SDK -->|"OTLP gRPC :4317 / HTTP :4318"| COL["OTel Collector\n(otel/opentelemetry-collector-contrib)"]
+
+    COL -->|"scraped by Prometheus\n(pull, :8889)"| PROM[("Prometheus\nmetrics TSDB")]
+    COL -->|"push, otlphttp\n(loki:3100/otlp)"| LOKI[("Loki\nlog store")]
+    COL -->|"push, otlp\n(tempo:4317)"| TEMPO[("Tempo\ntrace store")]
+    COL -.->|"debug exporter\n(podman logs)"| DEVNULL["stdout — sanity check only"]
+
+    PROM --> GRAF["Grafana :3000\n(pre-provisioned datasources)"]
+    LOKI --> GRAF
+    TEMPO --> GRAF
+
+    GRAF -->|"human views dashboards/\nExplore tab"| Dev["Developer's browser"]
+
+    classDef store fill:#2b2f3a,color:#fff,stroke:#5c6270;
+    class PROM,LOKI,TEMPO store;
+```
+
+Everything below Orbit.Api/Worker is optional local-dev tooling — none of it is on the request's critical path; the app never blocks on the Collector or any backend being reachable (OTLP export is fire-and-forget over gRPC/HTTP).
+
+### 8.3 LLD — one request's signals from emission to Grafana
+
+```mermaid
+sequenceDiagram
+    participant PWA as Web PWA
+    participant API as Orbit.Api
+    participant SDK as OTel SDK (in-process)
+    participant COL as OTel Collector
+    participant PROM as Prometheus
+    participant LOKI as Loki
+    participant TEMPO as Tempo
+    participant GRAF as Grafana
+    participant Dev as Developer
+
+    PWA->>API: POST /api/v1/work-items
+    activate API
+    API->>API: CorrelationIdMiddleware opens log scope<br/>(CorrelationId, TraceId)
+    API->>SDK: ASP.NET Core instrumentation starts a span<br/>(automatic, no call-site code)
+    API->>API: Serilog writes JSON log line<br/>{CorrelationId, TraceId, TenantId, ...}
+    API-->>PWA: 201 Created
+    deactivate API
+
+    par async export, does not block the response
+        SDK-->>COL: OTLP export: span (trace),<br/>counters/histograms (metric),<br/>Serilog log record (via writeToProviders)
+    end
+
+    Note over COL: batch processor buffers briefly,<br/>then fans out per pipeline
+
+    COL->>TEMPO: otlp/tempo exporter (gRPC push)
+    COL->>PROM: prometheus exporter exposes :8889;<br/>Prometheus pulls on its own 15s interval
+    COL->>LOKI: otlphttp exporter (push)
+
+    Dev->>GRAF: open Explore, pick Tempo datasource
+    GRAF->>TEMPO: query by TraceId
+    TEMPO-->>GRAF: full span tree for the request
+    Dev->>GRAF: switch to Prometheus datasource
+    GRAF->>PROM: PromQL query, e.g. http_server_request_duration histogram
+    PROM-->>GRAF: time series
+    GRAF-->>Dev: render panel/graph
+```
+
+### 8.4 Flowchart — "which tool do I open for X?"
+
+```mermaid
+flowchart TD
+    Start["I need to debug or observe something"] --> Q1{"What do I have?"}
+    Q1 -->|"A TraceId from a\nresponse header/log line"| T1["Grafana → Explore → Tempo\npaste TraceId → see full span tree\n(HTTP → Npgsql → Redis child spans)"]
+    Q1 -->|"A rate/latency/count\nquestion (\"how slow is X\")"| T2["Grafana → Explore → Prometheus\nor http://localhost:9090\nPromQL, e.g. rate(http_server_request_duration_seconds_sum[5m])"]
+    Q1 -->|"A CorrelationId from a\nsupport report / error toast"| T3["grep app stdout for the id today\n(§8.5: not yet in Loki — see gap)"]
+    Q1 -->|"Just poking around,\nno specific id"| T4["Grafana home :3000\n(admin / orbit_local by default)"]
+    T1 --> Done["Found the span/timing breakdown"]
+    T2 --> Done2["Found the metric trend"]
+```
+
+### 8.5 How to run and use each tool locally
+
+All ports below are the compose defaults (`deploy/podman/compose.yaml`); override with the matching `*_PORT` env var if a port is already taken.
+
+1. **Start the stack**: `./scripts/start-dev.sh` starts everything including this stack; `otel-collector`/`prometheus`/`loki`/`tempo`/`grafana` are not in the blocking `wait_for_container` list, so the app boots even if you `podman compose up` without them.
+2. **Grafana** — `http://localhost:3000`, login `admin` / `orbit_local` (or `$GRAFANA_ADMIN_PASSWORD`). Datasources (Prometheus, Loki, Tempo) are already registered. Use the **Explore** tab (compass icon in the left nav), pick a datasource from the dropdown at the top, and query. No dashboards are pre-built (§1.2 gap) — Explore is the only view until one is authored.
+3. **Prometheus** — `http://localhost:9090`. Useful directly for debugging the scrape itself: **Status → Targets** shows whether `otel-collector:8889` is `UP`. The **Graph** tab takes raw PromQL if you don't want to go through Grafana.
+4. **Tempo** — no browser UI of its own; always queried through Grafana's Tempo datasource (or `http://localhost:3200/api/...` directly for scripting). Search by TraceId, or by service/duration in Grafana's TraceQL search box.
+5. **Loki** — same story, no standalone UI; query via Grafana's Loki datasource using LogQL (e.g. `{service_name="orbit-api"}`), or `http://localhost:3100` directly.
+6. **OTel Collector** — no UI; `podman logs orbit_otel-collector_1` shows the `debug` exporter's basic-verbosity output, which is the fastest way to confirm the app is actually emitting anything before blaming a downstream backend.
+
+### 8.6 Log export wiring
+
+`Program.cs` wires OpenTelemetry for **tracing, metrics, and logs** (`AddOpenTelemetry().WithTracing(...).WithMetrics(...).WithLogging(logging => logging.AddOtlpExporter())`), and `UseSerilog(..., writeToProviders: true)` routes Serilog's output into the registered `ILoggerProvider`s (including the OTel one) as well as its own `WriteTo.Console` sink. Serilog's JSON output therefore reaches both stdout and, via the Collector's `logs` pipeline (`deploy/otel/otel-collector-config.yaml`), Loki.

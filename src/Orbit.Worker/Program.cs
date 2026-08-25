@@ -1,4 +1,5 @@
 using Npgsql;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -34,6 +35,8 @@ builder.Services.AddHostedService<AttachmentScanDispatchWorker>();
 // the trace_parent column captured at insert time, so the two processes join into one trace.
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("orbit-worker"))
+    .WithLogging(logging => logging
+        .AddOtlpExporter())
     .WithTracing(tracing => tracing
         .AddSource(OutboxEmailProcessor.ActivitySourceName)
         .AddHttpClientInstrumentation()

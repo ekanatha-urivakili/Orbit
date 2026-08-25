@@ -5,11 +5,11 @@
 ## End-to-End Architecture: HLD, LLD, and Phased Implementation Plan
 
 **Document ID:** ARCH-ORBIT-001
-**Status:** Proposed
-**Version:** 1.32
+**Status:** Active Baseline
+**Version:** 1.49
 **Owner:** ORBIT maintainers
 **Reviewers:** Product, Architecture, Security, SRE, Open-source maintainers
-**Last updated:** 2026-08-18
+**Last updated:** 2026-08-25
 
 ---
 
@@ -1196,48 +1196,107 @@ The software-workspace seed owns stable item-type ids for `Initiative`, `Epic`, 
 
 ### 5.3 Public API surface
 
-| # | Method | Path | Notes |
+The table below documents the implemented REST API surface exposed by `Orbit.Api` (`/api/v1`).
+
+| Category | Method | Path | Notes / Guarantees |
 |---|---|---|---|
-| 5.3.1 | POST | `/api/v1/work-items` | `Idempotency-Key` required |
-| 5.3.2 | GET | `/api/v1/work-items/{key}` | ETag; `If-None-Match` supported |
-| 5.3.3 | PATCH | `/api/v1/work-items/{key}` | Optimistic concurrency via `If-Match` version |
-| 5.3.4 | POST | `/api/v1/work-items/{key}/transitions` | Body: `transitionId` + required screen fields |
-| 5.3.5 | GET | `/api/v1/work-items/{key}/transitions` | Only transitions passing conditions |
-| 5.3.6 | POST | `/api/v1/search` | WQL body; keyset cursor |
-| 5.3.7 | POST | `/api/v1/bulk/operations` | Async; returns operation id |
-| 5.3.8 | GET | `/api/v1/boards/{id}/backlog` | Rank-ordered, windowed |
-| 5.3.9 | GET | `/api/v1/boards/{id}/cards` | Filtered board page with column and rank cursors |
-| 5.3.10 | POST | `/api/v1/boards/{id}/moves` | Same-column rank or atomic cross-column transition; idempotent |
-| 5.3.11 | POST | `/api/v1/sprints/{id}/start` | Version checked; validates active/parallel policy |
-| 5.3.12 | POST | `/api/v1/sprints/{id}/complete` | Creates durable completion operation and enters `Closing` |
-| 5.3.13 | GET | `/api/v1/operations/{id}` | Progress, failed batches, retry eligibility |
-| 5.3.14 | GET | `/api/v1/events` | Authenticated SSE stream with resumable event cursor |
-| 5.3.15 | POST | `/api/v1/webhooks` | Post-GA app-scoped subscriptions |
-| 5.3.16 | GET | `/api/v1/bootstrap/status` | Public; returns only `initializationRequired` |
-| 5.3.17 | POST | `/api/v1/bootstrap` | Public only before initialization; creates first account, super admin, and workspace atomically |
-| 5.3.18 | POST | `/api/v1/auth/login` | Local email/password login with enumeration-safe errors and rate limits |
-| 5.3.19 | POST | `/api/v1/auth/refresh` | Rotating refresh session; replay revokes the session family |
-| 5.3.20 | POST | `/api/v1/auth/logout` | Revokes the current refresh session |
-| 5.3.21 | POST | `/api/v1/workspaces/{id}/admins` | Site super admin appoints a workspace admin; step-up required |
-| 5.3.22 | POST | `/api/v1/workspaces/{id}/teams` | Workspace admin creates a team |
-| 5.3.23 | PUT | `/api/v1/teams/{id}/members/{membershipId}` | Assigns team admin/member role idempotently |
-| 5.3.24 | POST | `/api/v1/workspaces/{id}/invitations` | Invites an email to the workspace and optional team |
-| 5.3.25 | POST | `/api/v1/invitations/accept` | Consumes the single-use token and creates or links membership |
-| 5.3.26 | POST | `/api/v1/projects/{id}/boards` | Creates a project-owned Kanban or Scrum board |
-| 5.3.27 | GET | `/api/v1/projects/{id}/boards` | Lists boards visible in the project |
-| 5.3.28 | GET | `/api/v1/workspaces/{id}/item-types` | Returns stable configured types including the six software defaults |
-| 5.3.29 | GET | `/api/v1/me` | Account identity, memberships, effective locale/time zone, capabilities, and preference version; no credential material |
-| 5.3.30 | PATCH | `/api/v1/me/profile` | Updates display name, avatar reference, locale, time zone, theme, and accessibility preferences with `If-Match` |
-| 5.3.31 | POST | `/api/v1/me/email-change` | Step-up authenticated; sends verification and commits global uniqueness only after confirmation |
-| 5.3.32 | POST | `/api/v1/me/password-change` | Verifies the current credential, rehashes if required, revokes other refresh-session families, and audits the change |
-| 5.3.33 | GET/DELETE | `/api/v1/me/sessions/{sessionId?}` | Lists active sessions without tokens and revokes one or all other sessions |
-| 5.3.34 | GET/PATCH | `/api/v1/me/notification-preferences` | Versioned event/channel/digest/quiet-hours preferences |
-| 5.3.35 | GET/PATCH | `/api/v1/workspaces/{id}/settings` | Workspace-admin settings; versioned, audited, and authorization-cache aware |
-| 5.3.36 | GET/PATCH | `/api/v1/projects/{id}/settings` | Project-admin defaults, permissions, item types, integrations, and feature flags with impact preview |
-| 5.3.37 | GET/PATCH | `/api/v1/boards/{id}/settings` | Board type, filter, columns, estimation, WIP, sprint, and completion semantics with config versioning |
-| 5.3.38 | GET | `/api/v1/settings/navigation` | Returns only settings destinations and capabilities visible to the current principal |
-| 5.3.39 | POST | `/api/v1/workspaces` | Site super administrator creates a workspace and becomes its owner atomically |
-| 5.3.40 | GET | `/api/v1/me/site-capabilities` | Returns installation-level capabilities for the authenticated global account |
+| **Bootstrap & Auth** | `GET` | `/api/v1/bootstrap/status` | Public; returns `initializationRequired` boolean |
+| | `POST` | `/api/v1/bootstrap` | Atomic initial super admin, account, and workspace creation; single-use |
+| | `POST` | `/api/v1/register` | Self-service signup; creates organization, workspace, owner membership, and session |
+| | `POST` | `/api/v1/auth/login` | Email/password login with `RememberMe` TTL selection; constant-cost enumeration defense |
+| | `POST` | `/api/v1/auth/refresh` | Opaque rotating refresh session; detects reuse and revokes session family |
+| | `POST` | `/api/v1/auth/logout` | Revokes current refresh session family |
+| | `POST` | `/api/v1/auth/password-reset/request` | Generates 1-hour single-use token; emits outbox email; enumeration-safe |
+| | `POST` | `/api/v1/auth/password-reset/confirm` | Consumes token, updates Argon2id credential, revokes all active sessions |
+| | `POST` | `/api/v1/auth/service-token` | Machine auth; exchanges service account client-credentials for JWT |
+| | `GET` | `/api/v1/auth/google/start` | Initiates backend-brokered Google OAuth with signed state |
+| | `GET` | `/api/v1/auth/google/callback` | Exchanges Google auth code, validates id_token, mints single-use handoff code |
+| | `POST` | `/api/v1/auth/google/exchange` | Exchanges single-use handoff code for Orbit access and refresh tokens |
+| **Identity & Me** | `GET` | `/api/v1/me` | Current profile, permissions, active tenant, and preferences |
+| | `GET` | `/api/v1/me/workspaces` | Lists accessible workspaces for the authenticated global account |
+| | `PATCH` | `/api/v1/me/profile` | Updates display name, locale, and time zone with `If-Match` |
+| | `PATCH` | `/api/v1/me/preferences` | Updates theme, density, contrast, and reduced-motion preferences |
+| | `GET` / `PATCH` | `/api/v1/me/notification-preferences` | Versioned event triggers, digest cadence, and quiet-hours settings |
+| | `GET` / `DELETE` | `/api/v1/me/sessions` | Lists active sessions; `DELETE` revokes single or all other sessions |
+| | `GET` / `POST` | `/api/v1/me/external-identities` | Manages linked external OIDC identities |
+| | `POST` | `/api/v1/me/external-identities/google/link-url` | Mints authenticated state to link Google account to current user |
+| | `GET` | `/api/v1/me/site-capabilities` | Installation-level capabilities (e.g. `CanCreateWorkspace`) |
+| **Workspaces & Tenancy** | `POST` | `/api/v1/workspaces` | Site super admin creates a workspace + owner membership |
+| | `POST` | `/api/v1/organization/workspaces` | Organization owner creates an additional workspace in tenant |
+| | `GET` / `PATCH` | `/api/v1/workspaces/current/settings` | Workspace-admin settings with `If-Match` optimistic concurrency |
+| | `POST` | `/api/v1/workspaces/current/settings/logo/presign` | Generates presigned S3/MinIO upload URL for workspace logo |
+| | `PUT` | `/api/v1/workspaces/current/settings/logo` | Confirms uploaded logo key and links to workspace |
+| | `GET` / `PATCH` | `/api/v1/workspaces/current/typography-settings` | Configures workspace-wide typography (font family, base sizes) |
+| **Access & Directory** | `GET` / `POST` | `/api/v1/memberships` | Lists workspace members (`displayName`, `avatarUrl`) or assigns membership |
+| | `PUT` / `DELETE` | `/api/v1/memberships/{id}` | Updates membership role or deactivates member (last-owner safe) |
+| | `GET` / `POST` | `/api/v1/invitations` | Workspace invitation lifecycle with 7-day TTL and outbox email |
+| | `POST` | `/api/v1/workspaces/{tenantId}/invitations/accept` | Accepts invitation, binds local account credentials atomically |
+| | `POST` | `/api/v1/workspaces/{tenantId}/invitations/accept-external`| Accepts invitation via external IdP proof without password |
+| | `GET` / `POST` | `/api/v1/teams` | Lists and creates workspace teams |
+| | `GET` / `POST` / `DELETE` | `/api/v1/teams/{teamId}/members` | Manages team memberships |
+| | `GET` / `POST` | `/api/v1/groups` | Directory group management for RBAC assignment |
+| | `GET` / `POST` / `DELETE` | `/api/v1/groups/{groupId}/members` | Manages group memberships |
+| | `GET` / `POST` | `/api/v1/roles` | Custom project role management (tenant-scoped) |
+| | `PATCH` / `DELETE` | `/api/v1/roles/{roleId}` | Renames or deletes custom role (system roles immutable) |
+| | `PUT` | `/api/v1/roles/{roleId}/permissions` | Assigns `ProjectPermission` set to custom role |
+| | `GET` / `PUT` | `/api/v1/projects/{projectId}/roles` | Assigns user project roles via custom `RoleId` |
+| | `PUT` | `/api/v1/projects/{projectId}/group-roles/{groupId}` | Assigns project role to directory group |
+| | `POST` | `/api/v1/service-accounts` | Creates machine service account and returns secret client-credentials |
+| | `POST` | `/api/v1/service-accounts/{id}/rotate` | Rotates machine credentials with immediate revocation |
+| **Projects & Boards** | `GET` / `POST` | `/api/v1/projects` | Lists or creates tenant projects with key prefix sequence |
+| | `GET` / `PATCH` | `/api/v1/projects/{projectId}/settings` | Project admin defaults, item types, and repository URLs |
+| | `GET` / `PATCH` | `/api/v1/projects/{projectId}/board` | Project Kanban/Scrum board definition, WIP limits, and columns |
+| | `GET` / `PATCH` | `/api/v1/projects/{projectId}/board-view-preference` | Per-user card field toggles, column size, and completed-item filter |
+| | `GET` / `PATCH` | `/api/v1/projects/{projectId}/backlog-view-preference`| Per-user backlog row density, empty sprint toggle, field visibility |
+| **Workflow & Types** | `GET` | `/api/v1/choices` | System choices catalog (types, priorities, severities) |
+| | `GET` / `PATCH` | `/api/v1/work-item-types` | Tenant work item type registry (enable/disable, reorder, rename) |
+| | `GET` / `POST` | `/api/v1/projects/{projectId}/statuses` | Project-owned `WorkItemStatusDefinition` workflow status catalog |
+| | `PATCH` / `DELETE`| `/api/v1/projects/{projectId}/statuses/{statusId}` | Status rename, recolor, reorder, delete (in-use protected) |
+| | `POST` | `/api/v1/projects/{projectId}/statuses/{statusId}/default`| Sets project's explicit initial workflow default status |
+| | `GET` / `POST` / `PATCH`| `/api/v1/projects/{projectId}/custom-fields` | Custom field definitions (`ApplicableTypes`, `Required`, choices) |
+| **Sprints & Reports** | `GET` / `POST` | `/api/v1/projects/{projectId}/sprints` | Lists or creates sprints (Future/Active/Closing/Closed/Reopened) |
+| | `PATCH` | `/api/v1/sprints/{sprintId}` | Edits sprint name, goal, start date, and end date |
+| | `POST` | `/api/v1/sprints/{sprintId}/start` | Starts sprint; validates single-active-sprint policy |
+| | `POST` | `/api/v1/sprints/{sprintId}/complete` | Completes sprint with rollover choice (next sprint or top-of-backlog) |
+| | `POST` | `/api/v1/sprints/{sprintId}/reopen` | Reopens closed sprint idempotently |
+| | `GET` | `/api/v1/sprints/{sprintId}/insights` | Real-time sprint progress, attention items, and epic completion |
+| | `GET` | `/api/v1/sprints/{sprintId}/report` | Immutable fact-based burndown and scope changes |
+| | `GET` | `/api/v1/sprints/{sprintId}/reports/{reportType}` | Cumulative flow, cycle time, and control chart projections |
+| **Work Items & Actions** | `GET` / `POST` | `/api/v1/work-items` | Lists work items with filters or creates new item |
+| | `PATCH` | `/api/v1/work-items/{id}` | Full-field optimistic-concurrency update (`If-Match`) |
+| | `PATCH` | `/api/v1/work-items/{id}/assignee` | Reassigns work item owner and emits notification |
+| | `PATCH` | `/api/v1/work-items/{id}/status` | Transitions status, records history, emits outbox notification |
+| | `PATCH` | `/api/v1/work-items/{id}/type` | Changes work type (validates hierarchy invariants) |
+| | `PATCH` | `/api/v1/work-items/{id}/rank` | Fractional rank reordering (`beforeId`/`afterId`) |
+| | `PUT` / `DELETE` | `/api/v1/work-items/{id}/sprint` | Assigns or removes work item from sprint |
+| | `GET` / `POST` / `DELETE`| `/api/v1/work-items/{id}/links` | Many-to-many dependency links (blocks, relates, parent) |
+| | `GET` / `POST` | `/api/v1/work-items/{id}/comments` | Comment thread; parses `@{userId}` mentions and enqueues email |
+| | `PATCH` / `DELETE`| `/api/v1/work-items/{id}/comments/{commentId}` | Author-guarded comment edits and deletions |
+| | `GET` | `/api/v1/work-items/{id}/history` | Immutable append-only audit trail of field modifications |
+| | `GET` / `PUT` / `DELETE` | `/api/v1/work-items/{id}/watchers` | Toggle or query ticket watcher status (`/watchers/me`) |
+| | `GET` / `PUT` | `/api/v1/work-items/{id}/custom-field-values` | Type-validated custom field values on work items |
+| | `GET` / `DELETE` | `/api/v1/work-items/{id}/attachments` | Lists or deletes work item file attachments |
+| | `POST` | `/api/v1/work-items/{id}/attachments/presign` | Generates presigned S3/MinIO upload URL for attachment |
+| | `POST` | `/api/v1/work-items/{id}/attachments` | Confirms upload; triggers background ClamAV scanning |
+| | `GET` | `/api/v1/work-items/{id}/attachments/{attachmentId}/download` | Pre-signed download URL (withheld until scan is clean) |
+| | `POST` | `/api/v1/work-items/{id}/share` | Shares ticket summary via email to selected users/teams |
+| | `POST` | `/api/v1/work-items/{id}/slack-share` | Posts ticket summary to project-connected Slack channel |
+| | `PATCH` | `/api/v1/work-items/{id}/flag` | Toggles item flagged status for impediment tracking |
+| | `PATCH` | `/api/v1/work-items/{id}/cover` | Sets cover image from confirmed image attachment |
+| | `GET` / `PUT` / `DELETE` | `/api/v1/work-items/{id}/votes` | Upvoting mechanism on work items (`/votes/me`) |
+| | `GET` / `POST` / `DELETE`| `/api/v1/work-items/{id}/worklogs` | Time-tracking worklog entries (minutes, date, description) |
+| | `POST` | `/api/v1/work-items/{id}/clone` | Deep clone copying core fields into new work item |
+| | `POST` | `/api/v1/work-items/{id}/move` | Moves work item to target project with new sequence key |
+| | `POST` | `/api/v1/work-items/{id}/archive` | Soft-archives completed work item |
+| | `POST` | `/api/v1/work-items/{id}/unarchive` | Restores archived work item to active scope |
+| | `DELETE` | `/api/v1/work-items/{id}` | Hard delete (blocked if subtasks or child items exist) |
+| | `GET` | `/api/v1/work-items/{id}/export` | Exports work item as CSV, XML, JSON, XLSX, or DOCX |
+| **Integrations** | `POST` | `/api/v1/integrations/slack/authorize-url` | Initiates Slack OAuth connection flow for project |
+| | `POST` | `/api/v1/integrations/slack/complete` | Exchanges Slack OAuth code and encrypts webhook secret at rest |
+| | `GET` / `DELETE` | `/api/v1/integrations/slack/connection` | Inspects or removes project Slack channel connection |
+| **Health & Meta** | `GET` | `/health/live` | Process liveness probe |
+| | `GET` | `/health/ready` | Readiness probe (concurrent Postgres connectivity + Valkey cache round-trip) |
+| | `GET` | `/api/version` | Returns deployed commit SHA, version, and build timestamp |
 
 #### Conventions
 
@@ -3016,32 +3075,32 @@ chrome: the epic/type breadcrumb menus now persist, and the header gains copy-li
 
 ### 10.10 Board Column, Sprint, and Workflow Configuration (Visual Builders)
 
-**Proposed — based on Jira parity analysis.** To provide an intuitive, visual experience for workspace and project administrators, Orbit will introduce drag-and-drop builders for core agile configurations:
+**Partially implemented (v1.12, v1.45, v1.46) with proposed rules/AI extensions.** To provide an intuitive, visual experience for workspace and project administrators:
 
-#### Board Column Mapping (Simplified & Advanced Modes)
+#### Board Column Mapping (Implemented v1.12 & v1.46)
 
-Boards must support mapping an underlying workflow status to a specific board column.
+Boards map underlying workflow statuses to specific board columns:
 
-- **Simplified Mode:** Provides a drag-and-drop interface to assign "Hidden statuses" into active board columns (e.g., *To Do*, *In Progress*, *In Review*, *Ready for QA*, *Done*).
-- **Advanced Mode:** Enables setting Work-In-Progress (WIP) limits per column, as well as the ability to move or remove columns.
+- **Configurable Columns:** `Board.Columns` is an owned `board_columns` collection (status, order, nullable WIP limit, `Warn`/`Block` mode; migration `AddBoardColumns`, forced RLS) persisted under optimistic concurrency (`PATCH /api/v1/projects/{id}/board`).
+- **Atomic Status Mapping:** Adding a new status via `CreateWorkItemStatusHandler` automatically appends a corresponding column to the project's board (`v1.46`), ensuring newly added statuses immediately appear on the board.
+- **WIP Policy Enforcement:** When a column is configured in `Block` mode and reaches its capacity, the frontend disables that status as a drag-and-drop target.
 
 ```mermaid
 flowchart LR
-    subgraph Statuses
-        S1[To Do]
-        S2[In Progress]
-        S3[In Review]
-        S4[Ready for QA]
-        S5[Done]
-        S6[Hidden/Unmapped]
+    subgraph Statuses["Project WorkItemStatusDefinitions"]
+        S1["To Do (ToDo)"]
+        S2["In Progress (InProgress)"]
+        S3["In Review (InProgress)"]
+        S4["Ready for QA (InProgress)"]
+        S5["Done (Done)"]
     end
     
-    subgraph Columns
-        C1[Column: To Do]
-        C2[Column: In Progress]
-        C3[Column: In Review]
-        C4[Column: Ready for QA]
-        C5[Column: Done]
+    subgraph Columns["Board Columns (board_columns)"]
+        C1["Column: To Do (WIP: ∞)"]
+        C2["Column: In Progress (WIP: 5 - Warn)"]
+        C3["Column: In Review (WIP: 3 - Block)"]
+        C4["Column: Ready for QA (WIP: ∞)"]
+        C5["Column: Done (WIP: ∞)"]
     end
     
     S1 --> C1
@@ -3051,63 +3110,60 @@ flowchart LR
     S5 --> C5
 ```
 
-#### Sprint Editing & Auto-Completion
+#### Sprint Editing & Auto-Completion (Implemented v1.45 / Auto-complete Proposed)
 
-Sprints are managed via an explicit state machine. The `Edit Sprint` UI will expose:
+Sprints are managed via the `Sprint` aggregate and lifecycle state machine (`Orbit.Domain.Boards.Sprint`):
 
-- **Sprint Metadata:** Sprint Name, Sprint Goal.
-- **Temporal Bounds:** Explicit Start Date and End Date.
-- **Auto-complete Toggle:** An automation feature to automatically close the sprint and roll over incomplete work to the next sprint or backlog when the End Date is reached.
+- **Sprint Metadata & Dates (Implemented v1.45):** `Sprint.Edit` (`PATCH /api/v1/sprints/{id}`) updates name, goal, start date, and end date for future and active sprints, surfaced via `SprintEditDialog.tsx`.
+- **Auto-complete Toggle (Proposed):** Automation to automatically close the sprint and roll over incomplete work when the end date is reached remains a future enhancement.
 
-#### Visual Workflow Editor, Rules, and AI Agents
+#### Visual Workflow Editor & Status Catalog (Implemented v1.45/v1.46)
 
-A node-and-edge visual graph builder will replace the purely tabular workflow status definition UI, allowing admins to map out complex lifecycles.
+Project administrators configure workflows visually without hardcoded enum limitations:
 
-**Transitions & Global Transitions**
+- **Project Status Catalog:** `WorkItemStatusDefinition` (`Orbit.Domain.Configuration`, `GET/POST/PATCH/DELETE /api/v1/projects/{id}/statuses`) allows project-specific status creation, renaming, recoloring, categorization (`ToDo`, `InProgress`, `Done`), and explicit default initial status assignment (`/default`).
+- **Diagram & Text Editor:** `WorkflowEditorDialog.tsx` provides a dual-mode editor:
+  - *Diagram Tab (Default):* Renders a node graph (`START` → `Create` → status nodes connected by "Any" transitions) with an interactive properties panel for inline modifications.
+  - *Text Tab:* Tabular configuration table for rapid multi-status adjustments and default selection.
+- **Report & History Integrity Guards (v1.46):** `IWorkItemStatusRepository.IsInUseAsync` prevents deletion or recategorization of statuses with existing work-item history entries to guarantee historical report reproducibility.
 
-- **Nodes:** Represent `WorkItemStatusDefinition` states.
-- **Edges (Transitions):** Represent valid state changes. Orbit will support defining "Global Transitions" (e.g., *Allow transitions from any status*) to simplify complex graphs where tickets can jump straight to `Done` or `In Progress` from any state.
+#### Workflow Rules Engine & AI Agents (Proposed Extensions)
 
-**Workflow Rules Engine**
+Guarded transitions and automated AI actions build on top of the status catalog:
 
-Transitions can be guarded or augmented by business rules. The visual builder exposes these under three categories:
-
-- **Conditions (Restrict transition):** Evaluated *before* the transition is presented to the user. E.g., restricting transitions based on the status of subtasks, checking if a field holds a specific value, or restricting based on past state/user interactions.
-- **Validators (Validate details):** Evaluated *during* the transition attempt. Blocks the transition if conditions aren't met (e.g., validating parent item status, requiring specific permissions, or validating field structures).
-- **Post-Functions (Perform actions):** Executed *after* the transition succeeds. Used to automate side effects like assigning the work item, copying field values, or updating related fields.
-
-**Workflow AI Agents**
-
-- The visual builder introduces an **"Add Agent"** capability bound to specific transitions. This allows workspace administrators to attach AI-driven automated prompts (e.g., summarizing release notes when a ticket moves to *Done*, or generating test cases when moving to *Ready for QA*) directly into the workflow lifecycle.
-- When configuring an Agent for a transition, the administrator can select from an existing library (*"Browse agents"*) or construct a brand new AI prompt/behavior (*"Create agent"*).
+- **Transitions & Global Transitions:** Defining directed edges between specific statuses (restricting arbitrary jumps) while supporting global transitions (*"Allow transitions from any status"*).
+- **Conditions (Restrict transition):** Pre-execution guards (e.g. all subtasks must be `Done`, user holds specific project role).
+- **Validators (Validate details):** Execution-time checks (e.g. required resolution field populated, custom field format validation).
+- **Post-Functions (Perform actions):** Post-transition side effects (e.g. auto-assigning work items, copying field values).
+- **Workflow AI Agents:** Transition-bound prompts (e.g. generating release note drafts when moving to *Done*, generating test cases when entering *Ready for QA*).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> TODO : Create
+    [*] --> TODO : Create (Default Status)
     TODO --> IN_PROGRESS : Any
     
     IN_PROGRESS --> IN_REVIEW : Any
     note right of IN_REVIEW
-        Rule: Validate parent status
-        Rule: Copy field value
+        Rule (Proposed): Validate parent status
+        Rule (Proposed): Copy field value
     end note
     
     IN_REVIEW --> READY_FOR_QA : Any
     note right of READY_FOR_QA
-        Agent: Generate test cases
+        Agent (Proposed): Generate test cases
     end note
     
     READY_FOR_QA --> DONE : Any
     note right of DONE
-        Rule: Restrict on subtask status
+        Rule (Proposed): Restrict on subtask status
     end note
     
-    note left of TODO : "Any" represents the ability to jump to this status from any other status in the workflow.
+    note left of TODO : "Any" represents the current unrestricted transition model.
 ```
 
 ### 10.11 Saved Custom Filters (WQL)
 
-**Proposed — based on Jira parity analysis.** To allow users to rapidly slice and view work items, Orbit will introduce a dedicated **Custom Filters** management interface under Workspace settings.
+**UI Reference Delivered (v1.48) — Full WQL Engine Proposed.** To enable rapid slicing and querying of work items:
 
-- **Form Structure:** Admins and users can save a filter by defining a **Name**, a **Description**, and a raw **Filter query** (written in Orbit's WQL - Work Query Language).
-- **Reusability:** These saved filters can then be applied universally to configure Board columns, populate backlog lists, or drive reporting timelines without requiring users to rewrite complex query logic.
+- **UI Preview & Syntax Reference (Implemented v1.48):** `CustomFiltersPanel.tsx` in `web/src/features/board/` exposes a WQL query editor with a live syntax reference panel and five preset quick-filters (e.g. `assignee = currentUser() AND status != "Done"`, `type = "Bug" AND priority in ("High", "Highest")`, `sprint = "activeSprint()"`).
+- **WQL AST Engine & Filter Persistence (Proposed):** Backend AST parsing, PostgreSQL query compilation (§4.4), and tenant-scoped `saved_filters` persistence (`POST /api/v1/saved-filters`, `POST /api/v1/search`) remain the target implementation for full server-side query execution.
